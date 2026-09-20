@@ -1,0 +1,1 @@
+Summarize the supplied section summaries into a concise document-level account. Each section summary is grounded in its recorded source spans. Keep uncertainty, attribution, and disagreements. Do not claim to have read source sections that are not supplied. Return JSON with one field: summary.

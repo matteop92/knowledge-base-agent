@@ -1,0 +1,10 @@
+document_id: 277d7da7-b853-5a2a-ae0d-413456805f73
+source_sha256: e36e0f9e91311020a7f652bc88ce77f8f8a003092ee34534903a5a4b5a84134c
+questions:
+- id: fixture_evidence
+  question: When should a decision's reason be recorded?
+  expected: supported
+  must_find:
+  - start_char: 29
+    end_char: 80
+    quote: Record the reason for a decision while it is fresh.

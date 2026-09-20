@@ -100,7 +100,7 @@ Each row is a separate candidate for a focused `ce:plan` run. Plans should name 
 | Order | Focused work | Proof it should produce |
 |---|---|---|
 | 1 | Podcast transcript source handling and ingestion contracts | Real transcript files have stable IDs, metadata, exact location mapping, and validated intermediate records. The eval directory begins with representative questions tied to these transcripts. |
-| 2 | Structure-aware transcript ingestion | The transcripts produce coherent chunks, chunk context, strict evidence cards, and document summaries with traceable support. Compare fixed raw against structural raw, then structural raw against structural contextualized. |
+| 2 | Mixed Markdown ingestion | Transcripts, notes, articles, highlights, and book exports produce source-linked fixed and structural chunks. Optional context, evidence cards, summaries, and embeddings retain their source and version relationships. Retrieval comparisons begin after step 3 supplies search. |
 | 3 | Supabase storage and search | Processed artifacts are written and retrieved by semantic and lexical search without losing provenance. |
 | 4 | Retrieval API and agent loop | The agent can search more than once, inspect sources, and answer with validated citations. |
 | 5 | Evaluation and tuning | A gold set targeting 30-50 real questions reveals retrieval misses, unsupported claims, citation errors, incomplete synthesis, and unnecessary searches. |

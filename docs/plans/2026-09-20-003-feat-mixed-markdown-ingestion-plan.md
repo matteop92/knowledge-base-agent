@@ -1,7 +1,7 @@
 ---
 title: "feat: Ingest mixed Markdown with structural chunks and grounded enrichment"
 type: feat
-status: active
+status: completed
 date: 2026-09-20
 ---
 
@@ -58,7 +58,7 @@ captured Markdown + canonical locator
 
 ## Implementation units
 
-- [ ] **Unit 1 — Route and parse the observed Markdown variants**
+- [x] **Unit 1 — Route and parse the observed Markdown variants**
 
   **Goal:** Produce trustworthy common blocks for the inspected corpus. **Requirements:** R1, R2, R6. **Dependencies:** Plan 002.
 
@@ -75,7 +75,7 @@ captured Markdown + canonical locator
 
   **Verification:** The corpus has a reviewable block/coverage report without model calls.
 
-- [ ] **Unit 2 — Produce fixed and structural chunk variants**
+- [x] **Unit 2 — Produce fixed and structural chunk variants**
 
   **Goal:** Create comparable chunks that retain citation locations. **Requirements:** R2, R3, R5, R6. **Dependencies:** Unit 1.
 
@@ -91,7 +91,7 @@ captured Markdown + canonical locator
 
   **Verification:** Chunk previews explain their boundaries, source coverage, and variant identity.
 
-- [ ] **Unit 3 — Add a minimal model client and versioned enrichment inputs**
+- [x] **Unit 3 — Add a minimal model client and versioned enrichment inputs**
 
   **Goal:** Isolate provider calls and make enrichment reproducible. **Requirements:** R4, R5. **Dependencies:** Unit 2.
 
@@ -106,7 +106,7 @@ captured Markdown + canonical locator
 
   **Verification:** Ingestion code can switch adapters without changing parser or chunker logic.
 
-- [ ] **Unit 4 — Generate chunk context and strict evidence cards**
+- [x] **Unit 4 — Generate chunk context and strict evidence cards**
 
   **Goal:** Add useful discovery artifacts while making source facts checkable. **Requirements:** R4, R5. **Dependencies:** Unit 3.
 
@@ -121,7 +121,7 @@ captured Markdown + canonical locator
 
   **Verification:** All accepted cards and contexts resolve through a chunk to the captured source.
 
-- [ ] **Unit 5 — Summarize documents and generate versioned embeddings**
+- [x] **Unit 5 — Summarize documents and generate versioned embeddings**
 
   **Goal:** Finish local processed artifacts without binding them to a database. **Requirements:** R4, R5. **Dependencies:** Units 3–4.
 
@@ -136,7 +136,7 @@ captured Markdown + canonical locator
 
   **Verification:** A completed local run contains traceable chunks, enrichment, summaries, and embedding versions.
 
-- [ ] **Unit 6 — Expose local previews and source-span eval mapping**
+- [x] **Unit 6 — Expose local previews and source-span eval mapping**
 
   **Goal:** Make structural outcomes and variant comparisons inspectable before storage/search work. **Requirements:** R3, R5, R6. **Dependencies:** Units 1–5.
 

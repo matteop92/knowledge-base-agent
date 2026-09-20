@@ -67,6 +67,6 @@ def _validate_span(label: Any, transcript: ParsedDocument) -> None:
         (block.content_span or block.span).start_char <= start
         and end <= (block.content_span or block.span).end_char
         for block in transcript.blocks
-        if block.kind == "speaker_turn"
+        if block.kind not in ("asset_reference", "separator")
     ):
-        raise EvalLabelError("eval span must lie within a speaker turn's content")
+        raise EvalLabelError("eval span must lie within an eligible source block")
