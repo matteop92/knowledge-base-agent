@@ -3,7 +3,11 @@ import unittest
 from pathlib import Path
 
 from app.ingestion.source_reader import capture_source
-from app.ingestion.transcript_parser import TranscriptParseError, parse_transcript
+from app.ingestion.transcript_parser import (
+    TranscriptParseError,
+    parse_bracket_transcript,
+    parse_transcript,
+)
 
 
 class TranscriptParserTests(unittest.TestCase):
@@ -98,6 +102,30 @@ class TranscriptParserTests(unittest.TestCase):
         from_source = self.parse("---\nsource: https://example.com/episode\n---\n**Host:** Hi.\n")
         self.assertEqual(from_source.metadata.source_url, "https://example.com/episode")
         self.assertIsNone(from_source.metadata.source_origin)
+
+    def test_bracket_transcript_preface_and_summary_are_unattributed(self) -> None:
+        fixture = Path("sources/fixtures/sample_bracket_transcript.md").read_text(encoding="utf-8")
+        self.source.write_text(fixture, encoding="utf-8")
+        parsed = parse_bracket_transcript(
+            capture_source(self.root, "episode.md", self.runtime)
+        )
+        self.assertEqual([block.speaker for block in parsed.blocks if block.kind == "speaker_turn"], ["Host", "Guest"])
+        summary = next(block for block in parsed.blocks if "guests discuss" in block.raw_text)
+        self.assertEqual(summary.kind, "paragraph")
+        self.assertIsNone(summary.speaker)
+        self.assertEqual(parsed.blocks[-1].heading_path, ["Episode transcript"])
+
+    def test_malformed_bracket_label_is_unclassified(self) -> None:
+        self.source.write_text(
+            "\\[Host\\]\nHello.\n[Unknown]\nDo not attribute me.\n\\[Guest\\]\nReply.\n",
+            encoding="utf-8",
+        )
+        parsed = parse_bracket_transcript(
+            capture_source(self.root, "episode.md", self.runtime)
+        )
+        self.assertEqual(parsed.diagnostics[0].code, "malformed_speaker_label")
+        self.assertNotIn("Do not attribute me", parsed.blocks[0].raw_text)
+        self.assertEqual(parsed.excluded_spans[0].reason, "unclassified")
 
 
 if __name__ == "__main__":

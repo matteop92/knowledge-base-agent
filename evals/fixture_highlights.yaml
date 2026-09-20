@@ -1,0 +1,10 @@
+document_id: 950f4f07-5eed-5439-a1cf-ec2240820ff8
+source_sha256: b00cc3b851ecbaea1a817a3ce760d96b1a78af0bd0d2e3e3075cc622ea433fbc
+questions:
+- id: fixture_evidence
+  question: What passage was highlighted?
+  expected: supported
+  must_find:
+  - start_char: 134
+    end_char: 167
+    quote: Keep the original passage intact.
