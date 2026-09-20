@@ -19,6 +19,9 @@ from app.ingestion.source_reader import CapturedSource
 
 
 SPEAKER_MARKER = re.compile(r"^\*\*(?P<speaker>[^*:\r\n]{1,120}):\*\*[ \t]*", re.MULTILINE)
+KNOWN_SPEAKER_WITH_MISSING_BOLD = re.compile(
+    r"^(?P<speaker>[^*:\r\n]{1,120}):\*\*[ \t]*", re.MULTILINE
+)
 
 
 class TranscriptParseError(ValueError):
@@ -120,6 +123,14 @@ def parse_transcript(capture: CapturedSource) -> ParsedTranscript:
     markers = list(SPEAKER_MARKER.finditer(source_text, body_start))
     if not markers:
         raise TranscriptParseError("no supported **Speaker:** turns found")
+    known_speakers = {marker.group("speaker").strip() for marker in markers}
+    # Some transcripts omit the opening ** on an otherwise familiar speaker label.
+    markers.extend(
+        marker
+        for marker in KNOWN_SPEAKER_WITH_MISSING_BOLD.finditer(source_text, body_start)
+        if marker.group("speaker").strip() in known_speakers
+    )
+    markers.sort(key=lambda marker: marker.start())
     if source_text[body_start : markers[0].start()].strip():
         raise TranscriptParseError("unmatched transcript text before first speaker")
 

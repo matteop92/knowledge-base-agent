@@ -53,6 +53,15 @@ class TranscriptParserTests(unittest.TestCase):
         self.assertIsNone(result.metadata.source_url)
         self.assertEqual(result.metadata.authors, [])
 
+    def test_missing_opening_bold_for_known_speaker_preserves_turn_boundary(self) -> None:
+        result = self.parse("**Host:** Hello.\n**Guest:** Reply.\nHost:** Follow-up.\n")
+        self.assertEqual([turn.speaker for turn in result.turns], ["Host", "Guest", "Host"])
+        self.assertEqual(result.turns[2].raw_text, "Host:** Follow-up.\n")
+        self.assertEqual(
+            result.source_text[result.turns[2].span.start_char : result.turns[2].span.end_char],
+            result.turns[2].raw_text,
+        )
+
     def test_malformed_or_unmatched_text_fails(self) -> None:
         for text, expected in (
             ("---\n title: [\n---\n**Host:** Hi.", "invalid YAML"),
