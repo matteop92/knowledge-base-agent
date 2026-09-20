@@ -10,10 +10,11 @@ from typing import Any
 import yaml
 
 from app.ingestion.contracts import (
-    ParsedTranscript,
+    DocumentBlock,
+    ExcludedSpan,
+    ParsedDocument,
     SourceMetadata,
     SourceSpan,
-    TranscriptTurn,
 )
 from app.ingestion.source_reader import CapturedSource
 
@@ -101,7 +102,7 @@ def _read_frontmatter(source_text: str) -> tuple[dict[str, Any], str, int]:
     return _json_value(parsed), raw_block, len(raw_block)
 
 
-def parse_transcript(capture: CapturedSource) -> ParsedTranscript:
+def parse_transcript(capture: CapturedSource) -> ParsedDocument:
     source_text = capture.source_text
     frontmatter, frontmatter_raw, body_start = _read_frontmatter(source_text)
     title = _optional_text(frontmatter.get("title"), "title")
@@ -109,12 +110,25 @@ def parse_transcript(capture: CapturedSource) -> ParsedTranscript:
         title = Path(capture.manifest.locator.relative_path).stem
     authors = _text_list(frontmatter.get("author"), "author")
     authors = [author[2:-2] if author.startswith("[[") and author.endswith("]]") else author for author in authors]
+    source_value = _optional_text(frontmatter.get("source"), "source")
+    url_value = _optional_text(frontmatter.get("url"), "url")
+    source_url = url_value or (
+        source_value
+        if source_value and source_value.startswith(("http://", "https://"))
+        else None
+    )
     metadata = SourceMetadata(
         title=title,
-        source_url=_optional_text(frontmatter.get("source"), "source"),
+        source_url=source_url,
+        source_origin=(
+            source_value
+            if source_value and not source_value.startswith(("http://", "https://"))
+            else None
+        ),
         authors=authors,
         published=_optional_date(frontmatter.get("published"), "published"),
         created=_optional_date(frontmatter.get("created"), "created"),
+        date=_optional_date(frontmatter.get("date"), "date"),
         description=_optional_text(frontmatter.get("description"), "description"),
         tags=_text_list(frontmatter.get("tags"), "tags"),
         frontmatter_raw=frontmatter_raw,
@@ -131,30 +145,56 @@ def parse_transcript(capture: CapturedSource) -> ParsedTranscript:
         if marker.group("speaker").strip() in known_speakers
     )
     markers.sort(key=lambda marker: marker.start())
-    if source_text[body_start : markers[0].start()].strip():
-        raise TranscriptParseError("unmatched transcript text before first speaker")
+    blocks: list[DocumentBlock] = []
+    excluded: list[ExcludedSpan] = []
 
-    turns: list[TranscriptTurn] = []
+    def exclude(start: int, end: int, reason: str) -> None:
+        if start < end:
+            excluded.append(ExcludedSpan(
+                span=_line_span(source_text, start, end),
+                raw_text=source_text[start:end],
+                reason=reason,
+            ))
+
+    exclude(0, body_start, "frontmatter")
+    if body_start < markers[0].start():
+        before = source_text[body_start:markers[0].start()]
+        exclude(body_start, markers[0].start(), "whitespace" if not before.strip() else "unclassified")
+
     for index, marker in enumerate(markers):
-        end = markers[index + 1].start() if index + 1 < len(markers) else len(source_text)
+        next_marker = markers[index + 1].start() if index + 1 < len(markers) else len(source_text)
+        unknown = next(
+            (
+                candidate for candidate in KNOWN_SPEAKER_WITH_MISSING_BOLD.finditer(
+                    source_text, marker.end(), next_marker
+                )
+                if candidate.group("speaker").strip() not in known_speakers
+            ),
+            None,
+        )
+        end = unknown.start() if unknown else next_marker
         if not source_text[marker.end() : end].strip():
             raise TranscriptParseError(f"speaker turn {index} has no content")
-        turns.append(
-            TranscriptTurn(
+        blocks.append(
+            DocumentBlock(
                 index=index,
+                kind="speaker_turn",
                 speaker=marker.group("speaker").strip(),
                 span=_line_span(source_text, marker.start(), end),
                 content_span=_line_span(source_text, marker.end(), end),
                 raw_text=source_text[marker.start() : end],
             )
         )
-    result = ParsedTranscript(
+        if unknown:
+            exclude(unknown.start(), next_marker, "unclassified")
+    result = ParsedDocument(
         document_id=capture.manifest.document_id,
         run_id=capture.manifest.run_id,
         source_sha256=capture.manifest.source_sha256,
         locator=capture.manifest.locator,
         metadata=metadata,
         source_text=source_text,
-        turns=turns,
+        blocks=blocks,
+        excluded_spans=excluded,
     )
     return result
