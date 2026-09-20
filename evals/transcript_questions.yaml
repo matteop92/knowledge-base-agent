@@ -1,0 +1,79 @@
+document_id: 73bac7a4-7a25-5d4a-875e-fd3515f2ab43
+source_sha256: 3a372b289b975c4baddc4443e18d462f922657bd0d886a1d8faa1cc38551d564
+source_title: 'The Tim Ferriss Show Transcripts: How to Teach a 3-Year-Old to Read and Rethinking Education — Tim
+  Coaches Niels Hoven of Mentava (#882)'
+questions:
+- id: mentava_channels
+  question: Which channels bring Mentava its best customers, and why does Niels think they work?
+  expected: supported
+  must_find:
+  - start_char: 57445
+    end_char: 57489
+    quote: our best customers are X, and word of mouth.
+  - start_char: 57539
+    end_char: 57607
+    quote: our message gets in front of people who are receptive to hearing it.
+- id: trial_purpose
+  question: Why does Mentava offer a 14-day free trial?
+  expected: supported
+  must_find:
+  - start_char: 32165
+    end_char: 32228
+    quote: we are not good at explaining what differentiates our software.
+  - start_char: 32257
+    end_char: 32315
+    quote: just get it in the hands of the customer and let them try.
+- id: referral_incentive
+  question: What happened when Mentava offered free months for customer referrals?
+  expected: supported
+  must_find:
+  - start_char: 64158
+    end_char: 64238
+    quote: we sent out coupon codes to our entire customer base, and we got zero referrals.
+  useful:
+  - start_char: 64239
+    end_char: 64304
+    quote: Even though we know that customers are actively referring friends
+- id: selective_word_of_mouth
+  question: What makes parents reluctant or selective about recommending Mentava to friends?
+  expected: supported
+  must_find:
+  - start_char: 63153
+    end_char: 63211
+    quote: a certain amount of shame around using a $500 a month app.
+  - start_char: 65625
+    end_char: 65669
+    quote: very selective about who they mention it to.
+- id: investor_asks
+  question: How does Tim suggest founders use investor updates to get more help?
+  expected: supported
+  must_find:
+  - start_char: 55918
+    end_char: 55978
+    quote: if you have investor asks, I would put them at the very top.
+  useful:
+  - start_char: 56512
+    end_char: 56563
+    quote: having the asks at the very top will get more help.
+- id: personal_intro_calls
+  question: What direct contact does Niels have with new customers?
+  expected: supported
+  must_find:
+  - start_char: 64343
+    end_char: 64408
+    quote: I do an intro call with almost every customer who comes on board.
+- id: product_opportunity
+  question: What did conversations with other parents teach Niels about the product opportunity?
+  expected: supported
+  must_find:
+  - start_char: 8604
+    end_char: 8677
+    quote: other parents noticed what I was doing. They asked me questions about it.
+  - start_char: 8785
+    end_char: 8884
+    quote: what I realized as all of this was going on was that the problem was in the design of the software.
+- id: first_twenty_cold_outreach
+  question: Does this episode document a founder winning their first 20 customers through quantified cold outreach?
+  expected: unsupported
+  must_find: []
+  note: Cold email is mentioned for pitching conference organizers, but no quantified first-20-customer case is given.
