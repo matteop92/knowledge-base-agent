@@ -37,13 +37,29 @@ def preview_source(
         "locator": parsed.locator.model_dump(),
         "title": parsed.metadata.title,
         "source_url": parsed.metadata.source_url,
+        "source_origin": parsed.metadata.source_origin,
         "published": parsed.metadata.published.isoformat() if parsed.metadata.published else None,
-        "speakers": list(dict.fromkeys(turn.speaker for turn in parsed.turns)),
-        "turn_count": len(parsed.turns),
-        "first_turn_line": parsed.turns[0].span.start_line,
-        "last_turn_line": parsed.turns[-1].span.end_line,
+        "date": parsed.metadata.date.isoformat() if parsed.metadata.date else None,
+        "speakers": list(
+            dict.fromkeys(block.speaker for block in parsed.blocks if block.kind == "speaker_turn")
+        ),
+        "turn_count": sum(block.kind == "speaker_turn" for block in parsed.blocks),
+        "block_count": len(parsed.blocks),
+        "excluded_span_counts": {
+            reason: sum(item.reason == reason for item in parsed.excluded_spans)
+            for reason in ("frontmatter", "whitespace", "export_furniture", "unclassified")
+        },
+        "unclassified_spans": [
+            item.span.model_dump() for item in parsed.excluded_spans if item.reason == "unclassified"
+        ],
+        "first_turn_line": parsed.blocks[0].span.start_line,
+        "last_turn_line": parsed.blocks[-1].span.end_line,
         "eval_question_count": question_count,
-        "warnings": [],
+        "warnings": (
+            ["unclassified source text"]
+            if any(item.reason == "unclassified" for item in parsed.excluded_spans)
+            else []
+        ),
         "preview_path": str(preview_path),
     }
 

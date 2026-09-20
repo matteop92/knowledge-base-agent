@@ -7,14 +7,14 @@ from typing import Any
 
 import yaml
 
-from app.ingestion.contracts import ParsedTranscript
+from app.ingestion.contracts import ParsedDocument
 
 
 class EvalLabelError(ValueError):
     """An eval label is stale or does not point to its claimed source text."""
 
 
-def validate_eval_labels(path: Path, transcript: ParsedTranscript) -> int:
+def validate_eval_labels(path: Path, transcript: ParsedDocument) -> int:
     try:
         data: Any = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
@@ -53,7 +53,7 @@ def validate_eval_labels(path: Path, transcript: ParsedTranscript) -> int:
     return len(questions)
 
 
-def _validate_span(label: Any, transcript: ParsedTranscript) -> None:
+def _validate_span(label: Any, transcript: ParsedDocument) -> None:
     if not isinstance(label, dict):
         raise EvalLabelError("each eval span must be a mapping")
     start, end, quote = label.get("start_char"), label.get("end_char"), label.get("quote")
@@ -64,7 +64,9 @@ def _validate_span(label: Any, transcript: ParsedTranscript) -> None:
     if not quote.strip():
         raise EvalLabelError("eval quote cannot be blank")
     if not any(
-        turn.content_span.start_char <= start and end <= turn.content_span.end_char
-        for turn in transcript.turns
+        (block.content_span or block.span).start_char <= start
+        and end <= (block.content_span or block.span).end_char
+        for block in transcript.blocks
+        if block.kind == "speaker_turn"
     ):
         raise EvalLabelError("eval span must lie within a speaker turn's content")
