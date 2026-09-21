@@ -44,21 +44,7 @@ The first proof is a question about getting early B2B customers without paid ads
 | Evaluation | Labeled questions, retrieval and answer checks, cost/search traces | Production answers |
 | Interface | Asking questions and viewing answers, citations, and excerpts | Direct access to the knowledge store |
 
-```mermaid
-flowchart LR
-  A[Original files] --> B[Ingestion]
-  B --> C[Processed store]
-  C --> D[Retrieval tools]
-  D <--> E[Agent harness]
-  E --> F[Answer with source citations]
-  B --> G[ModelClient]
-  E --> G
-  G --> O[OpenRouter adapter V1]
-  G -. optional .-> L[LiteLLM adapter]
-  G -. optional .-> P[Local endpoint adapter]
-  H[Evaluation] --> D
-  H --> E
-```
+The single flow diagram lives in [SYSTEM.md](SYSTEM.md). The table above defines ownership; that diagram shows how the components connect and which ones exist today.
 
 ## Original file location
 
