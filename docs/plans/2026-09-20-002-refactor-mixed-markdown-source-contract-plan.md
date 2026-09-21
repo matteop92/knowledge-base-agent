@@ -38,7 +38,7 @@ The current capture and preview assume the source root is the `Transcripts` fold
 - `app/ingestion/contracts.py`: `SourceSpan`, `TranscriptTurn`, `ParsedTranscript`, and provenance validation.
 - `app/ingestion/transcript_parser.py`: observed bold-speaker parser, including a known malformed label.
 - `app/ingestion/preview.py` and `app/ingestion/eval_labels.py`: local preview and source-hash-bound labels.
-- `evals/transcript_questions.yaml`: existing manually checked source spans.
+- `evals/questions_transcript_tim_ferriss.yaml`: existing manually checked source spans.
 - `FOUNDATION.md`: mixed-source goal and provenance invariant.
 - [Docling's common document model](https://docling-project.github.io/docling/concepts/docling_document/) is design precedent for a hierarchy shared by format-specific readers; this plan does not adopt Docling as a dependency.
 
@@ -48,7 +48,7 @@ The current capture and preview assume the source root is the `Transcripts` fold
 
   **Goal:** Set one stable locator convention before more source IDs and labels accumulate. **Requirements:** R1, R2, R5. **Dependencies:** None.
 
-  **Files:** Modify `README.md`, `sources/README.md`, `.env.example`, `evals/transcript_questions.yaml`, `evals/README.md`, `app/ingestion/source_reader.py`; test `tests/ingestion/test_source_reader.py`, `tests/ingestion/test_preview.py`.
+  **Files:** Modify `README.md`, `sources/README.md`, `.env.example`, `evals/questions_transcript_tim_ferriss.yaml`, `evals/README.md`, `app/ingestion/source_reader.py`; test `tests/ingestion/test_source_reader.py`, `tests/ingestion/test_preview.py`.
 
   **Approach:** Document parent-root configuration and category-relative paths; make transcript-only source-reader messages generic. Recompute only the first eval's `document_id` under the canonical locator after checking its source hash and all labeled quotes. Keep the old completed plan as historical context.
 

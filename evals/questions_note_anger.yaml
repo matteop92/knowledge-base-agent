@@ -1,0 +1,48 @@
+document_id: 892bc053-92a4-5798-9843-5cc1cef59a30
+source_sha256: c70219a4d148175b54519dac29a170dc11f07b04b2cfca2bb2d1bff58bfd1358
+source_title: How to Always Be in Control of Your Anger - Jocko Willink
+questions:
+- id: anger_signals
+  question: Which physical warning signs of anger does the note list?
+  expected: supported
+  must_find:
+  - start_char: 647
+    end_char: 793
+    quote: 'Watch for pre-event physical indicators of losing temper: pointing your fist, raising your
+      voice, heavy breathing, flaring nostrils, head shaking.'
+- id: slow_nod
+  question: What steps does the note suggest for regaining control when someone makes you angry?
+  expected: supported
+  must_find:
+  - start_char: 845
+    end_char: 917
+    quote: Drop the heavy breathing when you notice yourself starting to get angry.
+  - start_char: 969
+    end_char: 1060
+    quote: As soon as you feel those indicators, detach, label it as weakness, and refuse to allow it.
+  - start_char: 1112
+    end_char: 1170
+    quote: Take a breath to regain control of yourself in the moment.
+  - start_char: 1222
+    end_char: 1347
+    quote: Slowly nod your head in the affirmative when someone's saying something that makes you mad
+      to signal acceptance and buy time.
+  - start_char: 1399
+    end_char: 1484
+    quote: While nodding, calculate your next move efficiently rather than reacting emotionally.
+  - start_char: 1536
+    end_char: 1655
+    quote: Count down (count to ten, to one hundred, or even to one thousand) to regain control when you
+      start losing your temper.
+- id: countdown
+  question: What counting tactic does the note suggest for regaining control?
+  expected: supported
+  must_find:
+  - start_char: 1536
+    end_char: 1655
+    quote: Count down (count to ten, to one hundred, or even to one thousand) to regain control when you
+      start losing your temper.
+- id: study_size
+  question: How many people took part in the study of anger described in this note?
+  expected: unsupported
+  must_find: []
