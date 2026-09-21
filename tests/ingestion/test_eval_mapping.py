@@ -24,7 +24,7 @@ class EvalMappingTests(unittest.TestCase):
             ("Notes/How to make decisions with partial information.md", "questions_note_partial_information.yaml", 4),
             ("Notes/How to Always Be in Control of Your Anger - Jocko Willink 1.md", "questions_note_anger.yaml", 8),
             ("Transcripts/Inside Bending Spoons Finding Talent, Leveraging AI & Driving Operational Excellence  Luca Ferrari.md", "questions_transcript_bending_spoons.yaml", 7),
-            ("Transcripts/The Tim Ferriss Show Transcripts How to Teach a 3-Year-Old to Read and Rethinking Education — Tim Coaches Niels Hoven of Mentava (882).md", "questions_transcript_tim_ferriss.yaml", 26),
+            ("Transcripts/The Tim Ferriss Show Transcripts How to Teach a 3-Year-Old to Read and Rethinking Education — Tim Coaches Niels Hoven of Mentava (882).md", "questions_transcript_tim_ferriss.yaml", 27),
         ]
         with tempfile.TemporaryDirectory() as runtime:
             for relative, label_file, span_count in cases:
