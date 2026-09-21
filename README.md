@@ -9,7 +9,7 @@ Use Python 3.11 or newer and install dependencies with `python -m pip install -e
 ```powershell
 $env:KNOWLEDGE_SOURCE_ROOT = '<path to Knowledge folder>'
 python -m app.ingestion.preview --relative-path 'Notes/<filename>.md'
-python -m app.ingestion.preview --relative-path 'Transcripts/<filename>.md' --eval-file evals/transcript_questions.yaml
+python -m app.ingestion.preview --relative-path 'Transcripts/<filename>.md' --eval-file evals/questions_transcript_tim_ferriss.yaml
 ```
 
 The command reports the chosen route, parsed block roles, coverage warnings, unresolved assets, fixed and structural chunk counts and boundary reasons, and any eval span mapping. It writes a captured snapshot, parsed document, both chunk sets, and run manifest under ignored `.local/ingestion-runs/<run_id>/`. The preview makes no model calls and prints no source passages. `--source-kind` overrides routing when needed.

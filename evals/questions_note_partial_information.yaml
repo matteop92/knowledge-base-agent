@@ -6,9 +6,10 @@ questions:
   question: Why does the note say overanalysis can be worse than laziness?
   expected: supported
   must_find:
-  - start_char: 261
+  - start_char: 186
     end_char: 330
-    quote: overanalysis leads to the same lack of action but ALSO self-loathing.
+    quote: Overanalysis has been my life story. It can be far worse than laziness, as overanalysis leads
+      to the same lack of action but ALSO self-loathing.
 - id: decision_deadline
   question: What is the first step suggested for overcoming paralysis by analysis?
   expected: supported
@@ -16,13 +17,18 @@ questions:
   - start_char: 499
     end_char: 539
     quote: Step one is set deadlines for decisions.
+  - start_char: 758
+    end_char: 886
+    quote: So I set deadlines. By X point in time, I must make a go or no-go decision, no matter how much
+      or how little information I have.
 - id: small_experiments
   question: How does the writer make a go decision feel less risky?
   expected: supported
   must_find:
-  - start_char: 921
-    end_char: 988
-    quote: small, short-term, low-risk experiments I can run as "go" decisions
+  - start_char: 887
+    end_char: 1035
+    quote: Furthermore, I try and figure out small, short-term, low-risk experiments I can run as "go"
+      decisions, so that I don't perceive action as high-risk.
 - id: deadline_date
   question: What calendar date did the writer set for the next decision?
   expected: unsupported

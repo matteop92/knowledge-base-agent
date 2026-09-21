@@ -16,14 +16,15 @@ from app.ingestion.source_reader import capture_source
 
 class EvalMappingTests(unittest.TestCase):
     @unittest.skipUnless(os.getenv("KNOWLEDGE_SOURCE_ROOT"), "set KNOWLEDGE_SOURCE_ROOT for vault acceptance")
-    def test_real_nonbook_labels_map_to_both_chunk_variants(self):
+    def test_real_labels_map_to_both_chunk_variants(self):
         root = Path(os.environ["KNOWLEDGE_SOURCE_ROOT"])
         cases = [
-            ("Articles/Are you stuck in movie logic.md", "real_article_movie_logic.yaml", 5),
-            ("Book Highlights/Anything_You_Want_Derek_Sivers.md", "real_highlights_anything_you_want.yaml", 5),
-            ("Notes/How to make decisions with partial information.md", "real_note_partial_information.yaml", 3),
-            ("Notes/How to Always Be in Control of Your Anger - Jocko Willink 1.md", "real_note_anger.yaml", 3),
-            ("Transcripts/Inside Bending Spoons Finding Talent, Leveraging AI & Driving Operational Excellence  Luca Ferrari.md", "real_transcript_bending_spoons.yaml", 5),
+            ("Articles/Are you stuck in movie logic.md", "questions_article_movie_logic.yaml", 5),
+            ("Book Highlights/Anything_You_Want_Derek_Sivers.md", "questions_highlights_anything_you_want.yaml", 5),
+            ("Notes/How to make decisions with partial information.md", "questions_note_partial_information.yaml", 4),
+            ("Notes/How to Always Be in Control of Your Anger - Jocko Willink 1.md", "questions_note_anger.yaml", 8),
+            ("Transcripts/Inside Bending Spoons Finding Talent, Leveraging AI & Driving Operational Excellence  Luca Ferrari.md", "questions_transcript_bending_spoons.yaml", 7),
+            ("Transcripts/The Tim Ferriss Show Transcripts How to Teach a 3-Year-Old to Read and Rethinking Education — Tim Coaches Niels Hoven of Mentava (882).md", "questions_transcript_tim_ferriss.yaml", 26),
         ]
         with tempfile.TemporaryDirectory() as runtime:
             for relative, label_file, span_count in cases:
