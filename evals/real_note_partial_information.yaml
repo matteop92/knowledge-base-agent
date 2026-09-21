@@ -1,0 +1,29 @@
+document_id: 8b05b784-fe85-5616-a0c7-4fe54dca5c9a
+source_sha256: b67d63ea2e37918a9d9073e103d3ec505eaff776324f2c18c5cac941e4d75146
+source_title: How to make decisions with partial information
+questions:
+- id: overanalysis_cost
+  question: Why does the note say overanalysis can be worse than laziness?
+  expected: supported
+  must_find:
+  - start_char: 261
+    end_char: 330
+    quote: overanalysis leads to the same lack of action but ALSO self-loathing.
+- id: decision_deadline
+  question: What is the first step suggested for overcoming paralysis by analysis?
+  expected: supported
+  must_find:
+  - start_char: 499
+    end_char: 539
+    quote: Step one is set deadlines for decisions.
+- id: small_experiments
+  question: How does the writer make a go decision feel less risky?
+  expected: supported
+  must_find:
+  - start_char: 921
+    end_char: 988
+    quote: small, short-term, low-risk experiments I can run as "go" decisions
+- id: deadline_date
+  question: What calendar date did the writer set for the next decision?
+  expected: unsupported
+  must_find: []

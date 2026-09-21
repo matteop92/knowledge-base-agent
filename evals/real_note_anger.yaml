@@ -1,0 +1,29 @@
+document_id: 892bc053-92a4-5798-9843-5cc1cef59a30
+source_sha256: c70219a4d148175b54519dac29a170dc11f07b04b2cfca2bb2d1bff58bfd1358
+source_title: How to Always Be in Control of Your Anger - Jocko Willink
+questions:
+- id: anger_signals
+  question: Which physical warning signs of anger does the note list?
+  expected: supported
+  must_find:
+  - start_char: 705
+    end_char: 793
+    quote: pointing your fist, raising your voice, heavy breathing, flaring nostrils, head shaking.
+- id: slow_nod
+  question: What does the note suggest doing while someone says something that makes you angry?
+  expected: supported
+  must_find:
+  - start_char: 1222
+    end_char: 1261
+    quote: Slowly nod your head in the affirmative
+- id: countdown
+  question: What counting tactic does the note suggest for regaining control?
+  expected: supported
+  must_find:
+  - start_char: 1536
+    end_char: 1602
+    quote: Count down (count to ten, to one hundred, or even to one thousand)
+- id: study_size
+  question: How many people took part in the study of anger described in this note?
+  expected: unsupported
+  must_find: []
