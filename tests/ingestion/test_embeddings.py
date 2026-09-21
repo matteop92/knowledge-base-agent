@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from app.ingestion.chunking import structural_raw_chunks
 from app.ingestion.embeddings import EmbeddingSpec, embed_chunks
@@ -8,8 +9,9 @@ from app.ingestion.enrichment import ChunkContext
 from app.ingestion.router import route_source
 from app.ingestion.run_manifest import RunManifest
 from app.ingestion.source_reader import capture_source
-from app.models.client import EmbeddingResult
+from app.models.client import EmbeddingResult, ModelClientError
 from app.models.client import ModelSpec, ModelUsage
+from app.models.openrouter import OpenRouterClient
 
 
 class FakeClient:
@@ -69,6 +71,19 @@ class EmbeddingTests(unittest.TestCase):
         )
         self.assertFalse(progress.ready)
         self.assertEqual(progress.completed_chunks, 0)
+
+    def test_live_client_with_default_manifest_cannot_embed(self):
+        client = OpenRouterClient(
+            allow_live=True, api_key="test-key", request_budget=1,
+            estimated_input_token_budget=100,
+        )
+        with patch.object(client, "embed") as embed:
+            with self.assertRaisesRegex(ModelClientError, "do not match"):
+                embed_chunks(
+                    self.document, self.chunks, client, self.spec(),
+                    self.manifest, self.capture.run_dir,
+                )
+            embed.assert_not_called()
 
     def test_partial_batches_resume_without_reembedding_ready_chunks(self):
         (self.root / "long.md").write_text("word " * 1200, encoding="utf-8")

@@ -101,6 +101,7 @@ def summarize_document(
         manifest.document_id, manifest.run_id, manifest.source_sha256
     ) != (document.document_id, document.run_id, document.source_sha256):
         raise ValueError("summary inputs do not match the structural source run")
+    manifest.require_client_selection(client)
     if max_sections is not None and max_sections < 0:
         raise ValueError("max_sections cannot be negative")
     if len(chunks.chunks) == 1:

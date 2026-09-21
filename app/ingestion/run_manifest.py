@@ -11,7 +11,7 @@ from typing import Any, Literal
 from pydantic import Field
 
 from app.ingestion.contracts import ParsedDocument, SourceLocator, StrictRecord
-from app.models.client import ModelSpec, ModelUsage
+from app.models.client import ModelClient, ModelClientError, ModelSpec, ModelUsage
 
 
 def _now() -> str:
@@ -71,6 +71,20 @@ class RunManifest(StrictRecord):
             request_budget=request_budget,
             estimated_input_token_budget=estimated_input_token_budget,
         )
+
+    def require_client_selection(self, client: ModelClient) -> None:
+        """Refuse live-capable clients whose run audit does not match their setup."""
+        selection = getattr(client, "live_run_selection", None)
+        if selection is None:
+            return
+        expected = (
+            self.live_call_selected, self.request_budget,
+            self.estimated_input_token_budget,
+        )
+        if selection != expected:
+            raise ModelClientError(
+                "run manifest live-call selection or budgets do not match model client"
+            )
 
     def begin(
         self, kind: str, version_inputs: dict[str, Any],

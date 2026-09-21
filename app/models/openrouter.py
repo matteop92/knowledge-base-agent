@@ -26,24 +26,36 @@ class OpenRouterClient:
         api_key: str | None = None,
     ) -> None:
         self._allow_live = allow_live
+        self._request_budget = request_budget
+        self._estimated_input_token_budget = estimated_input_token_budget
         self._requests_left = request_budget
         self._input_tokens_left = estimated_input_token_budget
         self._timeout_seconds = timeout_seconds
         self._api_key = os.getenv("OPENROUTER_API_KEY") if api_key is None else api_key
 
-    def _reserve(self, text: str) -> None:
+    @property
+    def live_run_selection(self) -> tuple[bool, int, int]:
+        """Starting selection and budgets to record in the run manifest."""
+        return (
+            self._allow_live, self._request_budget,
+            self._estimated_input_token_budget,
+        )
+
+    def _reserve(self, inputs: list[str]) -> None:
         if not self._allow_live:
             raise ModelClientError("live model calls require explicit selection")
         if not self._api_key:
             raise ModelClientError("OPENROUTER_API_KEY is not configured")
-        estimate = len(re.findall(r"\w+|[^\w\s]", text))
+        estimate = sum(
+            len(re.findall(r"\w+|[^\w\s]", item)) for item in inputs
+        )
         if self._requests_left <= 0 or estimate > self._input_tokens_left:
             raise ModelClientError("model request or estimated input budget exceeded")
         self._requests_left -= 1
         self._input_tokens_left -= estimate
 
-    def _post(self, route: str, payload: dict[str, Any], source_text: str) -> dict[str, Any]:
-        self._reserve(source_text)
+    def _post(self, route: str, payload: dict[str, Any], inputs: list[str]) -> dict[str, Any]:
+        self._reserve(inputs)
         body = json.dumps(payload).encode("utf-8")
         http_request = request.Request(
             self.BASE_URL + route,
@@ -95,7 +107,7 @@ class OpenRouterClient:
             "temperature": 0,
             "max_tokens": max_output_tokens,
         }
-        response = self._post("/chat/completions", payload, system_prompt + input_text)
+        response = self._post("/chat/completions", payload, [system_prompt, input_text])
         try:
             content = response["choices"][0]["message"]["content"]
             parsed = json.loads(content)
@@ -115,12 +127,16 @@ class OpenRouterClient:
         payload: dict[str, Any] = {"model": model.model_id, "input": texts}
         if dimensions is not None:
             payload["dimensions"] = dimensions
-        response = self._post("/embeddings", payload, "".join(texts))
+        response = self._post("/embeddings", payload, texts)
         try:
             items = sorted(response["data"], key=lambda item: item["index"])
-            vectors = [item["embedding"] for item in items]
-            if len(vectors) != len(texts):
+            if (
+                len(items) != len(texts)
+                or any(type(item["index"]) is not int for item in items)
+                or [item["index"] for item in items] != list(range(len(texts)))
+            ):
                 raise ValueError
+            vectors = [item["embedding"] for item in items]
         except (KeyError, TypeError, ValueError):
             raise ModelClientError("OpenRouter returned malformed embeddings") from None
         return EmbeddingResult(vectors=vectors, model=model, usage=self._usage(response))

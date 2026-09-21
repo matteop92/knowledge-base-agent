@@ -1,13 +1,15 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from app.ingestion.chunking import structural_raw_chunks
 from app.ingestion.router import route_source
 from app.ingestion.run_manifest import RunManifest
 from app.ingestion.source_reader import capture_source
 from app.ingestion.summary import summarize_document
-from app.models.client import GenerationResult, ModelSpec
+from app.models.client import GenerationResult, ModelClientError, ModelSpec
+from app.models.openrouter import OpenRouterClient
 
 
 class FakeClient:
@@ -43,6 +45,17 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(len(client.calls), 1)
         self.assertEqual(first.document_summary.chunk_ids, [chunks.chunks[0].chunk_id])
+
+    def test_live_client_with_default_manifest_cannot_summarize(self):
+        capture, document, chunks, manifest = self.source("A short note.\n")
+        client = OpenRouterClient(
+            allow_live=True, api_key="test-key", request_budget=1,
+            estimated_input_token_budget=100,
+        )
+        with patch.object(client, "generate_json") as generate:
+            with self.assertRaisesRegex(ModelClientError, "do not match"):
+                summarize_document(document, chunks, client, self.model, manifest, capture.run_dir)
+            generate.assert_not_called()
 
     def test_partial_sections_do_not_promote_document_summary(self):
         capture, document, chunks, manifest = self.source("\n\n".join(
