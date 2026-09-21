@@ -1,6 +1,6 @@
 # System
 
-The original Markdown vault is the authority. Each derived item must point back to the source file and exact source revision; search and answers are still planned.
+The original Markdown vault is the authority. Each derived item must point back to the source file and exact source revision; search and answers are still planned. For stage-by-stage completion and the next checkpoint, read [FOUNDATION.md#current-progress](FOUNDATION.md#current-progress).
 
 ```mermaid
 flowchart LR
