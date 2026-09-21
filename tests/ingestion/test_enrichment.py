@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from app.ingestion.chunking import structural_raw_chunks
 from app.ingestion.enrichment import (
@@ -11,6 +12,7 @@ from app.ingestion.router import route_source
 from app.ingestion.run_manifest import RunManifest
 from app.ingestion.source_reader import capture_source
 from app.models.client import GenerationResult, ModelClientError, ModelSpec, ModelUsage
+from app.models.openrouter import OpenRouterClient
 
 
 class FakeClient:
@@ -73,6 +75,77 @@ class EnrichmentTests(unittest.TestCase):
         self.assertEqual(first.source_spans, chunks.chunks[0].source_spans)
         self.assertEqual(next(iter(manifest.artifacts.values())).status, "ready")
         self.assertEqual(RunManifest.load(capture.run_dir), manifest)
+
+    def test_context_version_includes_effective_neighbor_excerpt(self) -> None:
+        capture, document, chunks, manifest = self.setup_source(
+            "Notes/idea.md", "A source passage.\n"
+        )
+        client = FakeClient({"context": "A short context."})
+        first = generate_chunk_context(
+            document, chunks, chunks.chunks[0], client, self.model,
+            manifest, capture.run_dir, neighbor_text="first neighbor",
+        )
+        second = generate_chunk_context(
+            document, chunks, chunks.chunks[0], client, self.model,
+            manifest, capture.run_dir, neighbor_text="second neighbor",
+        )
+        again = generate_chunk_context(
+            document, chunks, chunks.chunks[0], client, self.model,
+            manifest, capture.run_dir, neighbor_text="second neighbor",
+        )
+        self.assertEqual(second, again)
+        self.assertEqual(len(client.calls), 2)
+        self.assertEqual(len(manifest.artifacts), 2)
+        self.assertNotEqual(
+            list(manifest.artifacts.values())[0].version_inputs["neighbor_sha256"],
+            list(manifest.artifacts.values())[1].version_inputs["neighbor_sha256"],
+        )
+        self.assertEqual(first.source_spans, second.source_spans)
+
+    def test_live_client_requires_matching_manifest_before_model_request(self) -> None:
+        capture, document, chunks, manifest = self.setup_source(
+            "Notes/idea.md", "A source passage.\n"
+        )
+        client = OpenRouterClient(
+            allow_live=True, api_key="test-key", request_budget=2,
+            estimated_input_token_budget=200,
+        )
+        with patch.object(client, "generate_json", return_value=GenerationResult(
+            data={"context": "A context."}, model=self.model,
+        )) as generate:
+            with self.assertRaisesRegex(ModelClientError, "do not match"):
+                generate_chunk_context(
+                    document, chunks, chunks.chunks[0], client, self.model,
+                    manifest, capture.run_dir,
+                )
+            with self.assertRaisesRegex(ModelClientError, "do not match"):
+                extract_evidence_cards(
+                    document, chunks, chunks.chunks[0], client, self.model,
+                    manifest, capture.run_dir,
+                )
+            generate.assert_not_called()
+            wrong_budget = RunManifest.for_document(
+                document, live_call_selected=True, request_budget=1,
+                estimated_input_token_budget=200,
+            )
+            with self.assertRaisesRegex(ModelClientError, "do not match"):
+                generate_chunk_context(
+                    document, chunks, chunks.chunks[0], client, self.model,
+                    wrong_budget, capture.run_dir,
+                )
+            matching = RunManifest.for_document(
+                document, live_call_selected=True, request_budget=2,
+                estimated_input_token_budget=200,
+            )
+            generate_chunk_context(
+                document, chunks, chunks.chunks[0], client, self.model,
+                matching, capture.run_dir,
+            )
+            generate.assert_called_once()
+            saved = RunManifest.load(capture.run_dir)
+            self.assertTrue(saved.live_call_selected)
+            self.assertEqual(saved.request_budget, 2)
+            self.assertEqual(saved.estimated_input_token_budget, 200)
 
     def test_exact_card_and_nullable_fields(self) -> None:
         text = "**Host:** We called ten customers first.\n"

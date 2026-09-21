@@ -88,6 +88,31 @@ class ModelClientTests(unittest.TestCase):
         self.assertIn("TimeoutError", str(caught.exception))
         self.assertNotIn("secret source", str(caught.exception))
 
+    def test_embedding_budget_counts_each_input(self) -> None:
+        client = OpenRouterClient(
+            allow_live=True, api_key="test-key", request_budget=1,
+            estimated_input_token_budget=1,
+        )
+        with patch("app.models.openrouter.request.urlopen") as send:
+            with self.assertRaisesRegex(ModelClientError, "budget exceeded"):
+                client.embed(model=self.model, texts=["one", "two"], dimensions=1)
+            send.assert_not_called()
+
+    def test_embedding_response_requires_each_index_once(self) -> None:
+        client = OpenRouterClient(
+            allow_live=True, api_key="test-key", request_budget=2,
+            estimated_input_token_budget=100,
+        )
+        for indices in ([0, 0], [0, 2]):
+            with self.subTest(indices=indices), patch.object(client, "_post", return_value={
+                "data": [
+                    {"index": indices[0], "embedding": [0.1]},
+                    {"index": indices[1], "embedding": [0.2]},
+                ]
+            }):
+                with self.assertRaisesRegex(ModelClientError, "malformed embeddings"):
+                    client.embed(model=self.model, texts=["one", "two"], dimensions=1)
+
 
 if __name__ == "__main__":
     unittest.main()

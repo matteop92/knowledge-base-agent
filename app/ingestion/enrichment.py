@@ -81,12 +81,16 @@ def _input(
     return text
 
 
-def _check_source(document: ParsedDocument, chunks: ChunkSet, manifest: RunManifest) -> None:
+def _check_source(
+    document: ParsedDocument, chunks: ChunkSet,
+    manifest: RunManifest, client: ModelClient,
+) -> None:
     chunks.validate_against(document)
     if (manifest.document_id, manifest.run_id, manifest.source_sha256) != (
         document.document_id, document.run_id, document.source_sha256
     ):
         raise EnrichmentError("run manifest does not match the parsed source")
+    manifest.require_client_selection(client)
 
 
 def _load_ready(run_dir: Path, record, model_type):
@@ -102,7 +106,7 @@ def generate_chunk_context(
     client: ModelClient, model: ModelSpec, manifest: RunManifest, run_dir: Path,
     *, neighbor_text: str = "", max_input_tokens: int = 1600,
 ) -> ChunkContext:
-    _check_source(document, chunks, manifest)
+    _check_source(document, chunks, manifest, client)
     if chunk.chunk_id not in {item.chunk_id for item in chunks.chunks}:
         raise EnrichmentError("chunk is not in its declared variant")
     prompt, prompt_hash = _prompt(CONTEXT_PROMPT_VERSION)
@@ -112,6 +116,7 @@ def generate_chunk_context(
         "prompt_version": CONTEXT_PROMPT_VERSION,
         "prompt_sha256": prompt_hash,
         "input_recipe_version": CONTEXT_RECIPE_VERSION,
+        "neighbor_sha256": hashlib.sha256(neighbor_text[:400].encode("utf-8")).hexdigest(),
     }
     record = manifest.begin("context", version_inputs, model)
     existing = _load_ready(run_dir, record, ChunkContext)
@@ -226,7 +231,7 @@ def extract_evidence_cards(
     client: ModelClient, model: ModelSpec, manifest: RunManifest, run_dir: Path,
     *, max_input_tokens: int = 1600,
 ) -> EvidenceCardsArtifact:
-    _check_source(document, chunks, manifest)
+    _check_source(document, chunks, manifest, client)
     if chunk.chunk_id not in {item.chunk_id for item in chunks.chunks}:
         raise EnrichmentError("chunk is not in its declared variant")
     prompt, prompt_hash = _prompt(CARDS_PROMPT_VERSION)

@@ -67,6 +67,7 @@ def embed_chunks(
         document.document_id, document.run_id, document.source_sha256
     ) or spec.chunking_version != chunks.chunking_version:
         raise ValueError("embedding inputs do not match the source run")
+    manifest.require_client_selection(client)
     if batch_size < 1 or (max_batches is not None and max_batches < 0):
         raise ValueError("invalid embedding batch budget")
     if spec.input_recipe_version == "contextualized-v1":
