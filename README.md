@@ -2,7 +2,7 @@
 
 This repository captures Markdown from an external Knowledge folder and produces source-linked local artifacts. It supports bold-label and bracket-label transcripts, notes, articles, highlights, and book exports. The original files remain unchanged. Search, Supabase storage, and the answer agent are later work.
 
-Start with [SYSTEM.md](SYSTEM.md) for the whole flow; [INGESTION.md](INGESTION.md), [RETRIEVAL.md](RETRIEVAL.md), and [DATA.md](DATA.md) describe each part at its current stage.
+Start with [SYSTEM.md](SYSTEM.md) for the whole flow and [FOUNDATION.md#current-progress](FOUNDATION.md#current-progress) for stage-by-stage progress; [INGESTION.md](INGESTION.md), [RETRIEVAL.md](RETRIEVAL.md), and [DATA.md](DATA.md) describe each part at its current stage.
 
 ## Preview a source
 

@@ -1,11 +1,12 @@
 ---
 name: start-task
-description: Orient a task in this repository by reading SYSTEM.md, then at most two linked current-state docs, and stop before implementation.
+description: Orient a task by reading SYSTEM.md first, the current progress section of FOUNDATION.md, and at most one relevant detail doc; then stop.
 ---
 
 # Start task
 
 1. Read `SYSTEM.md` first.
-2. Follow its links to only the one or two living docs relevant to the user's task: `INGESTION.md`, `RETRIEVAL.md`, or `DATA.md`. Read no other project docs, plans, or source files during this command.
-3. Summarize in a few plain sentences what currently works, what is still planned for this task area, and which one or two docs you opened. State the immediate next place to inspect when work begins.
-4. Stop. Do not edit files, begin implementation, or turn this orientation into a broad repository tour.
+2. Follow its link to `FOUNDATION.md#current-progress`. Read only that section, not the whole Foundation document.
+3. If the task needs more detail, follow one relevant link from `SYSTEM.md` to `INGESTION.md`, `RETRIEVAL.md`, or `DATA.md`. Open no other project docs, plans, or source files during this command.
+4. Summarize in a few plain sentences the current stage, what remains for the task, and the next place to inspect when work begins.
+5. Stop. Do not edit files or begin implementation. `FOUNDATION.md#current-progress` is the progress source of truth; `AGENTS.md` is only a short entry point.

@@ -1,12 +1,12 @@
 ---
 name: finish-task
-description: After implementation in this repository, update only the relevant living architecture doc to match verified current behavior; never append a history log.
+description: After implementation, reconcile FOUNDATION.md's current progress and update at most one relevant system detail doc; keep both as current state, never a history log.
 ---
 
 # Finish task
 
-1. Inspect the completed change and its verification results. Choose exactly one relevant living doc: `SYSTEM.md`, `INGESTION.md`, `RETRIEVAL.md`, or `DATA.md`.
-2. Edit that doc in place so its descriptions and current/planned boundary match how the system works now. Remove stale claims; do not append dated updates, changelog entries, task notes, or speculative details.
-3. Keep the doc concise. If no factual description changed, leave it untouched and say so. Do not edit the other living docs.
-4. Update the two-sentence status at the top of `AGENTS.md` only if the completed work makes it false; keep it exactly two sentences. Make no other AGENTS.md changes.
-5. Check the edited text against the code and report which file changed, or why no doc edit was needed. Stop.
+1. Inspect the completed change and its verification results.
+2. Always reconcile `FOUNDATION.md#current-progress` with the result. Replace the affected stage's present state and next proof in place. If the work changed no stage or next proof, leave the table as-is and say it was checked; never invent progress or append dated notes.
+3. Update at most one relevant system detail doc if its factual description changed: `SYSTEM.md` for the overall flow, `INGESTION.md` for input and enrichment, `RETRIEVAL.md` for search and answering, or `DATA.md` for records. Remove stale claims and keep the doc concise. Do not edit other detail docs merely to mention the task.
+4. Refresh only the two-sentence status at the top of `AGENTS.md` if it became false. Keep it consistent with Foundation. Leave the original `knowledge-agent-architecture.md` as the design brief.
+5. Check the edited claims against code and tests. Report which progress row and detail doc changed, or why each remained accurate. Stop.
