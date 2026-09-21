@@ -1,6 +1,6 @@
 # System
 
-The original Markdown vault is the authority. Each derived item must point back to the source file and exact source revision; search and answers are still planned. For stage-by-stage completion and the next checkpoint, read [FOUNDATION.md#current-progress](FOUNDATION.md#current-progress).
+The original Markdown vault is the authority. A file is processed into an index once, then many questions can use that index; these are two different sequences. Every derived item must point back to the exact source revision. For stage-by-stage completion and the next checkpoint, read [FOUNDATION.md#current-progress](FOUNDATION.md#current-progress).
 
 ## A. Build the index from a file
 
@@ -12,7 +12,7 @@ flowchart TB
     CAP --> PARSE["3 · Route format and parse<br/>transcript, highlights, book, article, or note"]
     PARSE --> BLOCKS["4 · Source-aligned blocks,<br/>excluded spans, and diagnostics"]
     BLOCKS --> FIXED["5a · Fixed raw chunks<br/>800 tokens, 80 overlap"]
-    BLOCKS --> STRUCT["5b · Structural raw chunks<br/>preserve headings, turns, and highlights"]
+    BLOCKS --> STRUCT["5b · Structural raw chunks<br/>target 600–1000 tokens; preserve structure"]
     FIXED --> CHUNKS["6 · Two versioned chunk sets<br/>with exact source spans"]
     STRUCT --> CHUNKS
     CHUNKS --> LABELS["Eval check · Map manually checked<br/>answer spans to both chunk sets"]
@@ -41,7 +41,7 @@ flowchart TB
 
 ## B. Answer a question from the index
 
-This starts later, when a user asks a question. The agent harness controls the investigation; retrieval tools only return evidence candidates.
+This starts later, when a user asks a question against the active run stored in A. The agent harness controls the investigation; retrieval tools only return evidence candidates.
 
 ```mermaid
 flowchart TB
