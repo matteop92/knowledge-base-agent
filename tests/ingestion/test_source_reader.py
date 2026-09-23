@@ -1,5 +1,6 @@
 import hashlib
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -41,11 +42,27 @@ class SourceReaderTests(unittest.TestCase):
         self.assertTrue(second.source_text.startswith("**Host:**"))
         self.assertEqual((first.run_dir / "source.md").read_bytes(), first.source_bytes)
 
+    def test_parent_root_nested_locator_survives_root_move(self) -> None:
+        transcripts = self.root / "Transcripts"
+        transcripts.mkdir()
+        nested = transcripts / "episode.md"
+        nested.write_bytes(self.source.read_bytes())
+        first = capture_source(self.root, "Transcripts/episode.md", self.runtime)
+        second = capture_source(self.root, "Transcripts/episode.md", self.runtime)
+        moved_root = self.base / "moved-vault"
+        shutil.move(self.root, moved_root)
+        moved = capture_source(moved_root, "Transcripts/episode.md", self.runtime)
+        changed_locator = capture_source(moved_root, "episode.md", self.runtime)
+        self.assertEqual(first.manifest.document_id, second.manifest.document_id)
+        self.assertEqual(first.manifest.document_id, moved.manifest.document_id)
+        self.assertNotEqual(first.manifest.document_id, changed_locator.manifest.document_id)
+        self.assertEqual(first.manifest.locator.relative_path, "Transcripts/episode.md")
+
     def test_parser_uses_capture_after_original_changes(self) -> None:
         captured = capture_source(self.root, "episode.md", self.runtime)
         self.source.write_bytes(b"**Host:** A different version.\n")
         parsed = parse_transcript(captured)
-        self.assertIn("Hello.", parsed.turns[0].raw_text)
+        self.assertIn("Hello.", parsed.blocks[0].raw_text)
         self.assertNotIn("different version", parsed.source_text)
 
     def test_invalid_inputs_are_rejected(self) -> None:

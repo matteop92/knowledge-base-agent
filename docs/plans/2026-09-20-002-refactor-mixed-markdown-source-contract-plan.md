@@ -1,7 +1,7 @@
 ---
 title: "refactor: Prepare source contracts for mixed Markdown"
 type: refactor
-status: active
+status: completed
 date: 2026-09-20
 ---
 
@@ -44,7 +44,7 @@ The current capture and preview assume the source root is the `Transcripts` fold
 
 ## Implementation units
 
-- [ ] **Unit 1 — Canonicalize source location and rebind the first eval**
+- [x] **Unit 1 — Canonicalize source location and rebind the first eval**
 
   **Goal:** Set one stable locator convention before more source IDs and labels accumulate. **Requirements:** R1, R2, R5. **Dependencies:** None.
 
@@ -60,7 +60,7 @@ The current capture and preview assume the source root is the `Transcripts` fold
 
   **Verification:** Preview and labels use one documented root convention, and originals remain unchanged.
 
-- [ ] **Unit 2 — Add a source-aligned common document contract**
+- [x] **Unit 2 — Add a source-aligned common document contract**
 
   **Goal:** Give all Markdown parsers one validated output shape. **Requirements:** R2, R3, R4. **Dependencies:** Unit 1.
 
@@ -75,7 +75,7 @@ The current capture and preview assume the source root is the `Transcripts` fold
 
   **Verification:** A downstream consumer can inspect source-linked blocks without knowing the original document category.
 
-- [ ] **Unit 3 — Preserve transcript behavior through the new contract**
+- [x] **Unit 3 — Preserve transcript behavior through the new contract**
 
   **Goal:** Move the current producer, preview, and label validator to the common contract without changing what the first episode says. **Requirements:** R3, R5. **Dependencies:** Unit 2.
 

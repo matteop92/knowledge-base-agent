@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from app.ingestion.contracts import ParsedTranscript
+from app.ingestion.contracts import ParsedDocument
 from app.ingestion.eval_labels import EvalLabelError, validate_eval_labels
 from app.ingestion.preview import preview_source
 from app.ingestion.transcript_parser import TranscriptParseError
@@ -29,7 +29,7 @@ class PreviewTests(unittest.TestCase):
         self.assertEqual(summary["turn_count"], 2)
         self.assertEqual(summary["speakers"], ["Host", "Guest"])
         self.assertNotIn("I wanted to learn", json.dumps(summary))
-        restored = ParsedTranscript.model_validate_json(
+        restored = ParsedDocument.model_validate_json(
             Path(summary["preview_path"]).read_text(encoding="utf-8")
         )
         self.assertEqual(restored.source_sha256, summary["source_sha256"])
@@ -40,9 +40,17 @@ class PreviewTests(unittest.TestCase):
             preview_source(self.root, "episode.md", self.runtime)
         self.assertEqual(list(self.runtime.glob("*/parsed.json")), [])
 
+    def test_preview_reports_unclassified_source_spans(self) -> None:
+        self.source.write_text("Preface.\n**Host:** Hello.\n", encoding="utf-8")
+        summary = preview_source(self.root, "episode.md", self.runtime)
+        self.assertEqual(summary["block_count"], 1)
+        self.assertEqual(summary["excluded_span_counts"]["unclassified"], 1)
+        self.assertEqual(summary["unclassified_spans"][0]["start_char"], 0)
+        self.assertEqual(summary["warnings"], ["unclassified source text"])
+
     def test_eval_labels_are_bound_to_exact_source_revision(self) -> None:
         summary = preview_source(self.root, "episode.md", self.runtime)
-        record = ParsedTranscript.model_validate_json(
+        record = ParsedDocument.model_validate_json(
             Path(summary["preview_path"]).read_text(encoding="utf-8")
         )
         quote = "We spoke to ten people first."
