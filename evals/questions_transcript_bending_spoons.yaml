@@ -1,0 +1,64 @@
+document_id: 99bcc380-46a8-5083-8cc6-28cb901aa1ad
+source_sha256: f54fc568fa48ab338c36662bda6574ddb7dd9c08839f1451127bd493ad2ee7be
+source_title: Inside Bending Spoons Finding Talent, Leveraging AI & Driving Operational Excellence  Luca
+  Ferrari
+questions:
+- id: talent_over_experience
+  question: What did Ferrari learn about experience from the strongest contributor at his earlier startup?
+  expected: supported
+  must_find:
+  - start_char: 9550
+    end_char: 9656
+    quote: that person who was performing at the peak in that group was actually one of the least experienced
+      people.
+  - start_char: 9800
+    end_char: 9970
+    quote: If you have someone who's really smart and really cares, often they'll be able to deliver as
+      much value, if not a lot more value, than someone with a lot more experience.
+- id: centralized_hiring
+  question: Why does Ferrari think a centralized talent team can make better hiring decisions?
+  expected: supported
+  must_find:
+  - start_char: 32393
+    end_char: 32678
+    quote: For our centralized talent team, that's all they do. So, there is no professional pride other
+      than we're good at this. They do it at scale, so they have a massive sample size, and they get to
+      see what kind of talents we can attract across all different, let's say, roles and positions.
+  - start_char: 32679
+    end_char: 33034
+    quote: Therefore, they're much better positioned to understand whether someone is the right hire for
+      a particular role because they've seen what's come in time across the board, and so they're in a
+      better position to know, okay, if we wait a little bit longer, just statistically speaking, more
+      likely or are we not likely to find someone who can be even better?
+- id: job_titles
+  question: What did Bending Spoons do with its internal job titles?
+  expected: supported
+  must_find:
+  - start_char: 77623
+    end_char: 78059
+    quote: And so we just got rid of titles, and we told people, "You can pick your title." For your CV,
+      LinkedIn, whatever. We don't need to know. We don't want to know. We don't need to approve it. We
+      don't want to see it. Just don't embarrass us. You're a new hire, don't say you're the CTO, because
+      then people will question our integrity as a company. But as long as it's broadly reasonable, we're
+      good. We have never reintroduced them again.
+- id: acquisition_horizon
+  question: Does Ferrari say Bending Spoons buys companies to resell them or to keep operating them?
+  expected: supported
+  must_find:
+  - start_char: 90499
+    end_char: 90638
+    quote: First major difference, we're not a fund. We don't buy to sell. We have never sold a material
+      business. We buy to hold and operate forever.
+- id: altspooner
+  question: What is AltSpooner, and what access does Ferrari say it has?
+  expected: supported
+  must_find:
+  - start_char: 105562
+    end_char: 105829
+    quote: It stands for alter ego or alternative Spooner, and it's basically an agent that lives in Slack.
+      We use Slack for communications. That has, by design, the very same access you do as an individual
+      in the company. So it has access to the same tools, to the same degree.
+- id: evernote_purchase_price
+  question: What exact price did Bending Spoons pay to acquire Evernote?
+  expected: unsupported
+  must_find: []

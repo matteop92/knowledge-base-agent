@@ -1,0 +1,53 @@
+document_id: bd796d1a-c36b-57fb-b799-b3e10315959a
+source_sha256: 7404d484ec839bc654b8082942b0fa56867f966deea7b222b578bc8633071c12
+source_title: Anything You Want
+questions:
+- id: switch_or_improve
+  question: According to the highlighted passage, what should you do when an idea is not a hit?
+  expected: supported
+  must_find:
+  - start_char: 1210
+    end_char: 1569
+    quote: When you present one to the world, and it’s not a hit, don’t keep pushing it as-is. Instead,
+      get back to improving and inventing. Present each new idea or improvement to the world. If multiple
+      people are saying, “Wow! Yes! I need this! I’d be happy to pay you to do this!” then you should
+      probably do it. But if the response is anything less, don’t pursue it.
+- id: reader_qualification
+  question: What example does the reader add to qualify the advice about switching ideas?
+  expected: supported
+  must_find:
+  - start_char: 1736
+    end_char: 1802
+    quote: Airbnb bombed for months but they kept improving until it took off
+- id: customer_priority
+  question: What's one useful question Derek Sivers recommend I ask myself to improve my business?
+  expected: supported
+  must_find:
+  - start_char: 2300
+    end_char: 2421
+    quote: If you’re ever unsure what to prioritize, just ask your customers the open-ended question,
+      “How can I best help you now?”
+- id: pizza_policy
+  question: What unusual exchange did CD Baby offer for a big special favor?
+  expected: supported
+  must_find:
+  - start_char: 8092
+    end_char: 8452
+    quote: 'Sometimes, after we had done the forty-five minutes of work to add a new album to the store,
+      the musician would change his mind and ask us to do it over again with a different album cover or
+      different audio clips. I wanted to say yes but let him know that this was really hard to do, so
+      I made a policy that made us both smile: “We’ll do anything for a pizza.”'
+- id: reader_ownership
+  question: What alternative does the reader suggest to a boss giving small design changes?
+  expected: supported
+  must_find:
+  - start_char: 10472
+    end_char: 10863
+    quote: a Better approach here would be to ask employee "it looks great! I am curious about your thinking
+      behind z and x and y" so instead of telling him what to do, you use your doubts to test his rationale,
+      and if there was none, you can guide him through the first principle behind the piece of work just
+      with questions, eventually getting to explaining an approach that would be closer to yours.
+- id: pizza_year
+  question: In which year did CD Baby introduce the pizza policy?
+  expected: unsupported
+  must_find: []

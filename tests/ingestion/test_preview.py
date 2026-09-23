@@ -7,7 +7,7 @@ import yaml
 
 from app.ingestion.contracts import ParsedDocument
 from app.ingestion.eval_labels import EvalLabelError, validate_eval_labels
-from app.ingestion.preview import preview_source
+from app.ingestion.preview import inspect_run, preview_markdown, preview_source
 from app.ingestion.transcript_parser import TranscriptParseError
 
 
@@ -33,6 +33,26 @@ class PreviewTests(unittest.TestCase):
             Path(summary["preview_path"]).read_text(encoding="utf-8")
         )
         self.assertEqual(restored.source_sha256, summary["source_sha256"])
+
+    def test_markdown_preview_records_both_variants_without_model_calls(self) -> None:
+        folder = self.root / "Articles"
+        folder.mkdir()
+        article = folder / "sample_article.md"
+        article.write_bytes(Path("sources/fixtures/sample_article.md").read_bytes())
+        before = article.read_bytes()
+        summary = preview_markdown(
+            self.root, "Articles/sample_article.md", self.runtime,
+            eval_file=Path("evals/fixture_article.yaml"),
+        )
+        self.assertEqual(article.read_bytes(), before)
+        self.assertEqual(summary["source_kind"], "article")
+        self.assertEqual(summary["eval_mapping"], {"fixed_raw": 1, "structural_raw": 1})
+        self.assertEqual(summary["model_usage"]["input_tokens"], 0)
+        self.assertTrue(Path(summary["manifest_path"]).is_file())
+        self.assertNotIn("Decide what matters", json.dumps(summary))
+        inspection = inspect_run(Path(summary["manifest_path"]).parent)
+        self.assertEqual(inspection["source_sha256"], summary["source_sha256"])
+        self.assertEqual(inspection["artifact_versions"], {})
 
     def test_invalid_parse_has_no_successful_preview(self) -> None:
         self.source.write_text("No speaker labels here.", encoding="utf-8")

@@ -1,6 +1,8 @@
 # Personal Knowledge Agent
 ## V1 Architecture and Build Plan
 
+This is the original design brief, kept for its ideas and rationale. For current progress use [FOUNDATION.md#current-progress](FOUNDATION.md#current-progress), and for the current system map use [SYSTEM.md](SYSTEM.md).
+
 ### Goal
 
 Build a personal knowledge agent that can answer questions across a mixed knowledge base, including:
