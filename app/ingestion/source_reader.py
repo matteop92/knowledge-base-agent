@@ -36,7 +36,7 @@ def capture_source(
     if not relative_path or relative.is_absolute() or relative.drive or ".." in relative.parts:
         raise SourceReadError("source locator must be a relative path inside the source root")
     if relative.suffix.lower() != ".md":
-        raise SourceReadError("only Markdown .md transcripts are supported")
+        raise SourceReadError("only Markdown .md sources are supported")
     try:
         root = source_root.resolve(strict=True)
         if not root.is_dir():
@@ -75,4 +75,3 @@ def capture_source(
     except OSError as exc:
         raise SourceReadError(f"cannot save source snapshot: {exc}") from exc
     return CapturedSource(manifest, original_bytes, source_text, run_dir)
-
