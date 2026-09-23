@@ -119,6 +119,7 @@ class OpenRouterClient:
 
     def embed(
         self, *, model: ModelSpec, texts: list[str], dimensions: int | None = None,
+        input_type: str | None = None, provider: dict[str, Any] | None = None,
     ) -> EmbeddingResult:
         if model.provider != "openrouter":
             raise ModelClientError("OpenRouter adapter requires an openrouter model")
@@ -127,6 +128,12 @@ class OpenRouterClient:
         payload: dict[str, Any] = {"model": model.model_id, "input": texts}
         if dimensions is not None:
             payload["dimensions"] = dimensions
+        if input_type is not None:
+            if input_type not in ("search_document", "search_query"):
+                raise ModelClientError("unsupported embedding input_type")
+            payload["input_type"] = input_type
+        if provider is not None:
+            payload["provider"] = provider
         response = self._post("/embeddings", payload, texts)
         try:
             items = sorted(response["data"], key=lambda item: item["index"])

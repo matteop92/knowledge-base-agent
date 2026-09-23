@@ -32,12 +32,11 @@ flowchart TB
     classDef model fill:#fff0c7,stroke:#ad7923,color:#4b330b
     classDef planned fill:#eceef3,stroke:#758097,color:#202938
     class SRC source
-    class CAP,PARSE,BLOCKS,FIXED,STRUCT,CHUNKS,LABELS working
+    class CAP,PARSE,BLOCKS,FIXED,STRUCT,CHUNKS,LABELS,STORE working
     class CLIENT,CONTEXT,CARDS,SUMMARIES,EMBEDDINGS,CHECK model
-    class STORE planned
 ```
 
-**Green** runs locally, including both chunk variants and label mapping. **Amber** has code and prompts tested with fake model responses; no live model has been selected or run on the vault. **Gray** has not been built. `ModelClient` sends generation and embedding requests; it does not choose what to search.
+**Green** runs locally, including both chunk variants, label mapping, and the private storage/search path. **Amber** has code and prompts tested with fake model responses; raw-chunk embeddings have also been compared live on six checked vault files, while extraction, contexts, cards, and summaries have no live-vault trial. `ModelClient` sends generation and embedding requests; it does not choose what to search.
 
 ## B. Answer a question from the index
 
@@ -67,7 +66,7 @@ flowchart TB
     class ANSWER output
 ```
 
-The whole question path is **planned**. Purple boxes are the agent harness, teal boxes are retrieval tools, and amber is the shared ModelClient. If inspected passages leave a gap, the harness repeats step 2 before answering. The checked questions will later measure retrieval recall and answer quality; evaluation is outside the live answer path.
+The question-answer path as a whole is **planned**. Independent vector and full-text candidate queries work locally; rank fusion, the agent harness, and answer citations have not been built. Purple boxes are the agent harness, teal boxes are retrieval tools, and amber is the shared ModelClient. If inspected passages leave a gap, the harness repeats step 2 before answering. The checked questions now measure first-pass candidate recall; answer quality remains unevaluated.
 
 The local preview writes a source snapshot, parsed document, chunk sets, and run manifest under ignored `.local/ingestion-runs/<run_id>/`. It makes no model calls. Model enrichment is required for the intended product, but is not part of that preview command.
 

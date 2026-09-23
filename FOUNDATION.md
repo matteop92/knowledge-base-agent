@@ -7,13 +7,14 @@ This document defines the system's purpose, decisions, order of work, and **curr
 | Stage | State now | Next proof needed |
 | --- | --- | --- |
 | 1. Source identity and transcript contract | Working locally: stable document IDs, byte hashes, exact source spans, and transcript parsing. | Carry provenance into persistent storage. |
-| 2. Mixed Markdown ingestion | Working locally for representative transcripts, notes, articles, highlights, and a book export: routing, source-aligned blocks, fixed and structural chunks, and label-to-chunk mapping. Context, evidence-card, summary, and embedding prompts and code pass fake-model tests. | Choose models and run a small real-vault enrichment trial; inspect the generated artifacts and costs. |
-| 3. Supabase storage and search | Not built. Local run files are the only processed store. | Define the schema and active-run rules, load processed artifacts, and make vector plus Postgres full-text search work. |
+| 2. Mixed Markdown ingestion | Working locally for representative transcripts, notes, articles, highlights, and a book export: routing, source-aligned blocks, both chunk variants, and label mapping. Context, card, summary, and embedding code passes fake-model tests. Raw-chunk embeddings have now run on six checked vault files. | Choose and inspect live extraction, context, card, and summary models; pin the embedding provider route for repeatable re-indexing. |
+| 3. Supabase storage and search | Private schema, validated staged loading, guarded active-run/profile publication, and independent exact vector plus FTS searches work on local Supabase. A checked trial selected the 1,024-dimensional `perplexity/pplx-embed-v1-0.6b` raw/fixed profile. The hosted Knowledge Agent project is still unmigrated. | Apply the reviewed migration to the confirmed hosted project after approval, provision separate runtime credentials, and check permissions there. Keep exact vector search until HNSW recall and query plans justify an index. |
 | 4. Retrieval API and answer agent | Not built. | Combine vector and full-text ranks with RRF, let the agent inspect original passages, and return supported citations. |
-| 5. Evaluation and tuning | 37 manually checked questions across six real files, plus synthetic fixtures, test source-span mapping. There are no retrieval or answer scores yet. | Run recall and answer checks once search and answering exist; compare chunking and enrichment choices. |
-| 6. Minimal interface and wider corpus | Not built. | Let a user ask a question, inspect cited passages, and expand the corpus after the core path works. |
+| 5. Evaluation and tuning | The 37 checked questions still test source-span mapping. Of 31 supported questions requiring 51 spans, the selected raw-vector profile retrieves 42 spans at K=10 and independent FTS retrieves 29; answer quality is unmeasured. | Expand the gold set and test RRF, chunk variants, hard questions, and citation-supported answers after Stage 4 exists. |
+| 6. Compiled knowledge and themes experiment | Deferred until the baseline retrieval and answer system has measurable results. | If baseline evaluation shows repeated cross-source synthesis or recurring-theme failures, test a small compiled layer against the same gold questions. |
+| 7. Minimal interface and wider corpus | Not built. | Let a user ask a question, inspect cited passages, and expand the corpus after the core path and compiled-layer decision are measured. |
 
-The immediate end-to-end checkpoint is **source → enrichment → stored index → hybrid retrieval → cited answer**. No live model has been selected or run on the vault, and no chunking or embedding option has been chosen from retrieval results.
+The immediate end-to-end checkpoint is **source → enrichment → stored index → hybrid retrieval → cited answer**. A first raw-chunk embedding model and fixed variant have been chosen from a small checked retrieval trial; live generation, fused retrieval, and cited answers remain to be proved.
 
 ## Outcome
 
@@ -91,6 +92,16 @@ The retrieval plan will define the exact tool contracts, ranking method, filters
 
 The table under [Current progress](#current-progress) is the work map for focused plans. Keep each plan small enough to implement and evaluate without claiming the whole system is complete.
 
+## Future compiled knowledge layer
+
+After the baseline retrieval and answer system has been evaluated, a small compiled knowledge layer may maintain durable cross-source themes, concepts, relationships, contradictions, and synthesis. It should complement the evidence layer rather than replace it, and it is intentionally deferred until baseline retrieval and answer metrics exist.
+
+The decision gate is whether the baseline reliably retrieves individual evidence but struggles with recurring themes, cross-document synthesis, contradictions, or repeatedly reconstructing the same concepts. If those failures do not appear, the compiled layer has not earned the added complexity.
+
+Compiled themes remain derived artifacts. Every claim in them must resolve to supporting evidence cards or chunks and ultimately to exact spans in the original sources.
+
+The initial experiment should compare **A. the existing retrieval and agent system** with **B. the same system plus a small set of compiled themes**, using the same gold questions. Measure answer completeness, citation faithfulness, searches and tool calls, latency, and cost. Theme creation, update, merge, split, contradiction, and deprecation rules belong in a later focused plan, not in this foundation document.
+
 ## Decisions for focused plans to carry forward
 
 - **First source:** Podcast transcripts. Preserve speaker exchanges, Q&A pairs, complete stories, and topic changes. Later note/book plans should preserve headings and paragraphs.
@@ -124,7 +135,7 @@ Fixed 800-token raw chunks remain the overall baseline. Keep the embedding model
 
 ## Boundaries for V1
 
-The intended V1 stack is Python, FastAPI, Supabase Postgres, pgvector, Postgres full-text search, an explicit in-code agent loop, the application's `ModelClient` with a direct OpenRouter adapter, and a simple UI. Every model role can be filled with an open-weight model. LiteLLM is an optional later adapter when multiple gateways or local hosting justify it. A model router, knowledge graph, Neo4j, Kafka, OpenSearch, Kubernetes, and multiple specialized agents require evidence from V1 before they enter the work map.
+The intended V1 stack is Python, FastAPI, Supabase Postgres, pgvector, Postgres full-text search, an explicit in-code agent loop, the application's `ModelClient` with a direct OpenRouter adapter, and a simple UI. Every model role can be filled with an open-weight model. LiteLLM is an optional later adapter when multiple gateways or local hosting justify it. The compiled knowledge layer is not a V1 dependency, but V1 provenance must allow future themes to resolve through evidence cards or chunks to exact source spans. A model router, knowledge graph, Neo4j, Kafka, OpenSearch, Kubernetes, and multiple specialized agents require evidence from V1 before they enter the work map.
 
 The source contract and mixed Markdown ingestion plans have code behind them. The next focused plans should settle the live model trial and Supabase schema/search against those stable source-linked inputs.
 
