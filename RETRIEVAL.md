@@ -1,6 +1,6 @@
 # Retrieval
 
-Retrieval is a design target, not running code. There is no Supabase index, query endpoint, ranking result, or answer agent in this repository yet. The planned flow below is the current design to implement and measure.
+`app/storage/search.py` runs independent exact pgvector and Postgres full-text candidate searches against a selected private local index. Each hit includes rank, raw distance or score, document/run/source IDs, chunk ID, exact source spans, locator, and raw text for trusted callers. The production retrieval API, rank fusion, evidence-card query path, and answer agent remain planned. The flow below shows how those pieces will use the candidate lists.
 
 ```mermaid
 flowchart LR
@@ -14,8 +14,8 @@ flowchart LR
     E --> A[Answer with source citations, or say evidence is insufficient]
 ```
 
-Vector search should find semantically related chunks; PostgreSQL full-text search should recover exact terms. Reciprocal rank fusion (RRF) combines their positions into one candidate list without treating raw scores as comparable. The agent should inspect the original source spans behind candidates and cite those passages in its answer. Evidence-card search is a separate, agent-selected path for claims and examples; it must still lead back to exact source text.
+Vector search finds semantically related chunks with one profile-compatible embedding specification. Full-text search uses `simple` lexemes, `websearch_to_tsquery`, a GIN index, and `ts_rank`; whole-question searches with no all-term hits retry as an OR query over their words. Both filter through the selected active profile and run before limiting, with stable chunk-ID ties. Explicit profile and historical-run parameters allow evaluation of old or staged data. Reciprocal rank fusion (RRF) will combine the independent ranks without treating raw scores as comparable. The agent will inspect source spans and cite original passages. Evidence-card search remains a separate, agent-selected path.
 
-The code already produces fixed and structural chunk variants and defines raw and contextual embedding inputs. Model, dimensions, input recipe, and chunking version are part of each embedding specification; the search index must use a compatible specification and a deliberate active run. Neither chunking variant, embedding model, nor ranking settings have been chosen by measured retrieval results. The 37 checked questions in `evals/questions_*.yaml` currently test source-span mapping; later they can support recall and answer-quality evaluation after search exists.
+The first measured raw-chunk profile uses fixed 800-token chunks with 80-token overlap, `perplexity/pplx-embed-v1-0.6b`, 1,024 dimensions, cosine distance, and `raw-v1`. In the checked six-file trial, 31 supported questions required 51 source spans: exact vector Recall@10 covered 42 spans, while independent FTS covered 29. This small trial selects an initial index, not a final retrieval or answer-quality setting. The hard questions and later fusion need Stage 5 evaluation. Exact vector ordering remains the correctness baseline; a profile-specific HNSW index waits for representative recall and query-plan checks.
 
 See [INGESTION.md](INGESTION.md) for how candidates are made, [DATA.md](DATA.md) for their identities, and [SYSTEM.md](SYSTEM.md) for the full map.
