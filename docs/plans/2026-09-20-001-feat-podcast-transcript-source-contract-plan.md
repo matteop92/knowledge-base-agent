@@ -110,7 +110,7 @@ tests/ingestion/            contract, source-reader, parser, and preview tests
 
   **Goal:** Make the first transcript inspectable and give later chunking experiments stable labels. **Requirements:** R1, R5. **Dependencies:** Units 1–3.
 
-  **Files:** Create `app/ingestion/preview.py`, `tests/ingestion/test_preview.py`, `evals/transcript_questions.yaml`, `evals/README.md`, `sources/README.md`, `README.md`.
+  **Files:** Create `app/ingestion/preview.py`, `tests/ingestion/test_preview.py`, `evals/questions_transcript_tim_ferriss.yaml`, `evals/README.md`, `sources/README.md`, `README.md`.
 
   **Approach:** Provide a local entry point that accepts root configuration and a relative locator, writes a validated run preview, and reports document ID, hash, metadata, turn count, warnings, and source locations without dumping the full transcript. Seed roughly 5–8 questions from episode #882, such as which channels brought retained customers, what the trial is meant to solve, and whether the episode establishes a quantified first-20-customers cold-outreach case. Label must-find versus useful spans against `document_id` and `source_sha256`; mark unsupported questions explicitly. Later eval work maps these labels onto each chunking variant rather than hard-coding chunk IDs now.
 
