@@ -1,6 +1,6 @@
 # Project guide
 
-**Status:** The repository captures, parses, and chunks mixed Markdown from an external vault, with source-linked eval labels and local previews. A private storage and independent search path works on local Supabase, and a small live trial selected a raw-chunk embedding model; live generation, fused retrieval, the answer agent, and hosted migration remain unfinished.
+**Status:** The repository captures, parses, and chunks mixed Markdown from an external vault, with source-linked eval labels and local previews. A private storage and independent search path works on local Supabase; live trials selected an embedding model and provisionally favor structural raw chunks, while extraction, fused retrieval, the answer agent, and hosted migration remain unfinished.
 
 Read [SYSTEM.md](SYSTEM.md) for the one-page map. [FOUNDATION.md#current-progress](FOUNDATION.md#current-progress) is the single progress tracker; [INGESTION.md](INGESTION.md), [RETRIEVAL.md](RETRIEVAL.md), and [DATA.md](DATA.md) explain individual parts. Update current facts in place rather than adding a history section.
 

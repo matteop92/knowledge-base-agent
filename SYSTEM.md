@@ -36,7 +36,7 @@ flowchart TB
     class CLIENT,CONTEXT,CARDS,SUMMARIES,EMBEDDINGS,CHECK model
 ```
 
-**Green** runs locally, including both chunk variants, label mapping, and the private storage/search path. **Amber** has code and prompts tested with fake model responses; raw-chunk embeddings have also been compared live on six checked vault files, while extraction, contexts, cards, and summaries have no live-vault trial. `ModelClient` sends generation and embedding requests; it does not choose what to search.
+**Green** runs locally, including both chunk variants, label mapping, and the private storage/search path. **Amber** has code and prompts tested with fake model responses; raw and contextual embeddings plus 83 chunk contexts have run live on six checked vault files, while evidence cards and summaries have no live-vault trial. `ModelClient` sends generation and embedding requests; it does not choose what to search.
 
 ## B. Answer a question from the index
 
