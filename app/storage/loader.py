@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import math
 import os
-import struct
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -267,15 +266,12 @@ def load_run(conn: psycopg.Connection, run_dir: Path) -> str:
                     (sid, spec.provider, spec.model, spec.model_version, spec.dimensions, spec.distance_metric,
                      spec.input_recipe_version, spec.context_prompt_version, spec.chunking_version, Jsonb(spec_value)))
                 for item in payload.chunks:
-                    cur.execute("select artifact_id, embedding::text from knowledge.embedding_vectors where run_id=%s and chunk_id=%s and spec_id=%s",
-                                (capture.run_id, item.chunk_id, sid))
-                    previous = cur.fetchone()
                     vector = "[" + ",".join(str(number) for number in item.vector) + "]"
-                    stored = [float(x) for x in previous[1].strip("[]").split(",")] if previous else []
-                    if previous and (previous[0] != record.artifact_id or
-                                     len(stored) != len(item.vector) or
-                                     any(struct.pack("<f", left) != struct.pack("<f", right)
-                                         for left, right in zip(stored, item.vector))):
+                    cur.execute("""select artifact_id, embedding = %s::extensions.vector
+                        from knowledge.embedding_vectors where run_id=%s and chunk_id=%s and spec_id=%s""",
+                        (vector, capture.run_id, item.chunk_id, sid))
+                    previous = cur.fetchone()
+                    if previous and (previous[0] != record.artifact_id or not previous[1]):
                         raise StorageError("embedding changed under an existing identity")
                     cur.execute("""insert into knowledge.embedding_vectors
                         (run_id,chunk_id,spec_id,artifact_id,embedding) values (%s,%s,%s,%s,%s::extensions.vector)

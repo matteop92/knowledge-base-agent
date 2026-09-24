@@ -105,15 +105,16 @@ def generate_chunk_context(
     document: ParsedDocument, chunks: ChunkSet, chunk: Chunk,
     client: ModelClient, model: ModelSpec, manifest: RunManifest, run_dir: Path,
     *, neighbor_text: str = "", max_input_tokens: int = 1600,
+    prompt_version: str = CONTEXT_PROMPT_VERSION,
 ) -> ChunkContext:
     _check_source(document, chunks, manifest, client)
     if chunk.chunk_id not in {item.chunk_id for item in chunks.chunks}:
         raise EnrichmentError("chunk is not in its declared variant")
-    prompt, prompt_hash = _prompt(CONTEXT_PROMPT_VERSION)
+    prompt, prompt_hash = _prompt(prompt_version)
     version_inputs = {
         "chunk_id": chunk.chunk_id,
         "chunking_version": chunks.chunking_version,
-        "prompt_version": CONTEXT_PROMPT_VERSION,
+        "prompt_version": prompt_version,
         "prompt_sha256": prompt_hash,
         "input_recipe_version": CONTEXT_RECIPE_VERSION,
         "neighbor_sha256": hashlib.sha256(neighbor_text[:400].encode("utf-8")).hexdigest(),
@@ -135,7 +136,7 @@ def generate_chunk_context(
                 "type": "object", "properties": {"context": {"type": "string"}},
                 "required": ["context"], "additionalProperties": False,
             },
-            max_output_tokens=180,
+            max_output_tokens=360,
         )
         context = result.data.get("context")
         if not isinstance(context, str) or not context.strip():
@@ -144,7 +145,7 @@ def generate_chunk_context(
             document_id=document.document_id, run_id=document.run_id,
             source_sha256=document.source_sha256, chunk_id=chunk.chunk_id,
             source_spans=chunk.source_spans, context=context.strip(), model=model,
-            prompt_version=CONTEXT_PROMPT_VERSION,
+            prompt_version=prompt_version,
             input_recipe_version=CONTEXT_RECIPE_VERSION, usage=result.usage,
         )
         path = write_artifact_json(

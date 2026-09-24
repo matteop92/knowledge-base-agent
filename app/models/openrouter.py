@@ -23,7 +23,7 @@ class OpenRouterClient:
     def __init__(
         self, *, allow_live: bool = False, request_budget: int = 0,
         estimated_input_token_budget: int = 0, timeout_seconds: float = 60,
-        api_key: str | None = None,
+        api_key: str | None = None, provider: dict[str, Any] | None = None,
     ) -> None:
         self._allow_live = allow_live
         self._request_budget = request_budget
@@ -32,6 +32,7 @@ class OpenRouterClient:
         self._input_tokens_left = estimated_input_token_budget
         self._timeout_seconds = timeout_seconds
         self._api_key = os.getenv("OPENROUTER_API_KEY") if api_key is None else api_key
+        self._provider = provider
 
     @property
     def live_run_selection(self) -> tuple[bool, int, int]:
@@ -107,6 +108,8 @@ class OpenRouterClient:
             "temperature": 0,
             "max_tokens": max_output_tokens,
         }
+        if self._provider is not None:
+            payload["provider"] = self._provider
         response = self._post("/chat/completions", payload, [system_prompt, input_text])
         try:
             content = response["choices"][0]["message"]["content"]
@@ -114,7 +117,9 @@ class OpenRouterClient:
             if not isinstance(parsed, dict):
                 raise ValueError
         except (KeyError, IndexError, TypeError, ValueError):
-            raise ModelClientError("OpenRouter returned malformed structured output") from None
+            choices = response.get("choices")
+            finish = choices[0].get("finish_reason") if isinstance(choices, list) and choices and isinstance(choices[0], dict) else None
+            raise ModelClientError(f"OpenRouter returned malformed structured output (finish={finish})") from None
         return GenerationResult(data=parsed, model=model, usage=self._usage(response))
 
     def embed(
@@ -132,8 +137,9 @@ class OpenRouterClient:
             if input_type not in ("search_document", "search_query"):
                 raise ModelClientError("unsupported embedding input_type")
             payload["input_type"] = input_type
-        if provider is not None:
-            payload["provider"] = provider
+        route = provider if provider is not None else self._provider
+        if route is not None:
+            payload["provider"] = route
         response = self._post("/embeddings", payload, texts)
         try:
             items = sorted(response["data"], key=lambda item: item["index"])

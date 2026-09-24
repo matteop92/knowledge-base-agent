@@ -57,6 +57,23 @@ class ModelClientTests(unittest.TestCase):
             embedded = client.embed(model=self.model, texts=["first", "second"], dimensions=2)
             self.assertEqual(embedded.vectors, [[0.1, 0.2], [0.3, 0.4]])
 
+    def test_privacy_route_applies_to_generation_and_embeddings(self) -> None:
+        privacy = {"data_collection": "deny", "zdr": True}
+        client = OpenRouterClient(allow_live=True, api_key="test-key", request_budget=2,
+                                  estimated_input_token_budget=100, provider=privacy)
+        with patch.object(client, "_post", return_value={
+            "choices": [{"message": {"content": '{"context": "brief"}'}}],
+        }) as post:
+            client.generate_json(model=self.model, system_prompt="JSON", input_text="Source",
+                                 schema_name="context", json_schema={"type": "object"},
+                                 max_output_tokens=20)
+            self.assertEqual(post.call_args.args[1]["provider"], privacy)
+        with patch.object(client, "_post", return_value={
+            "data": [{"index": 0, "embedding": [0.1, 0.2]}],
+        }) as post:
+            client.embed(model=self.model, texts=["Source"], dimensions=2)
+            self.assertEqual(post.call_args.args[1]["provider"], privacy)
+
     def test_malformed_response_and_http_error_do_not_leak_source(self) -> None:
         client = OpenRouterClient(
             allow_live=True, api_key="test-key", request_budget=2,

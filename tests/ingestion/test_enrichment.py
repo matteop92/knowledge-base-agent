@@ -102,6 +102,22 @@ class EnrichmentTests(unittest.TestCase):
         )
         self.assertEqual(first.source_spans, second.source_spans)
 
+    def test_context_prompt_revision_creates_a_separate_artifact(self) -> None:
+        capture, document, chunks, manifest = self.setup_source(
+            "Notes/idea.md", "## Thoughts\n\nA source passage.\n"
+        )
+        client = FakeClient({"context": "This passage records a thought."})
+        old = generate_chunk_context(document, chunks, chunks.chunks[0], client,
+                                     self.model, manifest, capture.run_dir)
+        revised = generate_chunk_context(document, chunks, chunks.chunks[0], client,
+                                         self.model, manifest, capture.run_dir,
+                                         prompt_version="chunk_context_v2")
+        self.assertEqual(old.prompt_version, "chunk_context_v1")
+        self.assertEqual(revised.prompt_version, "chunk_context_v2")
+        self.assertEqual(len(client.calls), 2)
+        self.assertEqual(len(manifest.artifacts), 2)
+        self.assertIn("at most 60 words", client.calls[1]["system_prompt"])
+
     def test_live_client_requires_matching_manifest_before_model_request(self) -> None:
         capture, document, chunks, manifest = self.setup_source(
             "Notes/idea.md", "A source passage.\n"
