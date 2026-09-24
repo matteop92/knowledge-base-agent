@@ -1,0 +1,10 @@
+document_id: 1cf65cde-a6e9-5781-a161-c2c60f3e4b36
+source_sha256: ea442edb71de791d81dabdc7eadd94898f06add4dae39fde340d8320d63c5b85
+questions:
+- id: fixture_evidence
+  question: What should happen before comparing options?
+  expected: supported
+  must_find:
+  - start_char: 51
+    end_char: 96
+    quote: Decide what matters before comparing options.

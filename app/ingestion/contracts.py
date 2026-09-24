@@ -82,7 +82,10 @@ class SourceMetadata(StrictRecord):
 
 class DocumentBlock(StrictRecord):
     index: int = Field(ge=0)
-    kind: Literal["speaker_turn", "paragraph", "heading", "highlight"]
+    kind: Literal[
+        "speaker_turn", "paragraph", "heading", "highlight", "list_item",
+        "block_quote", "tip", "asset_reference", "separator",
+    ]
     span: SourceSpan
     raw_text: str = Field(min_length=1)
     content_span: SourceSpan | None = None
@@ -90,6 +93,8 @@ class DocumentBlock(StrictRecord):
     speaker: str | None = None
     page_reference: str | None = None
     content_role: Literal["source", "personal_note"] = "source"
+    group_id: str | None = None
+    asset_target: str | None = None
     timestamp_start: str | None = None
     timestamp_end: str | None = None
 
@@ -113,6 +118,18 @@ class ExcludedSpan(StrictRecord):
     reason: Literal["frontmatter", "whitespace", "export_furniture", "unclassified"]
 
 
+class ParseDiagnostic(StrictRecord):
+    code: str = Field(min_length=1)
+    message: str = Field(min_length=1)
+    span: SourceSpan | None = None
+
+
+class AssetReference(StrictRecord):
+    span: SourceSpan
+    target: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+
+
 class CaptureManifest(StrictRecord):
     schema_version: Literal["1"] = CAPTURE_SCHEMA_VERSION
     parser_version: str = PARSER_VERSION
@@ -131,6 +148,11 @@ class ParsedDocument(StrictRecord):
     locator: SourceLocator
     metadata: SourceMetadata
     source_text: str = Field(min_length=1)
+    source_kind: str = "transcript"
+    route_reason: str = "explicit transcript parser"
+    structural_confidence: Literal["high", "reduced"] = "high"
+    diagnostics: list[ParseDiagnostic] = Field(default_factory=list)
+    unresolved_assets: list[AssetReference] = Field(default_factory=list)
     blocks: list[DocumentBlock] = Field(default_factory=list)
     excluded_spans: list[ExcludedSpan] = Field(default_factory=list)
 
@@ -150,6 +172,10 @@ class ParsedDocument(StrictRecord):
             self._check_item(excluded.span, excluded.raw_text)
             if excluded.reason == "whitespace" and excluded.raw_text.strip():
                 raise ValueError("whitespace exclusion contains content")
+        for asset in self.unresolved_assets:
+            self._check_span(asset.span)
+            if asset.target not in self.source_text[asset.span.start_char : asset.span.end_char]:
+                raise ValueError("unresolved asset target does not match source span")
         ranges = sorted(
             [(block.span.start_char, block.span.end_char) for block in self.blocks]
             + [(item.span.start_char, item.span.end_char) for item in self.excluded_spans]
@@ -175,3 +201,152 @@ class ParsedDocument(StrictRecord):
         end_line = self.source_text.count("\n", 0, span.end_char - 1) + 1
         if (span.start_line, span.end_line) != (start_line, end_line):
             raise ValueError("source span line numbers do not match source_text")
+
+
+class Chunk(StrictRecord):
+    chunk_id: str = Field(min_length=1)
+    index: int = Field(ge=0)
+    source_spans: list[SourceSpan] = Field(min_length=1)
+    block_indices: list[int] = Field(min_length=1)
+    raw_text: str = Field(min_length=1)
+    token_count: int = Field(gt=0)
+    overlap_tokens: int = Field(ge=0)
+    boundary_reason: str = Field(min_length=1)
+    heading_path: list[str] | None = None
+    content_roles: list[Literal["source", "personal_note"]] = Field(default_factory=list)
+    group_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def check_span_order(self) -> Chunk:
+        previous_end = 0
+        for span in self.source_spans:
+            if span.start_char < previous_end:
+                raise ValueError("chunk source spans must be ordered and nonoverlapping")
+            previous_end = span.end_char
+        return self
+
+
+class ChunkSet(StrictRecord):
+    schema_version: Literal["1"] = "1"
+    document_id: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    variant: Literal["fixed_raw", "structural_raw"]
+    chunking_version: str = Field(min_length=1)
+    tokenizer_version: str = Field(min_length=1)
+    chunks: list[Chunk] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def check_indices(self) -> ChunkSet:
+        if any(chunk.index != index for index, chunk in enumerate(self.chunks)):
+            raise ValueError("chunk indices must be sequential")
+        if len({chunk.chunk_id for chunk in self.chunks}) != len(self.chunks):
+            raise ValueError("chunk IDs must be unique")
+        return self
+
+    def validate_against(self, document: ParsedDocument) -> None:
+        if (self.document_id, self.run_id, self.source_sha256) != (
+            document.document_id, document.run_id, document.source_sha256
+        ):
+            raise ValueError("chunk set source revision does not match parsed document")
+        eligible = [
+            block for block in document.blocks
+            if block.kind not in ("asset_reference", "separator")
+        ]
+        expected = _merge_ranges(
+            [(block.span.start_char, block.span.end_char) for block in eligible]
+        )
+        covered: list[tuple[int, int]] = []
+        for chunk in self.chunks:
+            source = "".join(
+                document.source_text[span.start_char:span.end_char]
+                for span in chunk.source_spans
+            )
+            if source != chunk.raw_text:
+                raise ValueError("chunk raw_text does not match source spans")
+            for span in chunk.source_spans:
+                document._check_span(span)
+                if not any(
+                    block.span.start_char <= span.start_char
+                    and span.end_char <= block.span.end_char
+                    and block.index in chunk.block_indices
+                    for block in eligible
+                ):
+                    raise ValueError("chunk span is not linked to an eligible parent block")
+                covered.append((span.start_char, span.end_char))
+        if _merge_ranges(covered) != expected:
+            raise ValueError("chunk coverage does not match eligible source blocks")
+
+
+def _merge_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(ranges):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(end, merged[-1][1]))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+class EvidenceCard(StrictRecord):
+    card_id: str = Field(min_length=1)
+    card_type: Literal[
+        "example", "principle", "claim", "counterexample", "framework",
+        "tactic", "mistake", "lesson",
+    ]
+    statement: str = Field(min_length=1)
+    situation: str | None = None
+    action: str | None = None
+    result: str | None = None
+    principle: str | None = None
+    principle_is_derived: bool = False
+    evidence_span: SourceSpan
+    evidence_text: str = Field(min_length=1)
+    document_id: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    chunk_id: str = Field(min_length=1)
+    content_role: Literal["source", "personal_note"]
+    attribution: str | None = None
+
+    @model_validator(mode="after")
+    def check_derived(self) -> EvidenceCard:
+        if self.principle is not None and not self.principle_is_derived:
+            raise ValueError("a principle must be marked as derived")
+        return self
+
+    def validate_against(self, document: ParsedDocument, chunk: Chunk) -> None:
+        if (self.document_id, self.run_id, self.source_sha256, self.chunk_id) != (
+            document.document_id, document.run_id, document.source_sha256, chunk.chunk_id
+        ):
+            raise ValueError("card provenance does not match its source chunk")
+        document._check_span(self.evidence_span)
+        if document.source_text[
+            self.evidence_span.start_char:self.evidence_span.end_char
+        ] != self.evidence_text:
+            raise ValueError("card evidence is not exact source text")
+        if not any(
+            span.start_char <= self.evidence_span.start_char
+            and self.evidence_span.end_char <= span.end_char
+            for span in chunk.source_spans
+        ):
+            raise ValueError("card evidence span is outside its raw chunk")
+        supporting = next(
+            (
+                block for block in document.blocks
+                if block.index in chunk.block_indices
+                and (block.content_span or block.span).start_char <= self.evidence_span.start_char
+                and self.evidence_span.end_char <= (block.content_span or block.span).end_char
+            ),
+            None,
+        )
+        if supporting is None or supporting.content_role != self.content_role:
+            raise ValueError("card content role does not match its source block")
+        expected_attribution = (
+            "personal_note" if supporting.content_role == "personal_note"
+            else supporting.speaker or (
+                document.metadata.authors[0] if len(document.metadata.authors) == 1 else None
+            )
+        )
+        if self.attribution != expected_attribution:
+            raise ValueError("card attribution does not match its source block")

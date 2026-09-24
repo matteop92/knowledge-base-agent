@@ -1,0 +1,62 @@
+document_id: 163a6a66-968b-5be8-91b8-e4fbbc581cfa
+source_sha256: 0dabc26e32e620dba7abe5565ffacd8fe6f044107ead237f004374423e9c4553
+source_title: Are you stuck in movie logic?
+questions:
+- id: movie_logic
+  question: What behavior does the author recommend instead of living by movie logic?
+  expected: supported
+  must_find:
+  - start_char: 1748
+    end_char: 1955
+    quote: But you shouldn’t *live* like someone waiting for the screenwriter of your life to arrange
+      a convenient resolution. Functional people don’t let things linger unspoken — they name what’s facing
+      them out loud.
+- id: law_school
+  question: What happened after the author directly addressed the awkwardness with a law school classmate?
+  expected: supported
+  must_find:
+  - start_char: 2971
+    end_char: 3464
+    quote: But on that particular evening I had a moment of clarity, and instead of trying to avoid her
+      I walked up to her and said, “I feel like we got off on the wrong foot because of that stupid thing,
+      and I’m sorry about that — I don’t have anything against you at all.” In an instant, the look of
+      flat wariness she’d put on when she saw me walking over melted into relief, and she said “I’m so
+      glad you said that, I’ve been feeling awful about it.” She went on to be my closest friend in law
+      school.
+- id: secondary_problem
+  question: What can someone say when fear of starting an argument prevents them from naming a problem?
+  expected: supported
+  must_find:
+  - start_char: 6715
+    end_char: 7184
+    quote: 'Let’s say you want to name a problem in one of your relationships, but you’re worried that
+      presenting the problem would start an argument. Congratulations. You have now found the problem
+      to name. You are allowed to say the following: “There’s an issue I see in our relationship, and
+      I want to address it so our relationship is stronger. But I’m nervous about naming it, because I’m
+      worried that it could start an argument, and I really don’t want you to feel attacked.”'
+- id: uncertain_intuition
+  question: Why does the author recommend talking about a vague feeling that something is wrong?
+  expected: supported
+  must_find:
+  - start_char: 8793
+    end_char: 9095
+    quote: Our sense that *something is weird* is often accurate, but our stories about precisely what
+      the weirdness represents are often way, way off. So, in order to move from an interesting intuition
+      to an accurate story about reality, it helps to enlist other people in the discussion by naming
+      the intuition.
+- id: silence_cost
+  question: What can repeated silence about problems do to people in poor feedback cultures?
+  expected: supported
+  must_find:
+  - start_char: 10429
+    end_char: 11008
+    quote: Sometimes, I notice this when working with people who have spent time in organizations with
+      poor feedback cultures. They have been taught that it’s so bad to name problems that they focus
+      on resolving acute issues while keeping the peace, all the while navigating an invisible psychological
+      obstacle course. Over time, they become trapped in people-pleasing, and this can blind them to real
+      issues in the substance of their work. When people are like this, it’s difficult to get them to
+      improve, because they see it as psychologically damaging to recognize their own limitations.
+- id: law_school_year
+  question: In which calendar year did the author become friends with her law school classmate?
+  expected: unsupported
+  must_find: []

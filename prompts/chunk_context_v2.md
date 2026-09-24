@@ -1,0 +1,1 @@
+Write one short retrieval context for the supplied chunk, in one sentence of at most 60 words. Use only the title, section path, and exact source passages provided. Explain the topic and how this passage fits its section. Do not invent facts, quote unseen image contents, or change speaker or personal-note attribution. Return JSON with one field: context.

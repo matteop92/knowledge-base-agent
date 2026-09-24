@@ -1,6 +1,27 @@
 # Personal Knowledge Agent: Foundation
 
-This document defines the system's purpose, boundaries, and order of work. It is the reference for focused implementation plans, not an implementation plan itself. `knowledge-agent-architecture.md` records the original design brief; the current user requirements take precedence where they differ.
+This document defines the system's purpose, decisions, order of work, and **current progress**. Its progress table below is the single place to track which stages work today and what remains; update rows in place rather than adding a history log. [SYSTEM.md](SYSTEM.md) maps the current flow, while [knowledge-agent-architecture.md](knowledge-agent-architecture.md) preserves the original design brief; current user requirements take precedence where they differ.
+
+## Current progress
+
+| Stage | State now | Next proof needed |
+| --- | --- | --- |
+| 1. Source identity and transcript contract | Working locally: stable document IDs, byte hashes, exact source spans, and transcript parsing. | Carry provenance into persistent storage. |
+| 2. Mixed Markdown ingestion | Working locally for representative transcripts, notes, articles, highlights, and a book export: routing, source-aligned blocks, both chunk variants, and label mapping. Context, card, summary, and embedding code passes fake-model tests; raw and contextual embeddings plus 83 chunk contexts have run live on six checked vault files. | Complete the live generated-artifact and repeatable-ingestion proof in Stage 4. |
+| 3. Supabase storage and search | Private schema, validated staged loading, guarded active-run/profile publication, and independent exact vector plus FTS searches work on local Supabase. The initial 1,024-dimensional `perplexity/pplx-embed-v1-0.6b` fixed/raw profile remains active locally; experimental structural/raw and contextual profiles are stored separately. The hosted Knowledge Agent project is still unmigrated. | Apply the reviewed migration to the confirmed hosted project after approval, provision separate runtime credentials, and check permissions there. Keep exact vector search until HNSW recall and query plans justify an index. |
+| 4. Live enrichment and ingestion readiness | Not complete. Context and embedding trials exist, but evidence cards and section/document summaries have only fake-model tests; no production enrichment model choices or complete live-enrichment run have been accepted. | Revisit Experiment B with multiple context-generation models while holding structural chunks, embedding model, and retrieval evaluation fixed; compare retrieval outcomes with structural/raw and the existing contextual trial. Separately compare card and summary generators, then pin accepted models, prompts, routes, and budgets and prove a complete resumable local ingestion run. |
+| 5. Retrieval API and answer agent | Not built. | Combine vector and full-text ranks with RRF, add a separate card-search tool once validated cards exist, let the agent inspect original passages, and return supported citations. |
+| 6. Evaluation and tuning | On six files, 31 supported questions require 51 spans. Exact-vector Recall@20 covered 45 fixed/raw spans, 47 structural/raw, and 46 structural/contextual with the same Perplexity model; structural/raw is the provisional chunk choice. At K=10 the counts are 42, 44, and 44. Independent FTS covered 29 at K=10; answer quality is unmeasured. | Expand the gold set, inspect contextual output and hard questions, then test RRF, card-search on/off, and citation-supported answers after Stage 5 exists. |
+| 7. Compiled knowledge and themes experiment | Deferred until the baseline retrieval and answer system has measurable results. | If baseline evaluation shows repeated cross-source synthesis or recurring-theme failures, test a small compiled layer against the same gold questions. |
+| 8. Minimal interface and wider corpus | Not built. | Let a user ask a question, inspect cited passages, and expand the corpus after the core path and compiled-layer decision are measured. |
+
+The immediate end-to-end checkpoint is **source → enrichment → stored index → hybrid retrieval → cited answer**. A first embedding model is selected and structural/raw chunks lead a small checked retrieval trial; Stage 4 must still prove live enrichment before the full Stage 5 retrieval and answer path can be evaluated.
+
+Stage 4 builds on the fixed/raw, structural/raw, and structural/contextual comparison as an ingestion baseline. In that comparison, contextual embedding means a generated chunk-specific note followed by the unchanged structural chunk text. To isolate the context-generation model's effect, compare candidate models on the same source revisions, structural chunks, context prompt and input recipe, embedding model, checked questions, and exact vector search. Report Recall@5/10/20, per-question gains and losses, context groundedness, latency, and cost against structural/raw and the existing contextual trial. Suggested models such as GPT-5 mini and GPT-6 Luna are candidates to verify for availability, provider route, privacy, and price in the focused plan, not selections here.
+
+Evidence cards and section/document summaries are separate source-linked artifacts, not additional text silently appended to that embedding input. Compare their candidate generation models for quote-span validity, coverage, schema reliability, latency, and cost, then verify that a complete run can be loaded and resumed locally. The focused plan must set the sample, quality gates, provider routes, and spend cap before live calls.
+
+Whether card search helps answers is tested after Stage 5 provides that tool; using summaries as a retrieval signal or embedding input requires its own versioned experiment. A search profile selects chunk and embedding versions and required artifacts; it is not a model.
 
 ## Outcome
 
@@ -11,7 +32,7 @@ The first proof is a question about getting early B2B customers without paid ads
 ## System principles
 
 1. **Original files are the authority.** Keep source files unchanged. Generated summaries, context, topics, and evidence cards help discovery but never replace source passages as evidence.
-2. **Provenance is continuous.** Every processed artifact must resolve to a document ID, the source hash captured by its ingestion run, and an exact source span. One complete run is active for answers; experimental and historical runs remain available for comparison. Reuploading a transcript replaces the active derived view after ingestion succeeds.
+2. **Provenance is continuous.** Every processed artifact must resolve to a document ID, the source hash captured by its ingestion run, and an exact source span. In the future store, one complete run should be active for answers while experimental and historical runs remain available for comparison. Reuploading a file should replace the active derived view only after ingestion succeeds.
 3. **Retrieval uses several signals.** Combine embeddings, lexical search, and structured extracted knowledge. Evaluate each signal and their combination against known relevant sources.
 4. **The agent can investigate.** It may reformulate a question, search again, inspect neighboring material, and compare sources. The application owns the loop and its limits.
 5. **Models are replaceable.** Agent, extraction, embedding, and optional reranking roles are separately configured. The application's thin `ModelClient` owns the stable interface. A direct OpenRouter adapter is the V1 implementation; LiteLLM and local endpoint adapters can be added without changing ingestion, retrieval, or the agent harness. V1 must be capable of running entirely on open-weight models; OpenRouter is an inference gateway, not a requirement to use a proprietary model. Selected agent models must be checked for reliable tool use or structured actions rather than assumed compatible because they share an endpoint.
@@ -31,49 +52,32 @@ The first proof is a question about getting early B2B customers without paid ads
 | Evaluation | Labeled questions, retrieval and answer checks, cost/search traces | Production answers |
 | Interface | Asking questions and viewing answers, citations, and excerpts | Direct access to the knowledge store |
 
-```mermaid
-flowchart LR
-  A[Original files] --> B[Ingestion]
-  B --> C[Processed store]
-  C --> D[Retrieval tools]
-  D <--> E[Agent harness]
-  E --> F[Answer with source citations]
-  B --> G[ModelClient]
-  E --> G
-  G --> O[OpenRouter adapter V1]
-  G -. optional .-> L[LiteLLM adapter]
-  G -. optional .-> P[Local endpoint adapter]
-  H[Evaluation] --> D
-  H --> E
-```
+The single flow diagram lives in [SYSTEM.md](SYSTEM.md). The table above defines ownership; that diagram shows how the components connect and which ones exist today.
 
 ## Original file location
 
-The recommended starting point is a normal local folder synced with a cloud drive the user already uses. For example, a `Knowledge Sources/podcast-transcripts/` folder can hold the original text or Markdown files. The files stay readable in a file manager and through that drive's own interface. A configurable source root lets ingestion read the local synced copy. That folder remains the authoritative file library; the processed store may retain source snapshots associated with ingestion runs so old experiments remain reproducible.
-
-This is a proposed storage choice until the user's existing sync provider is known. The first implementation plan should define how source links open the original transcript from the interface. A separate backup may be useful later; sync alone should not be treated as version history.
+The current source library is an external Markdown vault selected through `KNOWLEDGE_SOURCE_ROOT`. It remains the authoritative file library; ingestion captures local snapshots for reproducible runs without moving or editing the originals. The sync provider and how the future interface opens an original file are still open. Sync alone should not be treated as version history.
 
 ## Repository shape
 
-The repository should keep original files, application code, database changes, prompts, evaluations, and focused plans visibly separate:
+The repository keeps application code, prompts, evaluations, and focused plans separate. Private originals live outside it; the database path below is planned:
 
 ```text
-sources/                 Shareable samples and source-catalog files; private originals may live outside the repo
+sources/fixtures/        Shareable synthetic samples; private originals stay outside the repo
 app/                     Ingestion, retrieval, agent, model adapter, and API code
 prompts/                 Versioned extraction and agent instructions
-supabase/migrations/     Processed-store schema changes
+supabase/migrations/     Planned processed-store schema changes
 evals/                   Questions, expected sources, and run results
 tests/                   Code and integration checks
 docs/plans/              Focused ce:plan outputs for individual work packages
 README.md                Setup and operating instructions
-.env.example             Configuration names without secrets
+SYSTEM.md                Current system flow and links to detail docs
+FOUNDATION.md            Purpose, decisions, and current progress
 ```
-
-The first source plan will decide which transcript metadata belongs in the repository and how the configured external source root is addressed. Podcast transcripts are the first real source type. Notes, books, and summaries follow after the transcript path works.
 
 ## Data relationships to preserve
 
-At the conceptual level, a stable **document** points to the current original transcript. An **ingestion run** records the source hash, parser, prompts, models, and enough captured source text to reproduce its evaluation. Its **chunks** retain exact source locations. **Context, topics, evidence cards, and summaries** identify the run and source material from which they were derived. A successful reupload activates a complete new run for that document; a failed run does not leave a partial searchable document. Prior runs may remain for experiments and comparison, but only the active run is served for normal questions. Their retention and cleanup rules belong to the storage plan.
+At the conceptual level, a stable **document** points to an original Markdown file. An **ingestion run** records the source hash, parser, prompts, models, and enough captured source text to reproduce its evaluation. Its **chunks** retain exact source locations. **Context, topics, evidence cards, and summaries** identify the run and source material from which they were derived. The planned store should activate a complete new run for a document only after ingestion succeeds; failed runs must not become searchable. Prior runs may remain for experiments and comparison, but only the active run should be served for normal questions. Their retention and cleanup rules belong to the storage plan.
 
 **Embedding indexes have a different lifecycle.** Each index has an `embedding_spec`: provider, model, model version, dimensions, distance metric, input recipe version, context prompt version, chunking version, and creation time. A changed model, dimension, or recipe requires a new complete embedding index. The old index remains available until the new one is evaluated and selected. The exact schema and cutover mechanics belong to the storage plan.
 
@@ -93,20 +97,17 @@ Postgres's built-in full-text ranking is **not BM25**. It is the agreed V1 lexic
 
 The retrieval plan will define the exact tool contracts, ranking method, filters, and result budgets. The agent plan will define loop states, stopping rules, tool limits, and citation behavior. Neither belongs in this foundation document.
 
-## Work map
+The table under [Current progress](#current-progress) is the work map for focused plans. Keep each plan small enough to implement and evaluate without claiming the whole system is complete.
 
-Each row is a separate candidate for a focused `ce:plan` run. Plans should name their own acceptance checks and be small enough to implement and evaluate without claiming the whole system is complete.
+## Future compiled knowledge layer
 
-| Order | Focused work | Proof it should produce |
-|---|---|---|
-| 1 | Podcast transcript source handling and ingestion contracts | Real transcript files have stable IDs, metadata, exact location mapping, and validated intermediate records. The eval directory begins with representative questions tied to these transcripts. |
-| 2 | Structure-aware transcript ingestion | The transcripts produce coherent chunks, chunk context, strict evidence cards, and document summaries with traceable support. Compare fixed raw against structural raw, then structural raw against structural contextualized. |
-| 3 | Supabase storage and search | Processed artifacts are written and retrieved by semantic and lexical search without losing provenance. |
-| 4 | Retrieval API and agent loop | The agent can search more than once, inspect sources, and answer with validated citations. |
-| 5 | Evaluation and tuning | A gold set targeting 30-50 real questions reveals retrieval misses, unsupported claims, citation errors, incomplete synthesis, and unnecessary searches. |
-| 6 | Minimal interface and corpus expansion | A user can ask, see cited excerpts, and add notes, books, and summaries after the transcript path works. |
+After the baseline retrieval and answer system has been evaluated, a small compiled knowledge layer may maintain durable cross-source themes, concepts, relationships, contradictions, and synthesis. It should complement the evidence layer rather than replace it, and it is intentionally deferred until baseline retrieval and answer metrics exist.
 
-The early work should use a small, known corpus. Evaluation starts in row 1 and accompanies each later package. The first end-to-end checkpoint spans rows 1-4: source file → ingestion → Supabase → hybrid retrieval → multi-step agent → cited answer. Later work improves measured quality and usability.
+The decision gate is whether the baseline reliably retrieves individual evidence but struggles with recurring themes, cross-document synthesis, contradictions, or repeatedly reconstructing the same concepts. If those failures do not appear, the compiled layer has not earned the added complexity.
+
+Compiled themes remain derived artifacts. Every claim in them must resolve to supporting evidence cards or chunks and ultimately to exact spans in the original sources.
+
+The initial experiment should compare **A. the existing retrieval and agent system** with **B. the same system plus a small set of compiled themes**, using the same gold questions. Measure answer completeness, citation faithfulness, searches and tool calls, latency, and cost. Theme creation, update, merge, split, contradiction, and deprecation rules belong in a later focused plan, not in this foundation document.
 
 ## Decisions for focused plans to carry forward
 
@@ -131,19 +132,18 @@ The chunking and context tests isolate one change at a time:
 | A: chunking | Fixed 800-token chunks, 10% overlap, raw text | Structural 600-1,000-token chunks, roughly 10% overlap, raw text | Does chunking improve Recall@20? |
 | B: context | Structural chunks, raw text | The same structural chunks with chunk-specific context | Does context improve Recall@20 beyond chunking? |
 
-Fixed 800-token raw chunks remain the overall baseline. Keep the embedding model and retrieval policy fixed within A and B. Separate search comparisons then measure semantic, Postgres FTS, and RRF; a later reranker test holds the winning candidate generation fixed. A focused plan will specify the comparison order, evidence-card on/off test, and exact gold-set labeling rules.
+Fixed 800-token raw chunks remain the overall baseline. The six-file A/B trial held the embedding model and exact vector retrieval fixed: structural/raw improved Recall@20 by two required spans, while adding context lost one of those spans. This is directional evidence for the initial chunk choice, not a final retrieval setting. Separate search comparisons still need to measure semantic search, Postgres FTS, and RRF; a later reranker test holds the winning candidate generation fixed. A focused plan will specify the remaining comparison order, evidence-card on/off test, and exact gold-set labeling rules.
 
 ## Choices still open
 
-- Which existing cloud drive, if any, should sync the original transcript folder?
-- What format and metadata do the first real transcript files contain, including speakers and timestamps?
+- Which existing cloud drive, if any, should sync the external vault?
 - How should the first UI open an original file: local path, cloud-drive link, or both?
 
 ## Boundaries for V1
 
-The intended V1 stack is Python, FastAPI, Supabase Postgres, pgvector, Postgres full-text search, an explicit in-code agent loop, the application's `ModelClient` with a direct OpenRouter adapter, and a simple UI. Every model role can be filled with an open-weight model. LiteLLM is an optional later adapter when multiple gateways or local hosting justify it. A model router, knowledge graph, Neo4j, Kafka, OpenSearch, Kubernetes, and multiple specialized agents require evidence from V1 before they enter the work map.
+The intended V1 stack is Python, FastAPI, Supabase Postgres, pgvector, Postgres full-text search, an explicit in-code agent loop, the application's `ModelClient` with a direct OpenRouter adapter, and a simple UI. Every model role can be filled with an open-weight model. LiteLLM is an optional later adapter when multiple gateways or local hosting justify it. The compiled knowledge layer is not a V1 dependency, but V1 provenance must allow future themes to resolve through evidence cards or chunks to exact source spans. A model router, knowledge graph, Neo4j, Kafka, OpenSearch, Kubernetes, and multiple specialized agents require evidence from V1 before they enter the work map.
 
-The first focused `ce:plan` run should cover **podcast transcript source handling and ingestion contracts** only. Once that contract is agreed, later plans can specify chunking and enrichment, the Supabase schema, retrieval, and the agent loop against stable inputs.
+The source contract, mixed Markdown ingestion, and local storage/search path have code behind them. The next focused plan should define Stage 4's bounded live-enrichment trial and ingestion-readiness checks against those stable source-linked inputs.
 
 ## Research informing the experiments
 
