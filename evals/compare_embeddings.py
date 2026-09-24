@@ -139,6 +139,20 @@ def _embed_batch(client: OpenRouterClient, candidate: Candidate, texts: list[str
     return response
 
 
+def _select_live_manifest(run_dir: Path, client: OpenRouterClient) -> RunManifest:
+    manifest = RunManifest.load(run_dir)
+    selected, requests, input_tokens = client.live_run_selection
+    if not selected or requests < 1 or input_tokens < 1:
+        raise StorageError("live trial requires a selected client with positive budgets")
+    manifest.live_call_selected = selected
+    manifest.request_budget = requests
+    manifest.estimated_input_token_budget = input_tokens
+    manifest.require_client_selection(client)
+    # Persist the audit choice before any private text leaves this machine.
+    manifest.save(run_dir)
+    return manifest
+
+
 def compare(prepared: list[Prepared], max_usd: float, output_dir: Path,
             full_corpus_source_bytes: int) -> dict:
     if not os.getenv("OPENROUTER_API_KEY") and Path(".env").is_file():
@@ -183,7 +197,7 @@ def compare(prepared: list[Prepared], max_usd: float, output_dir: Path,
                                          model_version="trial-2026-09-23", dimensions=candidate.dimensions,
                                          distance_metric="cosine", input_recipe_version="raw-v1",
                                          chunking_version=item.chunks.chunking_version)
-                    manifest = RunManifest.load(item.run_dir)
+                    manifest = _select_live_manifest(item.run_dir, client)
                     for offset in range(0, len(item.chunks.chunks), 16):
                         batch = item.chunks.chunks[offset:offset + 16]
                         response = _embed_batch(client, candidate, [chunk.raw_text for chunk in batch],
