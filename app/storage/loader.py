@@ -211,17 +211,28 @@ def load_run(conn: psycopg.Connection, run_dir: Path) -> str:
         for artifact in run.artifacts:
             record, payload = artifact.record, artifact.payload
             value = payload.model_dump(mode="json") if payload else None
-            cur.execute("""select kind,version_inputs,model,status,payload,attempts from knowledge.artifacts
+            cur.execute("""select kind,version_inputs,model,status,payload,attempts,usage,error_code from knowledge.artifacts
                 where run_id=%s and artifact_id=%s for update""", (capture.run_id, record.artifact_id))
             old = cur.fetchone()
             model = record.model.model_dump(mode="json") if record.model else None
+            usage = record.usage.model_dump(mode="json")
             if old:
-                if old[:3] != (record.kind, record.version_inputs, model) or (old[3] == "ready" and (record.status != "ready" or old[4] != value)):
+                if old[:3] != (record.kind, record.version_inputs, model):
                     raise StorageError("artifact changed under an existing identity")
-                if old[3] != "ready" and record.attempts >= old[5]:
+                if record.attempts < old[5] or (old[3] == "ready" and (
+                    record.status != "ready" or old[4] != value or record.attempts != old[5]
+                    or old[6] != usage or old[7] != record.error_code
+                )) or (record.attempts == old[5] and old[3] == "failed"
+                       and record.status != "failed"):
+                    raise StorageError("artifact retry is older than its stored state")
+                if record.attempts == old[5] and record.status == old[3] and (
+                    old[4] != value or old[6] != usage or old[7] != record.error_code
+                ):
+                    raise StorageError("artifact changed within an existing attempt")
+                if old[3] != "ready":
                     cur.execute("""update knowledge.artifacts set status=%s,payload=%s,usage=%s,attempts=%s,error_code=%s
                         where run_id=%s and artifact_id=%s""",
-                        (record.status, Jsonb(value) if value is not None else None, Jsonb(record.usage.model_dump(mode="json")),
+                        (record.status, Jsonb(value) if value is not None else None, Jsonb(usage),
                          record.attempts, record.error_code, capture.run_id, record.artifact_id))
             else:
                 cur.execute("""insert into knowledge.artifacts

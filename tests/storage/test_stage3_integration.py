@@ -73,6 +73,30 @@ class Stage3IntegrationTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.conn.close()
 
+    def test_stale_retry_preserves_the_newer_manifest(self):
+        with tempfile.TemporaryDirectory() as folder:
+            run_dir, _, _ = fixture_run(Path(folder), "# Note\n\nA grounded claim.\n", vectors=False)
+            manifest = RunManifest.load(run_dir)
+            first = manifest.begin("context", {"chunk_id": "synthetic"})
+            manifest.save(run_dir)
+            stale = (run_dir / "run-manifest.json").read_text(encoding="utf-8")
+            load_run(self.conn, run_dir)
+
+            retried = manifest.begin("context", {"chunk_id": "synthetic"})
+            self.assertEqual(retried.artifact_id, first.artifact_id)
+            manifest.fail(retried.artifact_id, "model_error")
+            manifest.save(run_dir)
+            load_run(self.conn, run_dir)
+
+            (run_dir / "run-manifest.json").write_text(stale, encoding="utf-8")
+            with self.assertRaises(StorageError):
+                load_run(self.conn, run_dir)
+            with self.conn.cursor() as cur:
+                cur.execute("select manifest from knowledge.runs where run_id=%s", (run_dir.name,))
+                stored = cur.fetchone()[0]["artifacts"][first.artifact_id]
+            self.assertEqual(stored["attempts"], 2)
+            self.assertEqual(stored["status"], "failed")
+
     def test_concurrent_publication_keeps_one_complete_run(self):
         with tempfile.TemporaryDirectory() as folder:
             base = Path(folder)
