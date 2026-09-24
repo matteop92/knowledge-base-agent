@@ -1,6 +1,6 @@
 # Data and provenance
 
-The original Markdown vault remains authoritative. Local JSON artifacts under ignored `.local/ingestion-runs/<run_id>/` are validated before loading into the versioned private `knowledge` Postgres schema. The migration has been exercised on disposable local pgvector Postgres; no hosted project has been migrated.
+The original Markdown vault remains authoritative. Local JSON artifacts under ignored `.local/ingestion-runs/<run_id>/` are validated before loading into the versioned private `knowledge` Postgres schema. The migration has been exercised on disposable local pgvector Postgres and applied to the hosted Knowledge Agent project; hosted runtime access and search remain unverified.
 
 | Object | What it represents | Key link |
 | --- | --- | --- |
