@@ -13,6 +13,7 @@ from app.ingestion.contracts import (
     DocumentBlock,
     ExcludedSpan,
     ParsedDocument,
+    ParseDiagnostic,
     SourceMetadata,
     SourceSpan,
 )
@@ -22,6 +23,14 @@ from app.ingestion.source_reader import CapturedSource
 SPEAKER_MARKER = re.compile(r"^\*\*(?P<speaker>[^*:\r\n]{1,120}):\*\*[ \t]*", re.MULTILINE)
 KNOWN_SPEAKER_WITH_MISSING_BOLD = re.compile(
     r"^(?P<speaker>[^*:\r\n]{1,120}):\*\*[ \t]*", re.MULTILINE
+)
+BRACKET_MARKER = re.compile(
+    r"^\\\[(?P<speaker>[^\\\]\r\n]{1,120})\\\][ \t]*(?:\r?\n)?",
+    re.MULTILINE,
+)
+BRACKET_LIKE = re.compile(
+    r"^\\?\[[^\r\n]{1,120}\\?\][ \t]*(?:\r?\n)?",
+    re.MULTILINE,
 )
 
 
@@ -71,7 +80,12 @@ def _optional_date(value: Any, field: str) -> date | None:
         try:
             return date.fromisoformat(value)
         except ValueError as exc:
-            raise TranscriptParseError(f"frontmatter {field} must be an ISO date") from exc
+            try:
+                return datetime.fromisoformat(value).date()
+            except ValueError:
+                raise TranscriptParseError(
+                    f"frontmatter {field} must be an ISO date"
+                ) from exc
     raise TranscriptParseError(f"frontmatter {field} must be an ISO date")
 
 
@@ -194,7 +208,85 @@ def parse_transcript(capture: CapturedSource) -> ParsedDocument:
         locator=capture.manifest.locator,
         metadata=metadata,
         source_text=source_text,
+        diagnostics=[
+            ParseDiagnostic(
+                code="unclassified_transcript_text",
+                message="Text was not attributed to a speaker",
+                span=item.span,
+            )
+            for item in excluded if item.reason == "unclassified"
+        ],
         blocks=blocks,
         excluded_spans=excluded,
     )
     return result
+
+
+def parse_bracket_transcript(capture: CapturedSource) -> ParsedDocument:
+    """Keep the bracket transcript's introduction outside attributed turns."""
+    from app.ingestion.markdown_parser import (
+        _excluded,
+        read_metadata,
+        scan_region,
+        unresolved_assets,
+    )
+
+    text = capture.source_text
+    metadata, body_start = read_metadata(capture)
+    markers = list(BRACKET_MARKER.finditer(text, body_start))
+    if not markers:
+        raise TranscriptParseError("no supported escaped bracket speaker turns found")
+    blocks, excluded, headings = scan_region(text, body_start, markers[0].start())
+    diagnostics: list[ParseDiagnostic] = []
+    if body_start:
+        excluded.insert(0, _excluded(text, 0, body_start, "frontmatter"))
+    for marker_index, marker in enumerate(markers):
+        next_marker = markers[marker_index + 1].start() if marker_index + 1 < len(markers) else len(text)
+        malformed = next(
+            (
+                candidate for candidate in BRACKET_LIKE.finditer(
+                    text, marker.end(), next_marker
+                )
+                if not BRACKET_MARKER.fullmatch(candidate.group(0))
+            ),
+            None,
+        )
+        end = malformed.start() if malformed else next_marker
+        if not text[marker.end():end].strip():
+            raise TranscriptParseError(f"speaker turn {marker_index} has no content")
+        blocks.append(
+            DocumentBlock(
+                index=len(blocks),
+                kind="speaker_turn",
+                speaker=marker.group("speaker").strip(),
+                span=_line_span(text, marker.start(), end),
+                content_span=_line_span(text, marker.end(), end),
+                raw_text=text[marker.start():end],
+                heading_path=[label for _, label in headings] or None,
+            )
+        )
+        if malformed:
+            item = _excluded(text, malformed.start(), next_marker, "unclassified")
+            excluded.append(item)
+            diagnostics.append(
+                ParseDiagnostic(
+                    code="malformed_speaker_label",
+                    message="Speaker-like label could not be classified",
+                    span=item.span,
+                )
+            )
+    return ParsedDocument(
+        parser_version="markdown-bracket-speakers-v1",
+        document_id=capture.manifest.document_id,
+        run_id=capture.manifest.run_id,
+        source_sha256=capture.manifest.source_sha256,
+        locator=capture.manifest.locator,
+        metadata=metadata,
+        source_text=text,
+        source_kind="transcript",
+        route_reason="escaped bracket speaker labels",
+        diagnostics=diagnostics,
+        unresolved_assets=unresolved_assets(text),
+        blocks=blocks,
+        excluded_spans=excluded,
+    )

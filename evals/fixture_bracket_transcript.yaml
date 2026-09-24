@@ -1,0 +1,10 @@
+document_id: ea5316dd-cdcd-50b6-ae05-93f4c7819419
+source_sha256: de88bf9b7f47cd35c0efb33f651da321eee2676e56c167631cf5d910ae682aaf
+questions:
+- id: fixture_evidence
+  question: Why did the timing matter?
+  expected: supported
+  must_find:
+  - start_char: 242
+    end_char: 269
+    quote: Because the timing changed.

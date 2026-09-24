@@ -1,11 +1,7 @@
-# Initial transcript eval labels
+# Source-span eval labels
 
-The first episode's document ID uses the canonical `Knowledge` root, alias `primary`, and a `Transcripts/<filename>.md` locator.
+`questions_*.yaml` contains 37 questions for six real vault files: the Tim Ferriss and Luca Ferrari transcripts, the movie-logic article, Derek Sivers highlights, and two short notes. The long book is deferred. Supported questions point to enough exact source text to answer them, using multiple required passages when the answer has several parts. Each of the newer five files also has one question the file cannot answer. The labels bind to a document ID and source hash, so changed source text must be reviewed and relabeled. Preview with `--eval-file evals/questions_transcript_tim_ferriss.yaml` validates and maps its source spans to both raw chunk variants. Overlapping chunks can contain the same span, but it remains one labeled source span.
 
-`transcript_questions.yaml` contains eleven manually selected questions for the first podcast transcript. Positive questions point to exact source spans in speaker turns; the negative question is marked unsupported **by this episode**. The episode does mention cold email for pitching conference organizers, but it does not give a quantified first-20-customer outreach case. These labels are tied to both `document_id` and `source_sha256` and can be checked during preview with `--eval-file evals/transcript_questions.yaml`.
+`fixture_*.yaml` adds one manually checked source span each for bracket transcripts, highlights, books, articles, and notes. The labels refer to the short synthetic Markdown in `sources/fixtures/`, copied to the corresponding source category and named `sample_*.md`. They test mapping and category coverage without committing vault passages.
 
-The broad conversion question is a multi-section synthesis case: its required spans cover distinct recommendations in different parts of the episode. The two focused questions isolate readiness friction and message testing. `must_find` marks required retrieval evidence; `useful` marks supporting evidence. The broad question also carries an answer rubric for later use. The current preview validates exact spans but does not score that rubric or run retrieval.
-
-There are no chunk IDs yet. Later chunking experiments should map each source span onto their own chunk sets and compare retrieval on the same source revision. If the transcript changes, review and relabel these questions; a matching document ID alone is insufficient.
-
-These are seed questions, not the full 30–50-question retrieval and answer eval described in `FOUNDATION.md`. Recall@20 and final-answer checks begin when retrieval and the agent exist.
+These checks report source coverage and label containment. Recall@5/10/20, ranking, and answer quality must wait for a searchable index and agent. The Tim Ferriss set is a seed for the later 30–50-question gold set, not a retrieval score. If a source changes, review and relabel its spans before comparing variants.
