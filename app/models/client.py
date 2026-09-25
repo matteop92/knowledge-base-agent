@@ -45,4 +45,5 @@ class ModelClient(Protocol):
 
     def embed(
         self, *, model: ModelSpec, texts: list[str], dimensions: int | None = None,
+        input_type: str | None = None,
     ) -> EmbeddingResult: ...

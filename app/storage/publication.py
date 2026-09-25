@@ -28,14 +28,14 @@ def create_profile(conn: psycopg.Connection, profile: SearchProfile) -> None:
 
 def _validate(cur: psycopg.Cursor, selection: PublicationSelection) -> str:
     cur.execute("""select p.variant,p.chunking_version,p.spec_id,p.required_artifact_kinds,
-        s.input_recipe_version,s.context_prompt_version,r.document_id
+        s.input_recipe_version,s.context_prompt_version,s.payload->'context_model',r.document_id
         from knowledge.profiles p join knowledge.embedding_specs s on s.spec_id=p.spec_id
         join knowledge.runs r on r.run_id=%s where p.profile_id=%s""",
         (selection.run_id, selection.profile_id))
     row = cur.fetchone()
     if row is None:
         raise StorageError("run or profile is unavailable")
-    variant, version, sid, required_kinds, recipe, context_version, document_id = row
+    variant, version, sid, required_kinds, recipe, context_version, context_model, document_id = row
     cur.execute("""select count(*) from knowledge.chunks where run_id=%s and variant=%s and chunking_version=%s""",
                 (selection.run_id, variant, version))
     count = cur.fetchone()[0]
@@ -53,8 +53,11 @@ def _validate(cur: psycopg.Cursor, selection: PublicationSelection) -> str:
             join knowledge.contexts x on x.run_id=c.run_id and x.chunk_id=c.chunk_id
             join knowledge.artifacts a on a.run_id=x.run_id and a.artifact_id=x.artifact_id
             where c.run_id=%s and c.variant=%s and c.chunking_version=%s
-              and a.status='ready' and x.payload->>'prompt_version'=%s""",
-            (selection.run_id, variant, version, context_version))
+              and a.status='ready' and x.payload->>'prompt_version'=%s
+              and (%s::jsonb is null or x.payload->'model'=%s::jsonb)""",
+            (selection.run_id, variant, version, context_version,
+             Jsonb(context_model) if context_model is not None else None,
+             Jsonb(context_model) if context_model is not None else None))
         if cur.fetchone()[0] != count:
             raise StorageError("contextualized profile needs matching ready contexts")
     if required_kinds and not selection.required_artifact_ids:
@@ -94,6 +97,6 @@ def select_profile(conn: psycopg.Connection, profile_id: str) -> None:
             cur.execute("select document_id from knowledge.active_runs where profile_id=%s", (current,))
             documents = {row[0] for row in cur.fetchall()}
             cur.execute("select document_id from knowledge.active_runs where profile_id=%s", (profile_id,))
-            if {row[0] for row in cur.fetchall()} != documents:
+            if not documents.issubset({row[0] for row in cur.fetchall()}):
                 raise StorageError("new profile lacks a complete active corpus")
         cur.execute("update knowledge.corpus_state set profile_id=%s where singleton=true", (profile_id,))

@@ -33,18 +33,29 @@ class SummaryProgress(StrictRecord):
     document_summary: Summary | None = None
 
 
+def _validate_evidence_method_grounding(summary: str, source_input: str) -> None:
+    """Reject evidence-method claims absent from the generation input."""
+    output = summary.casefold()
+    source = source_input.casefold()
+    for phrase in ("randomized", "randomised", "controlled trial", "independently verified", "audited"):
+        if phrase in output and phrase not in source:
+            raise ValueError("summary adds an unsupported evidence-method claim")
+
+
 def _generate(
     document: ParsedDocument, chunks: list[Chunk], level: str, input_text: str,
     children: list[str], client: ModelClient, model: ModelSpec,
     manifest: RunManifest, run_dir: Path,
+    prompt_family: str = "v1",
 ) -> tuple[Summary, str]:
-    prompt_version = "section_summary_v1" if level == "section" else "document_summary_v1"
+    prompt_version = ("section_summary_v1" if level == "section" else "document_summary_v1") if prompt_family == "v1" else f"{level}_summary_{prompt_family}"
     prompt = (PROMPT_ROOT / f"{prompt_version}.md").read_text(encoding="utf-8")
     version = {
         "level": level, "chunk_ids": [chunk.chunk_id for chunk in chunks],
         "child_artifact_ids": children, "prompt_version": prompt_version,
         "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
-        "input_recipe_version": "hierarchical-summary-v1",
+        "input_recipe_version": f"hierarchical-summary-{prompt_family}",
+        "output_contract_version": "summary-string-v3" if prompt_family in ("v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15") else "summary-string-v1",
     }
     record = manifest.begin("summary", version, model)
     if record.status == "ready" and record.path and (run_dir / record.path).is_file():
@@ -57,21 +68,26 @@ def _generate(
             or existing.model != model
         ):
             raise ValueError("stored summary provenance is invalid")
+        _validate_evidence_method_grounding(existing.summary, input_text)
         return existing, record.artifact_id
     manifest.save(run_dir)
     try:
-        if len(input_text) > 14000:
+        input_limit = {"v1": 14000, "v2": 24000, "v3": 60000, "v4": 60000, "v5": 60000, "v6": 60000, "v7": 60000, "v8": 60000, "v9": 60000, "v10": 60000, "v11": 60000, "v12": 60000, "v13": 60000, "v14": 60000, "v15": 60000}[prompt_family]
+        if len(input_text) > input_limit:
             raise ValueError("summary input exceeds its character budget")
         result = client.generate_json(
             model=model, system_prompt=prompt, input_text=input_text,
             schema_name="summary", json_schema={
                 "type": "object", "properties": {"summary": {"type": "string"}},
                 "required": ["summary"], "additionalProperties": False,
-            }, max_output_tokens=400,
+            }, max_output_tokens=(1200 if prompt_family == "v6" else
+                                  900 if prompt_family in ("v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15") else
+                                  700 if prompt_family in ("v2", "v3", "v4", "v5") else 400),
         )
         body = result.data.get("summary")
         if not isinstance(body, str) or not body.strip():
             raise ValueError("model returned an empty summary")
+        _validate_evidence_method_grounding(body, input_text)
         artifact = Summary(
             document_id=document.document_id, run_id=document.run_id,
             source_sha256=document.source_sha256, level=level,
@@ -93,7 +109,7 @@ def _generate(
 def summarize_document(
     document: ParsedDocument, chunks: ChunkSet, client: ModelClient,
     model: ModelSpec, manifest: RunManifest, run_dir: Path,
-    *, max_sections: int | None = None,
+    *, max_sections: int | None = None, prompt_family: str = "v1",
 ) -> SummaryProgress:
     """Summarize up to max_sections missing chunks, then assemble when complete."""
     chunks.validate_against(document)
@@ -104,21 +120,29 @@ def summarize_document(
     manifest.require_client_selection(client)
     if max_sections is not None and max_sections < 0:
         raise ValueError("max_sections cannot be negative")
+    if prompt_family not in ("v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15"):
+        raise ValueError("unsupported summary prompt family")
+    section_family = "v8" if prompt_family in ("v9", "v10", "v11", "v12", "v13") else "v14" if prompt_family == "v15" else prompt_family
+    source_header = f"Title: {document.metadata.title}"
+    if prompt_family in ("v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15"):
+        source_header += f"\nSource kind: {document.source_kind}"
+        if document.metadata.authors:
+            source_header += f"\nSource author metadata: {', '.join(document.metadata.authors)}"
     if len(chunks.chunks) == 1:
         if max_sections == 0:
             return SummaryProgress(completed_sections=0, total_sections=1)
         chunk = chunks.chunks[0]
         summary, _ = _generate(
             document, [chunk], "document",
-            f"Title: {document.metadata.title}\n\n{chunk.raw_text}",
-            [], client, model, manifest, run_dir,
+            f"{source_header}\n\n{chunk.raw_text}",
+            [], client, model, manifest, run_dir, prompt_family,
         )
         return SummaryProgress(
             completed_sections=1, total_sections=1, document_summary=summary,
         )
     sections: list[tuple[Summary, str]] = []
     new_count = 0
-    section_prompt = (PROMPT_ROOT / "section_summary_v1.md").read_text(encoding="utf-8")
+    section_prompt = (PROMPT_ROOT / f"section_summary_{section_family}.md").read_text(encoding="utf-8")
     section_prompt_hash = hashlib.sha256(section_prompt.encode()).hexdigest()
     for chunk in chunks.chunks:
         prior_ready = any(
@@ -135,15 +159,29 @@ def summarize_document(
         if len(chunk.raw_text) > 13500:
             raise ValueError("structural chunk exceeds summary input budget")
         section_input = (
-            f"Title: {document.metadata.title}\n"
+            f"{source_header}\n"
             f"Heading: {' > '.join(chunk.heading_path or [])}\n"
             f"Source chunk: {chunk.chunk_id}\n\n{chunk.raw_text}"
         )
-        sections.append(_generate(document, [chunk], "section", section_input, [], client, model, manifest, run_dir))
+        sections.append(_generate(document, [chunk], "section", section_input, [], client, model, manifest, run_dir, section_family))
         if not prior_ready:
             new_count += 1
     if len(sections) != len(chunks.chunks):
         return SummaryProgress(completed_sections=len(sections), total_sections=len(chunks.chunks))
+    if prompt_family in ("v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15"):
+        section_input = (source_header + "\n\n" if prompt_family in ("v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15") else "") + "\n\n".join(
+            f"Section {index + 1}: {summary.summary}"
+            for index, (summary, _) in enumerate(sections)
+        )
+        final, _ = _generate(
+            document, chunks.chunks, "document", section_input,
+            [artifact_id for _, artifact_id in sections],
+            client, model, manifest, run_dir, prompt_family,
+        )
+        return SummaryProgress(
+            completed_sections=len(sections), total_sections=len(sections),
+            document_summary=final,
+        )
     groups = sections
     while len(groups) > 1:
         next_groups: list[tuple[Summary, str]] = []
@@ -157,7 +195,7 @@ def summarize_document(
             )
             next_groups.append(_generate(
                 document, batch_chunks, "group", group_input,
-                [artifact_id for _, artifact_id in batch], client, model, manifest, run_dir,
+                [artifact_id for _, artifact_id in batch], client, model, manifest, run_dir, prompt_family,
             ))
         if len(next_groups) == len(groups):
             break
@@ -165,7 +203,7 @@ def summarize_document(
     final_input = groups[0][0].summary
     final, _ = _generate(
         document, chunks.chunks, "document", final_input,
-        [artifact_id for _, artifact_id in groups], client, model, manifest, run_dir,
+        [artifact_id for _, artifact_id in groups], client, model, manifest, run_dir, prompt_family,
     )
     return SummaryProgress(
         completed_sections=len(sections), total_sections=len(sections),

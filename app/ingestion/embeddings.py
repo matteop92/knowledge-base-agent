@@ -24,6 +24,13 @@ class EmbeddingSpec(StrictRecord):
     distance_metric: Literal["cosine", "dot", "euclidean"]
     input_recipe_version: Literal["raw-v1", "contextualized-v1"]
     context_prompt_version: str | None = None
+    context_model: ModelSpec | None = Field(default=None, exclude_if=lambda value: value is None)
+    document_input_type: Literal["search_document"] | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
+    query_input_type: Literal["search_query"] | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
     chunking_version: str = Field(min_length=1)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -78,6 +85,7 @@ def embed_chunks(
             or contexts[chunk.chunk_id].chunk_id != chunk.chunk_id
             or contexts[chunk.chunk_id].source_spans != chunk.source_spans
             or contexts[chunk.chunk_id].prompt_version != spec.context_prompt_version
+            or (spec.context_model is not None and contexts[chunk.chunk_id].model != spec.context_model)
             or (contexts[chunk.chunk_id].document_id, contexts[chunk.chunk_id].run_id,
                 contexts[chunk.chunk_id].source_sha256) != (
                     document.document_id, document.run_id, document.source_sha256
@@ -85,7 +93,7 @@ def embed_chunks(
             for chunk in chunks.chunks
         ):
             raise ValueError("context is missing or from a different source version")
-    elif spec.context_prompt_version is not None or contexts is not None:
+    elif spec.context_prompt_version is not None or spec.context_model is not None or contexts is not None:
         raise ValueError("raw embeddings cannot use contexts or a context prompt")
     model = spec.model_spec()
     completed = 0
@@ -136,7 +144,8 @@ def embed_chunks(
                  if contexts else chunk.raw_text)
                 for chunk in batch
             ]
-            result = client.embed(model=model, texts=texts, dimensions=spec.dimensions)
+            kwargs = {"input_type": spec.document_input_type} if spec.document_input_type else {}
+            result = client.embed(model=model, texts=texts, dimensions=spec.dimensions, **kwargs)
             if len(result.vectors) != len(batch):
                 raise ValueError("embedding response count mismatch")
             if any(
