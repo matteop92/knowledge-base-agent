@@ -14,29 +14,11 @@ The [Stage 4 plan](../docs/plans/2026-09-24-001-feat-live-enrichment-ingestion-p
 | --- | --- | --- |
 | `python -m evals.compare_chunking` | Test 1: fixed/raw, structural/raw, and a selected context model, with retrieval metrics. | `.local/chunking-trial/` and `.local/stage4-context/` |
 | `python -m evals.summarize_context_trials` | Combine saved Test 1 profile reports; no model calls. | `.local/stage4-context/` |
-| `python -m evals.compare_generation` | Test 2 cards and Test 3 summaries; `--cards-only` or `--summaries-only`, sample or full corpus. | `.local/stage4-cards-v5-full/report.json`, `.local/stage4-cards-v5-full/quality-review.json`, `.local/stage4-summaries-v14-expanded/report.json`, `.local/stage4-summaries-v14-expanded/quality-review.json` |
+| `python -m evals.compare_generation` | Test 2 cards and Test 3 summaries; `--cards-only` or `--summaries-only`, sample or full corpus. | `.local/stage4-cards-v5-full/`, `.local/stage4-next-cards/`, `.local/stage4-deepseek-no-reasoning-cards/`, `.local/stage4-next-summaries/`, `.local/stage4-deepseek-summary-final2/` |
 | `python -m app.ingestion.live_run` | Test 4: bounded complete ingestion, interruption/resume, local private load, publication, and search proof. | `.local/stage4-complete/` (no completed live proof yet) |
 
-For the next **card screen**, use the same default 18-chunk sample and final `v5` prompt for each candidate. The example shows GLM; substitute one of `qwen/qwen3.5-35b-a3b`, `google/gemini-3.1-flash-lite`, or `deepseek/deepseek-v4.1-flash` and give each a distinct output path. The shared runtime directory allows the captures to be reused with `--resume`.
+The completed Test 2 screen selected GPT-5 mini for `evidence_cards_v5`; no cheaper candidate reached the first-response gate. Test 3 has no qualifying summary model: GPT-5 mini and DeepSeek met content coverage but failed source-grounding review, while Gemini and GLM failed structured response or route gates. The [Stage 4 plan](../docs/plans/2026-09-24-001-feat-live-enrichment-ingestion-plan.md) records aggregate quality, latency, reliability, cost, and the cumulative spend. Private quality reviews under `.local/` include the source-grounding findings. The CLI validates schema and provenance but cannot decide factual quality on its own.
 
-```powershell
-$sourceRoot = '<value of KNOWLEDGE_SOURCE_ROOT in .env>'
-python -m evals.compare_generation --source-root $sourceRoot --runtime-dir .local/stage4-next-cards/runs --output .local/stage4-next-cards/glm-report.json --models z-ai/glm-5.3-flash --cards-only --card-prompt-version evidence_cards_v5 --max-usd 3.50
-```
+Further summary work needs an agreed prompt or method revision and a new checked trial. Before any new live call, confirm payload/destination authorization, recheck the pinned ZDR route, structured-output support and price ceiling, and preflight the entire remaining trial against the $3.50 cumulative estimated-spend ceiling. The completed reports total $1.180231, leaving $2.319769. Use a distinct ignored runtime and report path for any new configuration so earlier first-response failures remain inspectable.
 
-For the next **summary screen**, `v15` uses each model's own `v14` section summaries. This example runs the three new models on the same three-document sample. First evaluate GPT-5 mini `v15` using its existing `v14` run directory and `--resume`; use `--all-summaries` for its six-document check.
-
-```powershell
-python -m evals.compare_generation --source-root $sourceRoot --runtime-dir .local/stage4-next-summaries/runs --output .local/stage4-next-summaries/report.json --models google/gemini-3.1-flash-lite deepseek/deepseek-v4.1-flash z-ai/glm-5.3-flash --summaries-only --summary-prompt-family v15 --max-usd 3.50
-python -m evals.compare_generation --source-root $sourceRoot --runtime-dir .local/stage4-summaries-v14-expanded/runs --output .local/stage4-summaries-v15-gpt5/report.json --models openai/gpt-5-mini --summaries-only --all-summaries --summary-prompt-family v15 --resume --max-usd 3.50
-```
-
-The commands above are **dry runs**. Before any live call, confirm the plan's payload/destination authorization, recheck pinned ZDR routes and current prices, and total the new estimates with spend already incurred under the plan's $3.50 ceiling. Then add `--live --resume` and use a `--max-usd` no greater than the remaining approved budget. The code verifies the pinned endpoint's privacy, structured-output support, and price ceiling before generation. For a full card comparison add `--all-cards`; for a full summary comparison add `--all-summaries`. Use a separate output path for each run so reports are not overwritten. Review the manual useful-fact and summary checklists in the ignored quality-review files; the CLI reports schema, spans, counts, usage, and latency but does not decide factual quality on its own.
-
-After selecting models for cards and summaries, preflight Test 4 with the command below, replacing the model IDs with the winners. This tested dry-run form counts **6 files, 83 chunks, and an upper bound of 266 requests** with the reference models. It generates contexts as artifacts but embeds structural/raw chunk text; do not add `--contextual-embeddings` unless Test 1 is reopened and a contextual profile qualifies.
-
-```powershell
-python -m app.ingestion.live_run --source-root $sourceRoot --context-model openai/gpt-4.1-mini --cards-model openai/gpt-5-mini --summary-model openai/gpt-5-mini --card-prompt-version evidence_cards_v5 --summary-prompt-family v15 --max-usd 3.50
-```
-
-The complete live run also needs local `KNOWLEDGE_DATABASE_URL`. Use `--request-limit` with `--live` for the bounded interruption and repeat the same command with `--resume` to reuse ready artifacts. Recalculate the cap after model selection and before live calls. Publish and search only after the selected quality gates pass. The ignored `.local/` files and external vault are **not in GitHub**; another chat on this same workspace can inspect them, while a fresh checkout needs the vault and reports copied through a private channel.
+Test 4 must wait for a qualifying summary selection and the user's approval. It will need local `KNOWLEDGE_DATABASE_URL`, a fresh cost preflight, bounded `--request-limit` interruption, `--resume` proof without duplicate model calls, and private load, publication, search, and source-span resolution. Keep structural/raw embeddings; Test 1 did not qualify a contextual profile. The ignored `.local/` files and external vault are **not in GitHub**; another chat on this same workspace can inspect them, while a fresh checkout needs the vault and reports copied through a private channel.

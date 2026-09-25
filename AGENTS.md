@@ -1,6 +1,6 @@
 # Project guide
 
-**Status:** The repository captures, parses, and chunks mixed Markdown from an external vault, with source-linked eval labels and local previews. Private storage and independent search work locally, the schema is migrated to hosted Supabase, and live trials selected structural/raw embeddings and validated one card generator; the least-cost card comparison, summary acceptance, a complete six-file load, hosted runtime access, fused retrieval, and the answer agent remain unfinished.
+**Status:** The repository captures, parses, and chunks mixed Markdown from an external vault, with source-linked eval labels and local previews. Private storage and independent search work locally, the schema is migrated to hosted Supabase, and live trials selected structural/raw embeddings and GPT-5 mini evidence cards; a qualifying summary model, complete six-file load, hosted runtime access, fused retrieval, and the answer agent remain unfinished.
 
 Read [SYSTEM.md](SYSTEM.md) for the one-page map. [FOUNDATION.md#current-progress](FOUNDATION.md#current-progress) is the single progress tracker; [INGESTION.md](INGESTION.md), [RETRIEVAL.md](RETRIEVAL.md), and [DATA.md](DATA.md) explain individual parts. Update current facts in place rather than adding a history section.
 

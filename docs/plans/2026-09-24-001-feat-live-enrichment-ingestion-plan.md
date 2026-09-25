@@ -1,17 +1,40 @@
 # Stage 4: live enrichment and ingestion readiness
 
-**Status:** Test 1 is complete. Tests 2 and 3 have GPT-5 mini reference results but need the agreed cheaper-model screens and final-prompt comparisons. Test 4 is implemented but its live interruption/resume and local load/search proof remain pending. Vault text, model outputs, and detailed trial reports remain in ignored `.local/`.
+**Status:** Tests 1 and 2 are complete for the checked corpus: structural/raw embeddings and GPT-5 mini `evidence_cards_v5` are selected. Test 3 screened the agreed models, but none passed every summary gate. Test 4 is awaiting a qualifying summary model and the user's approval; its live interruption/resume and local load/search proof have not run. Vault text, model outputs, and detailed trial reports remain in ignored `.local/`.
 
 ## Results so far
 
 | Test | What was run | Result and current decision |
 | --- | --- | --- |
 | 1. Chunk context and retrieval | Five comparable model profiles on the same 83 structural chunks, six files, 31 questions, and 51 required spans; two more pinned routes returned 429. | Structural/raw covered **41/44/47** spans at K=5/10/20 and stays selected. GPT-5 mini context covered 42/45/47, but a reviewed context misattributed a Derek Sivers highlight; no contextual profile passed the full gate. No further context-model screen is planned. |
-| 2. Evidence cards | GPT-5 mini `evidence_cards_v5` on all 83 chunks; Qwen3.5 35B-A3B on 18 chunks with the earlier `v3` prompt. | GPT-5 mini returned **83/83** ready artifacts on the first attempt and 496 cards with valid source spans. It covered **17/18** useful-fact checks; a stratified 40-card review found no unsupported claim or attribution error. Qwen returned **18/18** in its earlier screen, but has no comparable `v5` result. The least-cost qualifying choice remains open. |
-| 3. Section and document summaries | GPT-5 mini summary family `v14` across six files. | **87/87** artifacts were ready on the first attempt. Conservative review found **39/45** document-content points, short of the 90% gate; six document summaries had no observed unsupported claim or attribution error. `document_summary_v15` is prepared but untested live. |
+| 2. Evidence cards | GPT-5 mini `v5` full corpus and all four agreed cheaper-model `v5` screens. | GPT-5 mini returned **83/83** first-response artifacts and 496 cards with valid source spans; coverage was **17/18**, and a stratified 40-card review found no unsupported claim or attribution error. Qwen and Gemini each returned 17/18; DeepSeek's best configuration returned 15/18; GLM's pinned route returned 429 on all 18. None qualified for expansion. **GPT-5 mini is the least-cost qualifying card model among the screened candidates.** |
+| 3. Section and document summaries | GPT-5 mini `v15` using saved `v14` sections; Gemini, DeepSeek, and GLM three-document screens; qualifying DeepSeek configuration expanded to all six files. | GPT-5 mini met **43/45** content points with 6/6 fresh `v15` documents, and DeepSeek met **44/45** with 87/87 first-response artifacts. Source review found a factual/attribution error in each model's long transcript synthesis, so neither passes the no-invented-fact gate. Gemini returned only 1/3 screen documents and GLM's pinned route returned 429. **No summary model qualifies.** |
 | 4. Complete local ingestion | Implementation and local tests only. | The bounded live interruption/resume, six-file load, publication, search, and source-span resolution proof remains open. |
 
 The table is the durable aggregate recap. Source text, generated artifacts, per-question changes, manual review notes, and request-level costs stay in ignored `.local/`; do not copy private vault content into this plan.
+
+### Test 2 comparable `evidence_cards_v5` results
+
+| Model and pinned route | First-response cards | Exact source spans among accepted cards | Useful-fact / factuality review | Request latency p50/p95 | Measured cost | Decision |
+| --- | --- | --- | --- | --- | --- | --- |
+| GPT-5 mini · `azure` | **83/83**, 496 cards | 100% valid | **17/18** checks; 0 issues in 40-card review | 4.10/6.83 s | $0.094640 full corpus | Selected. |
+| Qwen3.5 35B-A3B · `deepinfra/fp8` | 17/18, 91 cards | 100% for accepted cards | Full checklist/factuality review stopped after first-response failure. | 3.40/6.30 s | $0.012445 screen | Failed 18/18 reliability gate. |
+| Gemini 3.1 Flash Lite · `google-vertex/global/flex` | 17/18, 66 cards | 100% for accepted cards | Full checklist/factuality review stopped after first-response failure. | 17.75/19.39 s | $0.008948 screen | Failed 18/18 reliability gate. |
+| DeepSeek V4.1 Flash · `deepinfra/fp8` | 0/18 initially; 15/18 with reasoning disabled | 100% for accepted revised-run cards | Full checklist/factuality review stopped after first-response failure. | 9.20/18.27 s revised run | $0.012961 initial + $0.008484 revised | Failed 18/18 reliability gate; initial requests exhausted completion length. |
+| GLM-5.3-Flash · `deepinfra/fp4` | 0/18 | No accepted cards | No output to review. | 7.15/8.07 s | $0 | Pinned route returned 429; no provider substitution. |
+
+The unchanged 18-chunk sample and `v5` prompt were used in every card screen. Invalid responses were not repaired or counted as first-response success. The private reports record failure IDs and the DeepSeek configuration change.
+
+### Test 3 summary results
+
+| Model and pinned route | Structured reliability | Content checklist | Factuality/attribution review | Request latency p50/p95 | Measured cost | Decision |
+| --- | --- | --- | --- | --- | --- | --- |
+| GPT-5 mini · `azure` | 6/6 fresh `v15` documents; saved 81 `v14` sections reused | 21/22 screen; **43/45** full | One unsupported video detail conflates two distinct child examples. | 6.39/12.12 s for fresh `v15` calls | $0.061061 `v14` + $0.012584 `v15` | Fails no-invented-fact gate. |
+| Gemini 3.1 Flash Lite · `google-vertex/global/flex` | 1/3 screen documents | Not scorable | No complete screen to review. | 17.34/19.38 s | $0.000210 | Failed structured-response gate. |
+| DeepSeek V4.1 Flash · `deepinfra/fp8` | **87/87** with final bounded configuration | 21/22 screen; **44/45** full | One conflation of the same distinct child examples. | 3.70/6.42 s final full run | $0.025899 final full run | Fails no-invented-fact gate. |
+| GLM-5.3-Flash · `deepinfra/fp4` | 0/3 screen documents | Not scorable | No output to review. | 7.77/7.90 s | $0 | Pinned route returned 429; no provider substitution. |
+
+DeepSeek's first default and intermediate configurations hit completion-length limits. Their separate private reports and measured costs remain in the cumulative ledger; the final configuration disabled reasoning and allowed up to eight times the visible summary-token bound. This was a technical configuration change, not a prompt or provider change. The source-grounding failures were found by checking both complete document outputs against the captured revision after checklist scoring; content coverage alone did not qualify either model. Across all recorded Stage 4 reports, cumulative estimated spend is **$1.180231**, leaving **$2.319769** under the $3.50 ceiling. Test 4 was not run.
 
 ### Test 1 model results
 

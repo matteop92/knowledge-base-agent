@@ -88,8 +88,10 @@ def estimate(cards: list[tuple[Prepared, object]], summaries: list[Prepared],
         summary_output_bound = (1200 if summary_prompt_family == "v6" else
                                 900 if summary_prompt_family in ("v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15") else
                                 700 if summary_prompt_family in ("v2", "v3", "v4", "v5") else 400)
+        summary_multiplier = 8 if model == "deepseek/deepseek-v4.1-flash" else 4
         cost = ((cards_input_bound + summary_input_bound) * input_price
-                + (len(cards) * 700 + summary_calls_bound * summary_output_bound) * 4 * output_price) / 1_000_000
+                + (len(cards) * 700 * 4
+                   + summary_calls_bound * summary_output_bound * summary_multiplier) * output_price) / 1_000_000
         per_model[model] = round(cost, 6)
     return {"card_chunks": len(cards), "summary_documents": len(summaries),
             "summary_section_count": section_count,
