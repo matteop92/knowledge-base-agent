@@ -325,28 +325,40 @@ class EvidenceCard(StrictRecord):
             self.evidence_span.start_char:self.evidence_span.end_char
         ] != self.evidence_text:
             raise ValueError("card evidence is not exact source text")
-        if not any(
+        within_one_span = any(
             span.start_char <= self.evidence_span.start_char
             and self.evidence_span.end_char <= span.end_char
             for span in chunk.source_spans
-        ):
-            raise ValueError("card evidence span is outside its raw chunk")
-        supporting = next(
-            (
-                block for block in document.blocks
-                if block.index in chunk.block_indices
-                and (block.content_span or block.span).start_char <= self.evidence_span.start_char
-                and self.evidence_span.end_char <= (block.content_span or block.span).end_char
-            ),
-            None,
         )
-        if supporting is None or supporting.content_role != self.content_role:
-            raise ValueError("card content role does not match its source block")
-        expected_attribution = (
-            "personal_note" if supporting.content_role == "personal_note"
-            else supporting.speaker or (
+        supporting = [
+            block for block in document.blocks
+            if (block.content_span or block.span).start_char < self.evidence_span.end_char
+            and self.evidence_span.start_char < (block.content_span or block.span).end_char
+        ]
+        if not supporting or any(block.index not in chunk.block_indices
+                                 or block.content_role != self.content_role
+                                 for block in supporting):
+            raise ValueError("card content role does not match its source blocks")
+        if not within_one_span:
+            indices = [block.index for block in supporting]
+            start_inside = any(span.start_char <= self.evidence_span.start_char < span.end_char
+                               for span in chunk.source_spans)
+            end_inside = any(span.start_char < self.evidence_span.end_char <= span.end_char
+                             for span in chunk.source_spans)
+            if (len(supporting) < 2 or not start_inside or not end_inside
+                    or any(right != left + 1 for left, right in zip(indices, indices[1:]))):
+                raise ValueError("card evidence span is outside its raw chunk")
+        first_span = supporting[0].content_span or supporting[0].span
+        last_span = supporting[-1].content_span or supporting[-1].span
+        if (self.evidence_span.start_char < first_span.start_char
+                or last_span.end_char < self.evidence_span.end_char):
+            raise ValueError("card evidence is outside its source blocks")
+        attributions = {
+            "personal_note" if block.content_role == "personal_note"
+            else block.speaker or (
                 document.metadata.authors[0] if len(document.metadata.authors) == 1 else None
             )
-        )
-        if self.attribution != expected_attribution:
-            raise ValueError("card attribution does not match its source block")
+            for block in supporting
+        }
+        if attributions != {self.attribution}:
+            raise ValueError("card attribution does not match its source blocks")

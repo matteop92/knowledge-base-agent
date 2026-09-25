@@ -1,0 +1,1 @@
+Combine these numbered section summaries without dropping a distinct substantive point. Merge repetition, keep speaker attribution, and distinguish proposals from reported results. Use only the supplied text. Do not add outside evaluation, general caveats, or claims about the summary process. Return JSON with one field: summary.

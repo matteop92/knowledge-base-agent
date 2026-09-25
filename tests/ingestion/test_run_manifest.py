@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from app.ingestion.run_manifest import RunManifest
 from app.ingestion.router import route_source
@@ -37,6 +38,28 @@ class RunManifestTests(unittest.TestCase):
         self.assertEqual(manifest.artifacts[second.artifact_id].status, "pending")
         manifest.save(capture.run_dir)
         self.assertEqual(RunManifest.load(capture.run_dir), manifest)
+
+    def test_save_retries_transient_windows_file_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "note.md"
+            source.write_text("A note.", encoding="utf-8")
+            capture = capture_source(root, "note.md", root / "runs")
+            manifest = RunManifest.for_document(route_source(capture))
+            original_replace = Path.replace
+            calls = 0
+
+            def briefly_locked(path, target):
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    raise PermissionError("locked")
+                return original_replace(path, target)
+
+            with patch.object(Path, "replace", briefly_locked), patch("time.sleep"):
+                manifest.save(capture.run_dir)
+            self.assertEqual(calls, 2)
+            self.assertEqual(RunManifest.load(capture.run_dir), manifest)
 
 
 if __name__ == "__main__":

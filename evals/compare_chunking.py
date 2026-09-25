@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -35,14 +36,13 @@ from app.storage.search import search_vector
 from evals.compare_embeddings import (
     Candidate, PRIVACY, _coverage, _embed_batch, _select_live_manifest, discover,
 )
+from evals.trial_routes import PRICE_CEILINGS, provider_routes, verify_routes
 
 
 EMBEDDING = Candidate("perplexity/pplx-embed-v1-0.6b", 1024, 0.004,
                       "search_query", "search_document")
-CONTEXT_MODEL = ModelSpec(provider="openrouter", model_id="openai/gpt-4.1-mini",
-                          model_version="trial-2026-09-24")
-CONTEXT_INPUT_USD_PER_MILLION = 0.40
-CONTEXT_OUTPUT_USD_PER_MILLION = 1.60
+CONTEXT_PRICES = {key: value for key, value in PRICE_CEILINGS.items()
+                  if key != EMBEDDING.model}
 TRIAL_CONTEXT_PROMPT_VERSION = "chunk_context_v2"
 K_VALUES = (5, 10, 20)
 
@@ -92,7 +92,7 @@ def prepare(source_root: Path, eval_dir: Path, runtime_dir: Path, alias: str,
     return prepared
 
 
-def estimate(prepared: list[Prepared]) -> dict:
+def estimate(prepared: list[Prepared], context_model_id: str = "openai/gpt-4.1-mini") -> dict:
     structural = [chunk for item in prepared for chunk in item.sets["structural_raw"].chunks]
     fixed = [chunk for item in prepared for chunk in item.sets["fixed_raw"].chunks]
     questions = [q["question"] for item in prepared for q in item.questions
@@ -100,15 +100,17 @@ def estimate(prepared: list[Prepared]) -> dict:
     prompt, _ = context_prompt(TRIAL_CONTEXT_PROMPT_VERSION)
     context_input_bytes = sum(len(prompt.encode("utf-8")) + len(context_input(item.parsed, chunk).encode("utf-8"))
                               for item in prepared for chunk in item.sets["structural_raw"].chunks)
-    # At most 360 output tokens per generated context. Six UTF-8 bytes per
-    # output token is a generous bound for the later contextual embeddings.
+    # The adapter allows up to four times the visible JSON budget so reasoning
+    # and constrained decoding cannot exhaust the completion before the JSON.
+    # Six UTF-8 bytes per visible token bounds the later embedding input.
     embedding_input_bytes = sum(len(chunk.raw_text.encode("utf-8")) for chunk in fixed)
     embedding_input_bytes += 2 * sum(len(chunk.raw_text.encode("utf-8")) for chunk in structural)
     embedding_input_bytes += sum(len(question.encode("utf-8")) for question in questions)
     embedding_input_bytes += len(structural) * 360 * 6
+    input_price, output_price = CONTEXT_PRICES[context_model_id]
     worst_case_usd = (
-        context_input_bytes * CONTEXT_INPUT_USD_PER_MILLION
-        + len(structural) * 360 * CONTEXT_OUTPUT_USD_PER_MILLION
+        context_input_bytes * input_price
+        + len(structural) * 360 * 4 * output_price
         + embedding_input_bytes * EMBEDDING.usd_per_million
     ) / 1_000_000
     return {"documents": len(prepared), "fixed_chunks": len(fixed),
@@ -119,8 +121,9 @@ def estimate(prepared: list[Prepared]) -> dict:
 
 
 class Spend:
-    def __init__(self, cap: float) -> None:
+    def __init__(self, cap: float, context_model_id: str = "openai/gpt-4.1-mini") -> None:
         self.cap = cap
+        self.context_input_price, self.context_output_price = CONTEXT_PRICES[context_model_id]
         self.embedding_input_tokens = 0
         self.context_input_tokens = 0
         self.context_output_tokens = 0
@@ -128,8 +131,8 @@ class Spend:
     @property
     def usd(self) -> float:
         return (self.embedding_input_tokens * EMBEDDING.usd_per_million
-                + self.context_input_tokens * CONTEXT_INPUT_USD_PER_MILLION
-                + self.context_output_tokens * CONTEXT_OUTPUT_USD_PER_MILLION) / 1_000_000
+                + self.context_input_tokens * self.context_input_price
+                + self.context_output_tokens * self.context_output_price) / 1_000_000
 
     def add_embedding(self, tokens: int | None) -> None:
         if tokens is None:
@@ -155,6 +158,19 @@ class Spend:
                 "context_output_tokens": self.context_output_tokens}
 
 
+def _latency_report(client: OpenRouterClient) -> dict[str, dict]:
+    models = {model for model, _ in client.request_timings}
+    output = {}
+    for model in sorted(models):
+        samples = sorted(seconds for name, seconds in client.request_timings if name == model)
+        output[model] = {
+            "requests": len(samples),
+            "p50_seconds": round(samples[(len(samples) - 1) // 2], 3),
+            "p95_seconds": round(samples[math.ceil(len(samples) * 0.95) - 1], 3),
+        }
+    return output
+
+
 def _load_key() -> None:
     if os.getenv("OPENROUTER_API_KEY"):
         return
@@ -166,6 +182,21 @@ def _load_key() -> None:
                 break
     if not os.getenv("OPENROUTER_API_KEY"):
         raise StorageError("OPENROUTER_API_KEY is required for a live trial")
+
+
+def _load_database_url() -> None:
+    if os.getenv("KNOWLEDGE_DATABASE_URL"):
+        return
+    for path in (Path(".env"), Path(".local/stage4-runtime.env")):
+        if path.is_file():
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.startswith("KNOWLEDGE_DATABASE_URL="):
+                    value = line.partition("=")[2].strip().strip('"\'')
+                    if value:
+                        os.environ["KNOWLEDGE_DATABASE_URL"] = value
+                        return
+    if not os.getenv("KNOWLEDGE_DATABASE_URL"):
+        raise StorageError("KNOWLEDGE_DATABASE_URL is required for retrieval evaluation")
 
 
 def _embed_set(item: Prepared, chunks: ChunkSet, spec: EmbeddingSpec,
@@ -224,34 +255,44 @@ def _same_structural_sources(baseline: list[Prepared], contextual: list[Prepared
 
 
 def compare(prepared: list[Prepared], max_usd: float, output_dir: Path,
-            *, baseline: list[Prepared] | None = None) -> dict:
-    plan = estimate(prepared)
+            *, baseline: list[Prepared] | None = None,
+            baseline_report_path: Path | None = None,
+            context_model_id: str = "openai/gpt-4.1-mini") -> dict:
+    plan = estimate(prepared, context_model_id)
     if max_usd <= 0 or plan["worst_case_usd"] > max_usd:
         raise StorageError("conservative trial estimate exceeds the spend cap")
     _load_key()
+    _load_database_url()
     output_dir.mkdir(parents=True, exist_ok=True)
     report_path = output_dir / "report.json"
     completed_a = []
     if baseline is not None:
         _same_structural_sources(baseline, prepared)
-        if not report_path.is_file():
+        baseline_path = baseline_report_path or report_path
+        if not baseline_path.is_file():
             raise StorageError("context-only run needs the completed A report")
-        prior = json.loads(report_path.read_text(encoding="utf-8"))
+        prior = json.loads(baseline_path.read_text(encoding="utf-8"))
         completed_a = [profile for profile in prior["profiles"]
                        if profile["name"] in ("fixed_raw", "structural_raw") and profile["status"] == "complete"]
         if len(completed_a) != 2 or prior["embedding_model"] != EMBEDDING.model:
             raise StorageError("context-only run needs two compatible completed A profiles")
-    spend = Spend(max_usd)
+    spend = Spend(max_usd, context_model_id)
+    context_model = ModelSpec(provider="openrouter", model_id=context_model_id,
+                              model_version="trial-2026-09-24")
     client = OpenRouterClient(allow_live=True, request_budget=200,
                               estimated_input_token_budget=2 * (plan["context_input_byte_bound"]
                                                                  + plan["embedding_input_byte_bound"]),
-                              provider=PRIVACY)
+                              provider=PRIVACY,
+                              model_providers=provider_routes([EMBEDDING.model, context_model_id]))
+    routes = verify_routes(client, [EMBEDDING.model, context_model_id],
+                           structured_ids={context_model_id})
     manifests = {item.parsed.run_id: _select_live_manifest(item.run_dir, client)
                  for item in prepared}
     report = {"created_at": datetime.now(timezone.utc).isoformat(), "spend_cap_usd": max_usd,
               "estimate": plan, "embedding_model": EMBEDDING.model,
-              "context_model": CONTEXT_MODEL.model_id, "context_prompt_version": TRIAL_CONTEXT_PROMPT_VERSION,
+              "context_model": context_model.model_id, "context_prompt_version": TRIAL_CONTEXT_PROMPT_VERSION,
               "privacy_route": PRIVACY, "profiles": completed_a, "cost": spend.report(),
+              "eligible_zdr_routes": routes,
               "context_only": baseline is not None,
               "note": "Exact vector retrieval only; no fusion or answer evaluation."}
     with connect_runtime() as conn:
@@ -279,6 +320,7 @@ def compare(prepared: list[Prepared], max_usd: float, output_dir: Path,
                                          model_version="trial-2026-09-23", dimensions=EMBEDDING.dimensions,
                                          distance_metric="cosine", input_recipe_version=recipe,
                                          context_prompt_version=TRIAL_CONTEXT_PROMPT_VERSION if recipe == "contextualized-v1" else None,
+                                         context_model=context_model if recipe == "contextualized-v1" else None,
                                          chunking_version=chunks.chunking_version)
                     specs.append(spec)
                     manifest = manifests[item.parsed.run_id]
@@ -287,7 +329,7 @@ def compare(prepared: list[Prepared], max_usd: float, output_dir: Path,
                         contexts = {}
                         for chunk in chunks.chunks:
                             context = generate_chunk_context(item.parsed, chunks, chunk, client,
-                                                             CONTEXT_MODEL, manifest, item.run_dir,
+                                                             context_model, manifest, item.run_dir,
                                                              prompt_version=TRIAL_CONTEXT_PROMPT_VERSION)
                             contexts[chunk.chunk_id] = context
                             spend.add_context(context)
@@ -296,6 +338,8 @@ def compare(prepared: list[Prepared], max_usd: float, output_dir: Path,
                     load_run(conn, item.run_dir)
                 spec = specs[0]
                 profile_id = "chunk-trial-" + name
+                if recipe == "contextualized-v1":
+                    profile_id += "-" + hashlib.sha256(context_model_id.encode()).hexdigest()[:8]
                 create_profile(conn, SearchProfile(profile_id=profile_id, variant=variant,
                                                    chunking_version=spec.chunking_version,
                                                    embedding_spec_id=spec_id(spec),
@@ -319,6 +363,7 @@ def compare(prepared: list[Prepared], max_usd: float, output_dir: Path,
                 raise
             finally:
                 report["cost"] = spend.report()
+                report["request_latency"] = _latency_report(client)
                 report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     return report
 
@@ -333,17 +378,23 @@ def main() -> int:
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--context-only", action="store_true")
+    parser.add_argument("--context-model", choices=sorted(CONTEXT_PRICES),
+                        default="openai/gpt-4.1-mini")
+    parser.add_argument("--baseline-output-dir", type=Path,
+                        default=Path(".local/chunking-trial"))
     args = parser.parse_args()
-    baseline = prepare(args.source_root, args.eval_dir, args.output_dir / "runs", args.root_alias,
+    baseline = prepare(args.source_root, args.eval_dir, args.baseline_output_dir / "runs", args.root_alias,
                        resume=True) if args.context_only else None
     runtime_dir = args.output_dir / ("context-runs" if args.context_only else "runs")
     prepared = prepare(args.source_root, args.eval_dir, runtime_dir, args.root_alias,
                        resume=args.resume)
-    plan = estimate(prepared)
+    plan = estimate(prepared, args.context_model)
     if not args.live:
         print(json.dumps(plan, indent=2))
         return 0
-    report = compare(prepared, args.max_usd, args.output_dir, baseline=baseline)
+    report = compare(prepared, args.max_usd, args.output_dir, baseline=baseline,
+                     baseline_report_path=args.baseline_output_dir / "report.json" if args.context_only else None,
+                     context_model_id=args.context_model)
     print(json.dumps({"report_path": str(args.output_dir / "report.json"),
                       "cost": report["cost"],
                       "metrics": {item["name"]: item.get("metrics") for item in report["profiles"]}}, indent=2))
