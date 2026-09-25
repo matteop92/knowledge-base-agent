@@ -1,3 +1,4 @@
+import io
 import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
@@ -76,7 +77,7 @@ class ModelClientTests(unittest.TestCase):
 
     def test_malformed_response_and_http_error_do_not_leak_source(self) -> None:
         client = OpenRouterClient(
-            allow_live=True, api_key="test-key", request_budget=2,
+            allow_live=True, api_key="test-key", request_budget=3,
             estimated_input_token_budget=100,
         )
         with patch.object(client, "_post", return_value={"choices": []}):
@@ -88,7 +89,7 @@ class ModelClientTests(unittest.TestCase):
                 )
         with patch("app.models.openrouter.request.urlopen", side_effect=HTTPError(
             "https://openrouter.ai", 429, "Too Many Requests", {}, None,
-        )):
+        )), patch("app.models.openrouter.time.sleep"):
             with self.assertRaises(ModelClientError) as caught:
                 client.embed(model=self.model, texts=["secret source"])
             self.assertIn("HTTP 429", str(caught.exception))
@@ -103,6 +104,19 @@ class ModelClientTests(unittest.TestCase):
             with self.assertRaises(ModelClientError) as caught:
                 client.embed(model=self.model, texts=["secret source"])
         self.assertIn("TimeoutError", str(caught.exception))
+        self.assertNotIn("secret source", str(caught.exception))
+
+    def test_api_error_in_success_http_response_is_reported_safely(self) -> None:
+        client = OpenRouterClient(allow_live=True, api_key="test-key", request_budget=3,
+                                  estimated_input_token_budget=100)
+        error_payload = b'{"error":{"code":429,"message":"provider rejected request"},"id":"x"}'
+        with patch("app.models.openrouter.request.urlopen",
+                   side_effect=[io.BytesIO(error_payload) for _ in range(3)]) as send, \
+             patch("app.models.openrouter.time.sleep"):
+            with self.assertRaisesRegex(ModelClientError, "API error 429") as caught:
+                client.embed(model=self.model, texts=["secret source"])
+        self.assertEqual(send.call_count, 3)
+        self.assertEqual(client.rate_limit_retries, 2)
         self.assertNotIn("secret source", str(caught.exception))
 
     def test_embedding_budget_counts_each_input(self) -> None:
@@ -129,6 +143,37 @@ class ModelClientTests(unittest.TestCase):
             }):
                 with self.assertRaisesRegex(ModelClientError, "malformed embeddings"):
                     client.embed(model=self.model, texts=["one", "two"], dimensions=1)
+
+    def test_private_route_check_requires_current_zdr_endpoint(self) -> None:
+        client = OpenRouterClient(api_key="test-key", provider={"data_collection": "deny", "zdr": True})
+        payload = b'{"data":[{"model_id":"example/open-model","tag":"provider-one"}]}'
+        with patch("app.models.openrouter.request.urlopen", return_value=io.BytesIO(payload)) as send:
+            self.assertEqual(client.eligible_zdr_routes(["example/open-model"]),
+                             {"example/open-model": ["provider-one"]})
+            self.assertIn("/endpoints/zdr", send.call_args.args[0].full_url)
+        with patch("app.models.openrouter.request.urlopen", return_value=io.BytesIO(payload)):
+            with self.assertRaisesRegex(ModelClientError, "no current ZDR endpoint"):
+                client.eligible_zdr_routes(["example/absent-model"])
+
+    def test_pinned_route_is_used_for_generation_and_verified_before_use(self) -> None:
+        route = {"only": ["provider-one"], "allow_fallbacks": False,
+                 "require_parameters": True, "data_collection": "deny", "zdr": True}
+        client = OpenRouterClient(allow_live=True, api_key="test-key", request_budget=1,
+                                  estimated_input_token_budget=100,
+                                  provider={"data_collection": "deny", "zdr": True},
+                                  model_providers={self.model.model_id: route})
+        payload = b'{"data":[{"model_id":"example/open-model","tag":"provider-one","pricing":{"prompt":"0.0000001","completion":"0.0000002"},"supported_parameters":["response_format","structured_outputs"]}]}'
+        with patch("app.models.openrouter.request.urlopen", return_value=io.BytesIO(payload)):
+            self.assertEqual(client.require_zdr_route(self.model.model_id, "provider-one",
+                                                       structured=True)["tag"], "provider-one")
+        with patch.object(client, "_post", return_value={
+            "choices": [{"message": {"content": '{"value": 1}'}}],
+        }) as post:
+            client.generate_json(model=self.model, system_prompt="JSON", input_text="Source",
+                                 schema_name="example", json_schema={"type": "object"},
+                                 max_output_tokens=20)
+            self.assertEqual(post.call_args.args[1]["provider"], route)
+            self.assertEqual(post.call_args.args[1]["max_tokens"], 40)
 
 
 if __name__ == "__main__":

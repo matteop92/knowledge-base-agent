@@ -4,6 +4,8 @@ This repository captures Markdown from an external Knowledge folder and produces
 
 Start with [SYSTEM.md](SYSTEM.md) for the whole flow and [FOUNDATION.md#current-progress](FOUNDATION.md#current-progress) for stage-by-stage progress; [INGESTION.md](INGESTION.md), [RETRIEVAL.md](RETRIEVAL.md), and [DATA.md](DATA.md) describe each part at its current stage.
 
+For the current Stage 4 experiment and a new-chat handoff, use the [results and next-screen plan](docs/plans/2026-09-24-001-feat-live-enrichment-ingestion-plan.md) and the [trial script commands](evals/README.md#stage-4-trial-scripts-and-handoff).
+
 ## Preview a source
 
 Use Python 3.11 or newer and install dependencies with `python -m pip install -e .`. Set `KNOWLEDGE_SOURCE_ROOT` to the parent Knowledge folder. The root alias defaults to `primary`; keep it stable when moving that folder.

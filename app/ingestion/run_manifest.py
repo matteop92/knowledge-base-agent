@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -18,13 +19,24 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _write_json_atomic(path: Path, body: str) -> None:
+    temporary = path.with_name(path.name + ".tmp")
+    for attempt in range(3):
+        try:
+            temporary.write_text(body, encoding="utf-8")
+            temporary.replace(path)
+            return
+        except PermissionError:
+            if attempt == 2:
+                raise
+            time.sleep(0.05 * (attempt + 1))
+
+
 def write_artifact_json(run_dir: Path, kind: str, artifact_id: str, data: Any) -> str:
     directory = run_dir / "artifacts" / kind
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{artifact_id}.json"
-    temporary = directory / f"{artifact_id}.json.tmp"
-    temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporary.replace(path)
+    _write_json_atomic(path, json.dumps(data, ensure_ascii=False, indent=2))
     return path.relative_to(run_dir).as_posix()
 
 
@@ -128,9 +140,7 @@ class RunManifest(StrictRecord):
 
     def save(self, run_dir: Path) -> Path:
         path = run_dir / "run-manifest.json"
-        temporary = run_dir / "run-manifest.json.tmp"
-        temporary.write_text(self.model_dump_json(indent=2), encoding="utf-8")
-        temporary.replace(path)
+        _write_json_atomic(path, self.model_dump_json(indent=2))
         return path
 
     @classmethod
