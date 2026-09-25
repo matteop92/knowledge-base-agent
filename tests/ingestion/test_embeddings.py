@@ -12,6 +12,7 @@ from app.ingestion.source_reader import capture_source
 from app.models.client import EmbeddingResult, ModelClientError
 from app.models.client import ModelSpec, ModelUsage
 from app.models.openrouter import OpenRouterClient
+from app.storage.records import spec_id
 
 
 class FakeClient:
@@ -48,6 +49,8 @@ class EmbeddingTests(unittest.TestCase):
 
     def test_ready_resume_and_version_coexistence(self):
         client = FakeClient()
+        self.assertNotIn("context_model", self.spec().model_dump())
+        self.assertNotIn("document_input_type", self.spec().model_dump())
         first = embed_chunks(self.document, self.chunks, client, self.spec(), self.manifest, self.capture.run_dir)
         again = embed_chunks(self.document, self.chunks, client, self.spec(), self.manifest, self.capture.run_dir)
         second = embed_chunks(self.document, self.chunks, client, self.spec("two"), self.manifest, self.capture.run_dir)
@@ -122,6 +125,7 @@ class EmbeddingTests(unittest.TestCase):
             provider="test", model="one", model_version="1", dimensions=2,
             distance_metric="cosine", input_recipe_version="contextualized-v1",
             context_prompt_version="chunk_context_v1",
+            context_model=context.model,
             chunking_version=self.chunks.chunking_version,
         )
         client = FakeClient()
@@ -131,6 +135,21 @@ class EmbeddingTests(unittest.TestCase):
         )
         self.assertTrue(result.ready)
         self.assertTrue(client.calls[0]["texts"][0].startswith("A context sentence.\n\n"))
+        typed = spec.model_copy(update={"document_input_type": "search_document"})
+        embed_chunks(
+            self.document, self.chunks, client, typed, self.manifest,
+            self.capture.run_dir, contexts={chunk.chunk_id: context},
+        )
+        self.assertEqual(client.calls[-1]["input_type"], "search_document")
+        other_model = spec.model_copy(update={
+            "context_model": ModelSpec(provider="test", model_id="other", model_version="1")
+        })
+        self.assertNotEqual(spec_id(spec), spec_id(other_model))
+        with self.assertRaisesRegex(ValueError, "context is missing or from a different source version"):
+            embed_chunks(
+                self.document, self.chunks, client, other_model, self.manifest,
+                self.capture.run_dir, contexts={chunk.chunk_id: context},
+            )
         with self.assertRaisesRegex(ValueError, "raw embeddings cannot use contexts"):
             embed_chunks(
                 self.document, self.chunks, client, self.spec(),

@@ -140,6 +140,7 @@ def validate_run(run_dir: Path) -> ValidatedRun:
                             if other.kind == "context" and other.status == "ready" and other.path
                             and other.version_inputs.get("chunk_id") == item.chunk_id
                             and other.version_inputs.get("prompt_version") == spec.context_prompt_version
+                            and (spec.context_model is None or other.model == spec.context_model)
                         ]
                         if not any(hashlib.sha256(_read_json(_artifact_path(run_dir, other.path, "context", other.artifact_id), ChunkContext).model_dump_json().encode()).hexdigest() == expected_hash for other in contexts):
                             raise StorageError("contextualized embedding has no matching context")
@@ -267,7 +268,7 @@ def load_run(conn: psycopg.Connection, run_dir: Path) -> str:
                      spec.input_recipe_version, spec.context_prompt_version, spec.chunking_version, Jsonb(spec_value)))
                 for item in payload.chunks:
                     vector = "[" + ",".join(str(number) for number in item.vector) + "]"
-                    cur.execute("""select artifact_id, embedding = %s::extensions.vector
+                    cur.execute("""select artifact_id, embedding::text = (%s::extensions.vector)::text
                         from knowledge.embedding_vectors where run_id=%s and chunk_id=%s and spec_id=%s""",
                         (vector, capture.run_id, item.chunk_id, sid))
                     previous = cur.fetchone()
