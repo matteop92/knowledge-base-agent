@@ -36,6 +36,14 @@ def _record_spend(report: dict, client: OpenRouterClient) -> None:
          + (usage.output_tokens or 0) * CONTEXT_PRICES.get(model_id, (0, 0))[1])
         / 1_000_000 for model_id, usage in client.billable_requests
     ), 6)
+    report["model_latency"] = {}
+    for model_id in sorted({model for model, _ in client.request_timings}):
+        samples = sorted(seconds for model, seconds in client.request_timings if model == model_id)
+        report["model_latency"][model_id] = {
+            "requests": len(samples),
+            "p50_seconds": round(samples[(len(samples) - 1) // 2], 3),
+            "p95_seconds": round(samples[min(len(samples) - 1, math.ceil(len(samples) * 0.95) - 1)], 3),
+        }
 
 
 def estimate(prepared: list[Prepared], context_id: str | None, cards_id: str,
@@ -233,30 +241,49 @@ def complete(prepared: list[Prepared], context_id: str | None, cards_id: str,
                 run_id=item.parsed.run_id, profile_id=profile_id,
                 required_artifact_ids=required_ids,
             ))
-        question = next(q["question"] for item in prepared for q in item.questions
-                        if q["expected"] == "supported")
+        checked_queries = [
+            (item, next(q for q in item.questions if q["expected"] == "supported"))
+            for item in prepared[:3]
+        ]
         response = client.embed(
-            model=selected_spec.model_spec(), texts=[question], dimensions=1024,
+            model=selected_spec.model_spec(),
+            texts=[question["question"] for _, question in checked_queries], dimensions=1024,
             input_type="search_query",
         )
         select_profile(conn, profile_id)
-        hits = search_vector(conn, response.vectors[0], spec_id=spec_id(selected_spec),
-                             metric="cosine", k=5, profile_id=profile_id)
         by_run = {item.parsed.run_id: item for item in prepared}
-        resolved = 0
-        for hit in hits:
-            source = by_run[hit.run_id].parsed.source_text
-            if hit.source_sha256 != by_run[hit.run_id].parsed.source_sha256:
-                raise ValueError("search hit source revision mismatch")
-            for span in hit.source_spans:
-                start, end = span["start_char"], span["end_char"]
-                if not (0 <= start < end <= len(source) and source[start:end].strip()):
-                    raise ValueError("search hit source span could not be resolved")
-                resolved += 1
+        query_proofs = []
+        for (item, question), vector in zip(checked_queries, response.vectors, strict=True):
+            hits = search_vector(conn, vector, spec_id=spec_id(selected_spec),
+                                 metric="cosine", k=5, profile_id=profile_id)
+            resolved = 0
+            for hit in hits:
+                matched = by_run[hit.run_id]
+                source = matched.parsed.source_text
+                source_bytes = (matched.run_dir / "source.md").read_bytes()
+                if hit.source_sha256 != matched.parsed.source_sha256 or hashlib.sha256(source_bytes).hexdigest() != hit.source_sha256:
+                    raise ValueError("search hit source revision mismatch")
+                for span in hit.source_spans:
+                    start, end = span["start_char"], span["end_char"]
+                    if not (0 <= start < end <= len(source) and source[start:end].strip()):
+                        raise ValueError("search hit source span could not be resolved")
+                    byte_start = len(source[:start].encode("utf-8"))
+                    byte_end = len(source[:end].encode("utf-8"))
+                    if source_bytes[byte_start:byte_end] != source[start:end].encode("utf-8"):
+                        raise ValueError("search hit span differs from captured source bytes")
+                    resolved += 1
+            if not any(hit.document_id == item.parsed.document_id for hit in hits) or not resolved:
+                raise ValueError("checked query did not retrieve its source with resolvable spans")
+            query_proofs.append({"question_id": question["id"],
+                                 "expected_document_id": item.parsed.document_id,
+                                 "search_hits": len(hits),
+                                 "expected_document_hits": sum(hit.document_id == item.parsed.document_id for hit in hits),
+                                 "resolved_source_spans": resolved})
         report["publication"] = {"profile_id": profile_id,
                                  "published_runs": len(prepared),
-                                 "search_hits": len(hits),
-                                 "resolved_source_spans": resolved}
+                                 "checked_queries": query_proofs,
+                                 "search_hits": sum(proof["search_hits"] for proof in query_proofs),
+                                 "resolved_source_spans": sum(proof["resolved_source_spans"] for proof in query_proofs)}
         _record_spend(report, client)
     output.write_text(json.dumps(report, indent=2), encoding="utf-8")
     return report
