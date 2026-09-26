@@ -71,7 +71,7 @@ def estimate(cards: list[tuple[Prepared, object]], summaries: list[Prepared],
          else _input(item.parsed, chunk)).encode())
                             for item, chunk in cards)
     section_count = sum(len(item.sets["structural_raw"].chunks) for item in summaries)
-    if summary_prompt_family in ("v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15"):
+    if summary_prompt_family in ("v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17"):
         # v3 writes one bounded section summary per chunk and combines them
         # directly; four bytes per character bounds the final UTF-8 input.
         summary_calls_bound = section_count + len(summaries)
@@ -87,7 +87,7 @@ def estimate(cards: list[tuple[Prepared, object]], summaries: list[Prepared],
     for model in models:
         input_price, output_price = CONTEXT_PRICES[model]
         summary_output_bound = (1200 if summary_prompt_family == "v6" else
-                                900 if summary_prompt_family in ("v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15") else
+                                900 if summary_prompt_family in ("v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17") else
                                 700 if summary_prompt_family in ("v2", "v3", "v4", "v5") else 400)
         summary_multiplier = 8 if model == "deepseek/deepseek-v4.1-flash" else 4
         card_output_bound = 1400 if card_prompt_version in ("evidence_cards_v6", "evidence_cards_v7") else 700
@@ -220,7 +220,7 @@ def main() -> int:
     parser.add_argument("--models", nargs="+", choices=tuple(CONTEXT_PRICES), default=list(MODELS))
     parser.add_argument("--card-prompt-version", choices=("evidence_cards_v1", "evidence_cards_v2", "evidence_cards_v3", "evidence_cards_v4", "evidence_cards_v5", "evidence_cards_v6", "evidence_cards_v7"),
                         default="evidence_cards_v1")
-    parser.add_argument("--summary-prompt-family", choices=("v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15"), default="v1")
+    parser.add_argument("--summary-prompt-family", choices=("v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17"), default="v1")
     parser.add_argument("--all-cards", action="store_true")
     parser.add_argument("--all-summaries", action="store_true")
     parser.add_argument("--cards-only", action="store_true")
