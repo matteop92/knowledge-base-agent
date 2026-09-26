@@ -7,34 +7,38 @@
 | Test | What was run | Result and current decision |
 | --- | --- | --- |
 | 1. Chunk context and retrieval | Five comparable model profiles on the same 83 structural chunks, six files, 31 questions, and 51 required spans; two more pinned routes returned 429. | Structural/raw covered **41/44/47** spans at K=5/10/20 and stays selected. GPT-5 mini context covered 42/45/47, but a reviewed context misattributed a Derek Sivers highlight; no contextual profile passed the full gate. No further context-model screen is planned. |
-| 2. Evidence cards | GPT-5 mini `v5` full corpus and all four agreed cheaper-model `v5` screens. | GPT-5 mini returned **83/83** first-response artifacts and 496 cards with valid source spans; coverage was **17/18**, and a stratified 40-card review found no unsupported claim or attribution error. Qwen and Gemini each returned 17/18; DeepSeek's best configuration returned 15/18; GLM's pinned route returned 429 on all 18. None qualified for expansion. **GPT-5 mini is the least-cost qualifying card model among the screened candidates.** |
+| 2. Evidence cards | GPT-5 mini `v5` full corpus and all four agreed cheaper-model `v5` screens. | GPT-5 mini passed the common 18-chunk screen and returned **83/83** first-response artifacts and 496 valid cards on expansion. Its useful-fact coverage was **17/18**, and a stratified 40-card review found no unsupported claim or attribution error. Qwen and Gemini each returned 17/18 first-response artifacts; DeepSeek's best configuration returned 15/18; GLM's pinned route returned 429 on all 18. None qualified for expansion. **GPT-5 mini is the only qualifying card model tested.** |
 | 3. Section and document summaries | GPT-5 mini `v15` using saved `v14` sections; Gemini, DeepSeek, and GLM three-document screens; qualifying DeepSeek configuration expanded to all six files. | GPT-5 mini met **43/45** content points with 6/6 fresh `v15` documents, and DeepSeek met **44/45** with 87/87 first-response artifacts. Source review found a factual/attribution error in each model's long transcript synthesis, so neither passes the no-invented-fact gate. Gemini returned only 1/3 screen documents and GLM's pinned route returned 429. **No summary model qualifies.** |
 | 4. Complete local ingestion | Implementation and local tests only. | The bounded live interruption/resume, six-file load, publication, search, and source-span resolution proof remains open. |
 
 The table is the durable aggregate recap. Source text, generated artifacts, per-question changes, manual review notes, and request-level costs stay in ignored `.local/`; do not copy private vault content into this plan.
 
-### Test 2 comparable `evidence_cards_v5` results
+### Test 2: same 18-chunk `evidence_cards_v5` screen
 
-| Model and pinned route | First-response cards | Exact source spans among accepted cards | Useful-fact / factuality review | Request latency p50/p95 | Measured cost | Decision |
+Every model faced the same gates in order: **18/18** first-response structured artifacts, exact source spans for **100%** of accepted cards, **17/18** useful-fact checks, and no observed unsupported claim or attribution error. A model failing an earlier gate was not scored as passing the later manual gates; “not reviewed” does not mean “passed.” The 17/18 useful-fact score measures coverage of checklist facts, while 18/18 measures reliable generation of chunk artifacts.
+
+| Model and pinned route | First-response artifacts | Exact source spans among accepted cards | Useful-fact / factuality review | Request latency p50/p95 (18 calls) | Estimated cost (18 calls) | Screen decision |
 | --- | --- | --- | --- | --- | --- | --- |
-| GPT-5 mini · `azure` | **83/83**, 496 cards | 100% valid | **17/18** checks; 0 issues in 40-card review | 4.10/6.83 s | $0.094640 full corpus | Selected. |
+| GPT-5 mini · `azure` | **18/18**, 119 cards | 100% valid | **17/18** checks; 0 issues in later 40-card full-corpus review | 4.56/7.74 s | $0.021861 | Passed; expanded. |
 | Qwen3.5 35B-A3B · `deepinfra/fp8` | 17/18, 91 cards | 100% for accepted cards | Full checklist/factuality review stopped after first-response failure. | 3.40/6.30 s | $0.012445 screen | Failed 18/18 reliability gate. |
 | Gemini 3.1 Flash Lite · `google-vertex/global/flex` | 17/18, 66 cards | 100% for accepted cards | Full checklist/factuality review stopped after first-response failure. | 17.75/19.39 s | $0.008948 screen | Failed 18/18 reliability gate. |
-| DeepSeek V4.1 Flash · `deepinfra/fp8` | 0/18 initially; 15/18 with reasoning disabled | 100% for accepted revised-run cards | Full checklist/factuality review stopped after first-response failure. | 9.20/18.27 s revised run | $0.012961 initial + $0.008484 revised | Failed 18/18 reliability gate; initial requests exhausted completion length. |
+| DeepSeek V4.1 Flash · `deepinfra/fp8` | 15/18 with reasoning disabled; 0/18 initial configuration | 100% for accepted revised-run cards | Full checklist/factuality review stopped after first-response failure. | 9.20/18.27 s revised run | $0.008484 revised run | Failed 18/18 reliability gate. |
 | GLM-5.3-Flash · `deepinfra/fp4` | 0/18 | No accepted cards | No output to review. | 7.15/8.07 s | $0 | Pinned route returned 429; no provider substitution. |
 
-The unchanged 18-chunk sample and `v5` prompt were used in every card screen. Invalid responses were not repaired or counted as first-response success. The private reports record failure IDs and the DeepSeek configuration change.
+Only GPT-5 mini expanded to all **83 chunks**: **83/83** first-response artifacts, **496** exact-span cards, no issue in the stratified 40-card review, 4.10/6.83 s request latency p50/p95, and **$0.094640** estimated cost for that full run. The unchanged 18-chunk sample and `v5` prompt were used in every screen. Invalid responses were not repaired or counted as first-response success. DeepSeek's separate initial configuration cost **$0.012961** and failed 18/18 requests after exhausting completion length; both configurations count toward cumulative spend. Screen costs are observed trial costs, not projected 83-chunk costs.
 
-### Test 3 summary results
+### Test 3: same three-document summary screen, then six-file expansion
 
-| Model and pinned route | Structured reliability | Content checklist | Factuality/attribution review | Request latency p50/p95 | Measured cost | Decision |
+Every candidate faced the same summary gates: complete first-response structured outputs, at least **20/22** content points on the three checked documents, and no invented fact or attribution error. A model passing the screen could expand to all six files, where the content gate was **41/45** with the same zero-error factuality rule. These 22- and 45-point checklists score document summaries; they are distinct from the 18 useful facts used for cards. GPT-5 mini reused its own previously generated `v14` sections; DeepSeek generated its own `v14` sections before `v15`. Factuality review of the completed documents disqualified both despite their passing content coverage.
+
+| Model and pinned route | Structured reliability | Content checklist | Factuality/attribution review | Request latency p50/p95 and scope | Estimated cost and scope | Decision |
 | --- | --- | --- | --- | --- | --- | --- |
-| GPT-5 mini · `azure` | 6/6 fresh `v15` documents; saved 81 `v14` sections reused | 21/22 screen; **43/45** full | One unsupported video detail conflates two distinct child examples. | 6.39/12.12 s for fresh `v15` calls | $0.061061 `v14` + $0.012584 `v15` | Fails no-invented-fact gate. |
+| GPT-5 mini · `azure` | 3/3 screen and 6/6 full `v15` documents; saved `v14` sections reused | 21/22 screen; **43/45** full | One unsupported video detail conflates two distinct child examples. | 6.39/12.12 s, six fresh `v15` calls only | $0.012584 for six fresh `v15` calls; $0.061061 for earlier `v14` run | Fails no-invented-fact gate. |
 | Gemini 3.1 Flash Lite · `google-vertex/global/flex` | 1/3 screen documents | Not scorable | No complete screen to review. | 17.34/19.38 s | $0.000210 | Failed structured-response gate. |
-| DeepSeek V4.1 Flash · `deepinfra/fp8` | **87/87** with final bounded configuration | 21/22 screen; **44/45** full | One conflation of the same distinct child examples. | 3.70/6.42 s final full run | $0.025899 final full run | Fails no-invented-fact gate. |
+| DeepSeek V4.1 Flash · `deepinfra/fp8` | 3/3 screen documents; **87/87** full `v14` section and `v15` document artifacts with final configuration | 21/22 screen; **44/45** full | One conflation of the same distinct child examples. | 3.70/6.42 s, 87 fresh `v14` and `v15` calls | $0.025899 for the final 87-call full run | Fails no-invented-fact gate. |
 | GLM-5.3-Flash · `deepinfra/fp4` | 0/3 screen documents | Not scorable | No output to review. | 7.77/7.90 s | $0 | Pinned route returned 429; no provider substitution. |
 
-DeepSeek's first default and intermediate configurations hit completion-length limits. Their separate private reports and measured costs remain in the cumulative ledger; the final configuration disabled reasoning and allowed up to eight times the visible summary-token bound. This was a technical configuration change, not a prompt or provider change. The source-grounding failures were found by checking both complete document outputs against the captured revision after checklist scoring; content coverage alone did not qualify either model. Across all recorded Stage 4 reports, cumulative estimated spend is **$1.180231**, leaving **$2.319769** under the $3.50 ceiling. Test 4 was not run.
+The summary latency and cost cells describe different measured call sets: GPT-5 mini's `v15` run reused saved `v14` sections, while DeepSeek's final run generated its own sections and documents. They must not be read as a head-to-head price for identical fresh work. DeepSeek's first default and intermediate configurations hit completion-length limits. Their separate private reports and measured costs remain in the cumulative ledger; the final configuration disabled reasoning and allowed up to eight times the visible summary-token bound. This was a technical configuration change, not a prompt or provider change. The source-grounding failures were found by checking both complete document outputs against the captured revision after checklist scoring; content coverage alone did not qualify either model. Across all recorded Stage 4 reports, cumulative estimated spend is **$1.180231**, leaving **$2.319769** under the $3.50 ceiling. Test 4 was not run.
 
 ### Test 1 model results
 
@@ -65,16 +69,16 @@ The completed context screen compared `openai/gpt-4.1-mini` (incumbent), `openai
 | gpt-oss-20b | `akashml/fp4` | 0.02/0.10 |
 | Perplexity embed 0.6B | `perplexity/int8` | 0.004/0 |
 
-### Agreed next screen
+### Agreed trial matrix and current disposition
 
-| Test and prompt | Reference already run | Models to screen next | Expansion if the gate passes |
+| Test and prompt | Reference | Agreed screen | Disposition |
 | --- | --- | --- | --- |
-| 1: `chunk_context_v2` | Structural/raw and five comparable context profiles | None; context choice is settled for this corpus. | None. |
-| 2: `evidence_cards_v5` | GPT-5 mini on 83 chunks | Qwen3.5 35B-A3B, Gemini 3.1 Flash Lite, DeepSeek V4.1 Flash, GLM-5.3-Flash on the same 18 preselected chunks. | Run qualifying cheaper candidates on all 83 chunks using `v5`, then compare quality, reliability, latency, and measured cost with GPT-5 mini. |
-| 3: `section_summary_v14` + `document_summary_v15` | GPT-5 mini `v14` on six files; its `v15` document revision remains untested. | GPT-5 mini `v15`, plus Gemini 3.1 Flash Lite, DeepSeek V4.1 Flash, and GLM-5.3-Flash on the same three checked documents. Each model uses its **own** `v14` section summaries as input to `v15`. | Run qualifying candidates on all six files; compare the same document-content checklist and first-response success. |
-| 4: selected card and summary prompts | No live complete run | No new model screen; use the selected qualifying models and structural/raw embeddings. | One bounded, resumable six-file ingestion and local private load/search proof. |
+| 1: `chunk_context_v2` | Structural/raw and five comparable context profiles | Complete. | Structural/raw selected for this corpus. |
+| 2: `evidence_cards_v5` | GPT-5 mini on 83 chunks | Qwen3.5 35B-A3B, Gemini 3.1 Flash Lite, DeepSeek V4.1 Flash, GLM-5.3-Flash on the same 18 preselected chunks. Complete. | Only GPT-5 mini passed and expanded to 83 chunks. |
+| 3: `section_summary_v14` + `document_summary_v15` | GPT-5 mini `v14` on six files and `v15` on its saved sections | Gemini 3.1 Flash Lite, DeepSeek V4.1 Flash, and GLM-5.3-Flash on the same three checked documents, using each model's own `v14` sections. Complete. | GPT-5 mini and DeepSeek expanded; both failed source-grounding review. No summary model qualifies. |
+| 4: selected card and summary prompts | No live complete run | Await a qualifying summary model and user approval. | Bounded, resumable six-file ingestion and local private load/search proof remains open. |
 
-Qwen's prior card screen used `v3`, so it is historical evidence, not a head-to-head `v5` result. Its earlier summary screen had attribution errors; the new summary slate excludes it. Grok is excluded by agreement. Google, DeepSeek, and GLM are candidates because their observed eligible routes are cheaper than the [GPT-5 mini reference](https://openrouter.ai/openai/gpt-5-mini) in both input and output tokens, with structured-output support; vendor claims alone do not qualify a model.
+Qwen's earlier card screen used `v3`, so it is historical evidence, not part of the head-to-head `v5` result above. Its earlier summary screen had attribution errors; the agreed summary slate excluded it. Grok was excluded by agreement. Google, DeepSeek, and GLM were candidates because their observed eligible routes were cheaper than the [GPT-5 mini reference](https://openrouter.ai/openai/gpt-5-mini) in both input and output tokens, with structured-output support; vendor claims alone do not qualify a model.
 
 | New candidate | Pinned eligible endpoint observed | Observed input/output USD per million tokens | Model evidence |
 | --- | --- | --- | --- |
