@@ -262,7 +262,7 @@ class EnrichmentTests(unittest.TestCase):
                 prompt_version="evidence_cards_v4",
             )
 
-    def test_v5_groups_adjacent_turns_from_one_speaker(self) -> None:
+    def test_v5_through_v7_group_adjacent_turns_from_one_speaker(self) -> None:
         capture, document, chunks, manifest = self.setup_source(
             "Transcripts/grouped.md",
             "**Host:** A useful observation begins here, and it concerns a decision that needs more context.\n\n"
@@ -272,16 +272,25 @@ class EnrichmentTests(unittest.TestCase):
         card = {"card_type": "tactic", "statement": "Check customer evidence before deciding.",
                 "situation": None, "action": None, "result": None,
                 "principle": None, "evidence_group_index": 0}
-        artifact = extract_evidence_cards(
-            document, chunks, chunks.chunks[0], FakeClient({"cards": [card]}),
-            self.model, manifest, capture.run_dir,
-            prompt_version="evidence_cards_v5",
-        )
-        self.assertIn("A useful observation", artifact.cards[0].evidence_text)
-        self.assertIn("checking the relevant customer evidence", artifact.cards[0].evidence_text)
-        self.assertNotIn("Guest", artifact.cards[0].evidence_text)
-        self.assertEqual(artifact.cards[0].attribution, "Host")
-        artifact.cards[0].validate_against(document, chunks.chunks[0])
+        for prompt_version, output_bound in (("evidence_cards_v5", 700),
+                                             ("evidence_cards_v6", 1400),
+                                             ("evidence_cards_v7", 1400)):
+            with self.subTest(prompt_version=prompt_version):
+                client = FakeClient({"cards": [card]})
+                artifact = extract_evidence_cards(
+                    document, chunks, chunks.chunks[0], client,
+                    self.model, manifest, capture.run_dir,
+                    prompt_version=prompt_version,
+                )
+                self.assertEqual(client.calls[0]["max_output_tokens"], output_bound)
+                if prompt_version == "evidence_cards_v7":
+                    self.assertIn("Valid evidence_group_index values (zero-based):",
+                                  client.calls[0]["input_text"])
+                self.assertIn("A useful observation", artifact.cards[0].evidence_text)
+                self.assertIn("checking the relevant customer evidence", artifact.cards[0].evidence_text)
+                self.assertNotIn("Guest", artifact.cards[0].evidence_text)
+                self.assertEqual(artifact.cards[0].attribution, "Host")
+                artifact.cards[0].validate_against(document, chunks.chunks[0])
 
     def test_personal_annotation_is_not_attributed_to_book_author(self) -> None:
         capture, document, chunks, manifest = self.setup_source(
