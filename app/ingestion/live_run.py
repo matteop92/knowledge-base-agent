@@ -55,7 +55,7 @@ def estimate(prepared: list[Prepared], context_id: str, cards_id: str,
          if card_prompt_version in ("evidence_cards_v3", "evidence_cards_v4", "evidence_cards_v5")
          else _input(item.parsed, chunk)).encode())
                      for item, chunk in chunks)
-    if summary_prompt_family in ("v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15"):
+    if summary_prompt_family in ("v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17"):
         summary_calls = len(chunks) + len(prepared)
         summary_input = (sum(len(chunk.raw_text.encode("utf-8")) + 1024
                              for _, chunk in chunks)
@@ -69,7 +69,7 @@ def estimate(prepared: list[Prepared], context_id: str, cards_id: str,
     output_context = len(chunks) * 360 * 4
     output_cards = len(chunks) * 700 * 4
     output_summary = summary_calls * (1200 if summary_prompt_family == "v6" else
-                                      900 if summary_prompt_family in ("v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15") else
+                                      900 if summary_prompt_family in ("v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17") else
                                       700 if summary_prompt_family in ("v2", "v3", "v4", "v5") else 400) * 4
     ci, co = CONTEXT_PRICES[context_id]
     ki, ko = CONTEXT_PRICES[cards_id]
@@ -256,7 +256,7 @@ def main() -> int:
     parser.add_argument("--contextual-embeddings", action="store_true")
     parser.add_argument("--card-prompt-version", choices=("evidence_cards_v1", "evidence_cards_v2", "evidence_cards_v3", "evidence_cards_v4", "evidence_cards_v5"),
                         default="evidence_cards_v5")
-    parser.add_argument("--summary-prompt-family", choices=("v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15"), default="v1")
+    parser.add_argument("--summary-prompt-family", choices=("v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17"), default="v1")
     parser.add_argument("--request-limit", type=int)
     parser.add_argument("--max-usd", type=float, required=True)
     parser.add_argument("--live", action="store_true")
