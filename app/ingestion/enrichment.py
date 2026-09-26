@@ -353,12 +353,17 @@ def _card_groups(document: ParsedDocument, chunk: Chunk) -> list[tuple[int, int]
             if len(document.source_text[start:end].strip()) >= 100]
 
 
-def _group_card_input(document: ParsedDocument, chunk: Chunk, max_input_tokens: int) -> str:
+def _group_card_input(document: ParsedDocument, chunk: Chunk, max_input_tokens: int,
+                      *, explicit_indices: bool = False) -> str:
     groups = _card_groups(document, chunk)
     body = "\n".join(f"[{index}] {document.source_text[start:end]}"
                      for index, (start, end) in enumerate(groups))
+    index_hint = (f"Valid evidence_group_index values (zero-based): "
+                  f"{', '.join(str(index) for index in range(len(groups)))}\n"
+                  if explicit_indices else "")
     text = (f"Title: {document.metadata.title}\n"
             f"Section: {' > '.join(chunk.heading_path or [])}\n"
+            f"{index_hint}"
             f"Evidence groups (use bracketed number as evidence_group_index):\n{body}")
     if len(TOKEN.findall(text)) > max_input_tokens:
         raise EnrichmentError("bounded model input budget is too small for this chunk")
@@ -388,17 +393,18 @@ def extract_evidence_cards(
     _check_source(document, chunks, manifest, client)
     if chunk.chunk_id not in {item.chunk_id for item in chunks.chunks}:
         raise EnrichmentError("chunk is not in its declared variant")
-    if prompt_version not in ("evidence_cards_v1", "evidence_cards_v2", "evidence_cards_v3", "evidence_cards_v4", "evidence_cards_v5"):
+    if prompt_version not in ("evidence_cards_v1", "evidence_cards_v2", "evidence_cards_v3", "evidence_cards_v4", "evidence_cards_v5", "evidence_cards_v6", "evidence_cards_v7"):
         raise EnrichmentError("unsupported evidence-card prompt version")
     quote_location = prompt_version == "evidence_cards_v2"
     block_location = prompt_version in ("evidence_cards_v3", "evidence_cards_v4")
     strict_blocks = prompt_version == "evidence_cards_v4"
-    group_location = prompt_version == "evidence_cards_v5"
+    group_location = prompt_version in ("evidence_cards_v5", "evidence_cards_v6", "evidence_cards_v7")
     extraction_version = ("same-speaker-group-v5" if group_location else
                           "complete-block-v4" if strict_blocks else
                           "block-locate-v3" if block_location else
                           "quote-locate-v2" if quote_location else "cards-v1")
-    recipe_version = ("contiguous-speaker-groups-v5" if group_location else
+    recipe_version = ("explicit-zero-based-speaker-groups-v7" if prompt_version == "evidence_cards_v7" else
+                      "contiguous-speaker-groups-v5" if group_location else
                       "self-contained-block-cards-v4" if strict_blocks else
                       "source-block-cards-v3" if block_location else
                       "exact-quote-cards-v2" if quote_location else CARDS_RECIPE_VERSION)
@@ -419,7 +425,8 @@ def extract_evidence_cards(
     try:
         result = client.generate_json(
             model=model, system_prompt=prompt,
-            input_text=(_group_card_input(document, chunk, max(max_input_tokens, 1800))
+            input_text=(_group_card_input(document, chunk, max(max_input_tokens, 1800),
+                                         explicit_indices=prompt_version == "evidence_cards_v7")
                         if group_location else
                         _block_card_input(document, chunk, max(max_input_tokens, 1800),
                                           strict_blocks=strict_blocks) if block_location
@@ -427,7 +434,7 @@ def extract_evidence_cards(
             schema_name="evidence_cards", json_schema=_card_schema(
                 quote_location=quote_location, block_location=block_location,
                 group_location=group_location),
-            max_output_tokens=700,
+            max_output_tokens=1400 if prompt_version in ("evidence_cards_v6", "evidence_cards_v7") else 700,
         )
         proposed = result.data.get("cards")
         if not isinstance(proposed, list) or any(not isinstance(item, dict) for item in proposed):
