@@ -2,6 +2,8 @@
 
 **Status:** Tests 1 and 2 are complete for the checked corpus: structural/raw embeddings and GPT-5 mini `evidence_cards_v5` are selected. Test 3 screened the agreed models, but none passed every summary gate. Test 4 is awaiting a qualifying summary model and the user's approval; its live interruption/resume and local load/search proof have not run. Vault text, model outputs, and detailed trial reports remain in ignored `.local/`.
 
+**Current model preference:** Until the user revises it, use GPT-5 mini as the default for further Stage 4 chunk-context, evidence-card, and section/document-summary generation. This preference does not change the trial outcomes or acceptance gates: structural/raw is the selected embedding profile, GPT-5 mini `evidence_cards_v5` is the selected card configuration, and no summary configuration qualifies for Test 4 yet. Retest a revised, versioned GPT-5 mini summary prompt against the same source-grounding and coverage gates before considering ingestion.
+
 ## Results so far
 
 | Test | What was run | Result and current decision |
