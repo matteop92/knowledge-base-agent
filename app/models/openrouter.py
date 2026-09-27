@@ -205,8 +205,14 @@ class OpenRouterClient:
             payload["reasoning"] = {"effort": "minimal"}
         else:
             payload["temperature"] = 0
-            payload["max_tokens"] = max_output_tokens * 2
-            if model.model_id.startswith("qwen/qwen3.5-"):
+            # DeepSeek's longer document summaries need more room to finish
+            # constrained JSON even with reasoning disabled.
+            deepseek = model.model_id == "deepseek/deepseek-v4.1-flash"
+            multiplier = 2
+            if deepseek:
+                multiplier = 8 if schema_name == "summary" else 4
+            payload["max_tokens"] = max_output_tokens * multiplier
+            if model.model_id.startswith("qwen/qwen3.5-") or deepseek:
                 payload["reasoning"] = {"enabled": False}
         route = self._model_providers.get(model.model_id, self._provider)
         if route is not None:
