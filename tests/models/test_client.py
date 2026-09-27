@@ -175,6 +175,24 @@ class ModelClientTests(unittest.TestCase):
             self.assertEqual(post.call_args.args[1]["provider"], route)
             self.assertEqual(post.call_args.args[1]["max_tokens"], 40)
 
+    def test_deepseek_structured_generation_disables_reasoning(self) -> None:
+        client = OpenRouterClient(allow_live=True, api_key="test-key", request_budget=1,
+                                  estimated_input_token_budget=100)
+        model = ModelSpec(provider="openrouter", model_id="deepseek/deepseek-v4.1-flash",
+                          model_version="trial")
+        with patch.object(client, "_post", return_value={
+            "choices": [{"message": {"content": '{"value": 1}'}}],
+        }) as post:
+            client.generate_json(model=model, system_prompt="JSON", input_text="Source",
+                                 schema_name="example", json_schema={"type": "object"},
+                                 max_output_tokens=20)
+            self.assertEqual(post.call_args.args[1]["reasoning"], {"enabled": False})
+            self.assertEqual(post.call_args.args[1]["max_tokens"], 80)
+            client.generate_json(model=model, system_prompt="JSON", input_text="Source",
+                                 schema_name="summary", json_schema={"type": "object"},
+                                 max_output_tokens=20)
+            self.assertEqual(post.call_args.args[1]["max_tokens"], 160)
+
 
 if __name__ == "__main__":
     unittest.main()

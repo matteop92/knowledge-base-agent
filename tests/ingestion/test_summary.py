@@ -118,6 +118,27 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual(progress.document_summary.prompt_version, "document_summary_v15")
         self.assertEqual(client.calls[-1]["max_output_tokens"], 900)
 
+    def test_v16_regenerates_sections_before_document_and_resumes(self):
+        capture, document, chunks, manifest = self.source("\n\n".join(
+            f"## Section {index}\n\n" + (f"Passage {index} has details. " * 170)
+            for index in range(3)
+        ))
+        client = FakeClient()
+        summarize_document(document, chunks, client, self.model, manifest,
+                           capture.run_dir, prompt_family="v14")
+        initial_calls = len(client.calls)
+        first = summarize_document(document, chunks, client, self.model, manifest,
+                                   capture.run_dir, prompt_family="v16")
+        second = summarize_document(document, chunks, client, self.model, manifest,
+                                    capture.run_dir, prompt_family="v16")
+        self.assertEqual(len(client.calls), initial_calls + len(chunks.chunks) + 1)
+        self.assertEqual(first, second)
+        self.assertEqual(first.document_summary.prompt_version, "document_summary_v16")
+        self.assertTrue(all("Treat each anecdote as a separate event" in call["system_prompt"]
+                            for call in client.calls[initial_calls:-1]))
+        self.assertIn("Keep distinct people, anecdotes, and events distinct",
+                      client.calls[-1]["system_prompt"])
+
     def test_section_rejects_unstated_trial_claim(self):
         capture, document, chunks, manifest = self.source("\n\n".join(
             f"## Section {index}\n\n" + (f"Passage {index} has details. " * 170)

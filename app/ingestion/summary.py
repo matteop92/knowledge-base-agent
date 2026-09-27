@@ -55,7 +55,7 @@ def _generate(
         "child_artifact_ids": children, "prompt_version": prompt_version,
         "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
         "input_recipe_version": f"hierarchical-summary-{prompt_family}",
-        "output_contract_version": "summary-string-v3" if prompt_family in ("v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15") else "summary-string-v1",
+        "output_contract_version": "summary-string-v3" if prompt_family in ("v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17") else "summary-string-v1",
     }
     record = manifest.begin("summary", version, model)
     if record.status == "ready" and record.path and (run_dir / record.path).is_file():
@@ -72,7 +72,7 @@ def _generate(
         return existing, record.artifact_id
     manifest.save(run_dir)
     try:
-        input_limit = {"v1": 14000, "v2": 24000, "v3": 60000, "v4": 60000, "v5": 60000, "v6": 60000, "v7": 60000, "v8": 60000, "v9": 60000, "v10": 60000, "v11": 60000, "v12": 60000, "v13": 60000, "v14": 60000, "v15": 60000}[prompt_family]
+        input_limit = {"v1": 14000, "v2": 24000, "v3": 60000, "v4": 60000, "v5": 60000, "v6": 60000, "v7": 60000, "v8": 60000, "v9": 60000, "v10": 60000, "v11": 60000, "v12": 60000, "v13": 60000, "v14": 60000, "v15": 60000, "v16": 60000, "v17": 60000}[prompt_family]
         if len(input_text) > input_limit:
             raise ValueError("summary input exceeds its character budget")
         result = client.generate_json(
@@ -81,7 +81,7 @@ def _generate(
                 "type": "object", "properties": {"summary": {"type": "string"}},
                 "required": ["summary"], "additionalProperties": False,
             }, max_output_tokens=(1200 if prompt_family == "v6" else
-                                  900 if prompt_family in ("v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15") else
+                                  900 if prompt_family in ("v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17") else
                                   700 if prompt_family in ("v2", "v3", "v4", "v5") else 400),
         )
         body = result.data.get("summary")
@@ -120,11 +120,11 @@ def summarize_document(
     manifest.require_client_selection(client)
     if max_sections is not None and max_sections < 0:
         raise ValueError("max_sections cannot be negative")
-    if prompt_family not in ("v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15"):
+    if prompt_family not in ("v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17"):
         raise ValueError("unsupported summary prompt family")
     section_family = "v8" if prompt_family in ("v9", "v10", "v11", "v12", "v13") else "v14" if prompt_family == "v15" else prompt_family
     source_header = f"Title: {document.metadata.title}"
-    if prompt_family in ("v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15"):
+    if prompt_family in ("v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17"):
         source_header += f"\nSource kind: {document.source_kind}"
         if document.metadata.authors:
             source_header += f"\nSource author metadata: {', '.join(document.metadata.authors)}"
@@ -168,8 +168,8 @@ def summarize_document(
             new_count += 1
     if len(sections) != len(chunks.chunks):
         return SummaryProgress(completed_sections=len(sections), total_sections=len(chunks.chunks))
-    if prompt_family in ("v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15"):
-        section_input = (source_header + "\n\n" if prompt_family in ("v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15") else "") + "\n\n".join(
+    if prompt_family in ("v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17"):
+        section_input = (source_header + "\n\n" if prompt_family in ("v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17") else "") + "\n\n".join(
             f"Section {index + 1}: {summary.summary}"
             for index, (summary, _) in enumerate(sections)
         )
