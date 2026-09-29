@@ -26,6 +26,8 @@ class OpenRouterClient:
         estimated_input_token_budget: int = 0, timeout_seconds: float = 60,
         api_key: str | None = None, provider: dict[str, Any] | None = None,
         model_providers: dict[str, dict[str, Any]] | None = None,
+        conservative_input_budget: bool = False,
+        capture_failed_outputs: bool = False,
     ) -> None:
         self._allow_live = allow_live
         self._request_budget = request_budget
@@ -36,10 +38,22 @@ class OpenRouterClient:
         self._api_key = os.getenv("OPENROUTER_API_KEY") if api_key is None else api_key
         self._provider = provider
         self._model_providers = model_providers or {}
+        self._conservative_input_budget = conservative_input_budget
+        self._capture_failed_outputs = capture_failed_outputs
+        self.failed_outputs: list[dict[str, Any]] = []
+        self._deadline: float | None = None
         self.billable_usages: list[ModelUsage] = []
         self.billable_requests: list[tuple[str, ModelUsage]] = []
         self.request_timings: list[tuple[str, float]] = []
         self.rate_limit_retries = 0
+
+    @property
+    def remaining_input_bytes(self) -> int | None:
+        return self._input_tokens_left if self._conservative_input_budget else None
+
+    @property
+    def remaining_requests(self) -> int:
+        return self._requests_left
 
     @property
     def live_run_selection(self) -> tuple[bool, int, int]:
@@ -49,14 +63,26 @@ class OpenRouterClient:
             self._estimated_input_token_budget,
         )
 
+    def set_deadline(self, monotonic_deadline: float) -> None:
+        """Bound all HTTP calls for this answer, including endpoint preflight."""
+        self._deadline = monotonic_deadline
+
+    def _timeout(self) -> float:
+        if self._deadline is None:
+            return self._timeout_seconds
+        remaining = self._deadline - time.monotonic()
+        if remaining <= 0:
+            raise ModelClientError("answer time budget exceeded")
+        return min(self._timeout_seconds, remaining)
+
     def _reserve(self, inputs: list[str]) -> None:
         if not self._allow_live:
             raise ModelClientError("live model calls require explicit selection")
         if not self._api_key:
             raise ModelClientError("OPENROUTER_API_KEY is not configured")
-        estimate = sum(
-            len(re.findall(r"\w+|[^\w\s]", item)) for item in inputs
-        )
+        estimate = (sum(len(item.encode("utf-8")) for item in inputs) + 512
+                    if self._conservative_input_budget else sum(
+                        len(re.findall(r"\w+|[^\w\s]", item)) for item in inputs))
         if self._requests_left <= 0 or estimate > self._input_tokens_left:
             raise ModelClientError("model request or estimated input budget exceeded")
         self._requests_left -= 1
@@ -73,7 +99,7 @@ class OpenRouterClient:
             headers={"Authorization": f"Bearer {self._api_key}"},
         )
         try:
-            with request.urlopen(http_request, timeout=self._timeout_seconds) as response:
+            with request.urlopen(http_request, timeout=self._timeout()) as response:
                 data = json.load(response)
         except error.HTTPError as exc:
             raise ModelClientError(f"OpenRouter ZDR route check returned HTTP {exc.code}") from None
@@ -107,7 +133,7 @@ class OpenRouterClient:
             headers={"Authorization": f"Bearer {self._api_key}"},
         )
         try:
-            with request.urlopen(http_request, timeout=self._timeout_seconds) as response:
+            with request.urlopen(http_request, timeout=self._timeout()) as response:
                 data = json.load(response)
         except (error.HTTPError, error.URLError, TimeoutError, OSError, ValueError, TypeError) as exc:
             raise ModelClientError(f"OpenRouter ZDR route check failed: {type(exc).__name__}") from None
@@ -137,10 +163,10 @@ class OpenRouterClient:
             method="POST",
         )
         for attempt in range(3):
-            self._reserve(inputs)
+            self._reserve([body.decode("utf-8")] if self._conservative_input_budget else inputs)
             started = time.perf_counter()
             try:
-                with request.urlopen(http_request, timeout=self._timeout_seconds) as response:
+                with request.urlopen(http_request, timeout=self._timeout()) as response:
                     data = json.load(response)
             except error.HTTPError as exc:
                 if exc.code == 429 and attempt < 2:
@@ -183,6 +209,7 @@ class OpenRouterClient:
     def generate_json(
         self, *, model: ModelSpec, system_prompt: str, input_text: str,
         schema_name: str, json_schema: dict[str, Any], max_output_tokens: int,
+        reasoning_effort: str | None = None,
     ) -> GenerationResult:
         if model.provider != "openrouter":
             raise ModelClientError("OpenRouter adapter requires an openrouter model")
@@ -200,9 +227,15 @@ class OpenRouterClient:
         # Reasoning and constrained JSON consume completion tokens before the
         # visible object appears. The caller's bound is for visible content.
         completion_budget = max_output_tokens * 4
-        if model.model_id in ("openai/gpt-5-mini", "openai/gpt-6-luna"):
+        if reasoning_effort is not None and reasoning_effort not in (
+            "minimal", "low", "medium", "high"
+        ):
+            raise ModelClientError("unsupported reasoning effort")
+        if reasoning_effort is not None and not model.model_id.startswith("openai/"):
+            raise ModelClientError("reasoning effort is unavailable for this model")
+        if model.model_id in ("openai/gpt-5-mini", "openai/gpt-6-luna") or reasoning_effort:
             payload["max_completion_tokens"] = completion_budget
-            payload["reasoning"] = {"effort": "minimal"}
+            payload["reasoning"] = {"effort": reasoning_effort or "minimal"}
         else:
             payload["temperature"] = 0
             # DeepSeek's longer document summaries need more room to finish
@@ -218,14 +251,24 @@ class OpenRouterClient:
         if route is not None:
             payload["provider"] = route
         response = self._post("/chat/completions", payload, [system_prompt, input_text])
+        choices = response.get("choices")
+        finish = choices[0].get("finish_reason") if isinstance(choices, list) and choices and isinstance(choices[0], dict) else None
+        if finish not in (None, "stop"):
+            if self._capture_failed_outputs:
+                message = choices[0].get("message")
+                self.failed_outputs.append({"model": model.model_id, "finish_reason": finish,
+                                            "message": {key: message.get(key) for key in ("role", "content", "refusal")} if isinstance(message, dict) else None})
+            raise ModelClientError(f"OpenRouter structured output was incomplete (finish={finish})")
         try:
             content = response["choices"][0]["message"]["content"]
             parsed = json.loads(content)
             if not isinstance(parsed, dict):
                 raise ValueError
         except (KeyError, IndexError, TypeError, ValueError):
-            choices = response.get("choices")
-            finish = choices[0].get("finish_reason") if isinstance(choices, list) and choices and isinstance(choices[0], dict) else None
+            if self._capture_failed_outputs:
+                message = choices[0].get("message") if isinstance(choices, list) and choices and isinstance(choices[0], dict) else None
+                self.failed_outputs.append({"model": model.model_id, "finish_reason": finish,
+                                            "message": {key: message.get(key) for key in ("role", "content", "refusal")} if isinstance(message, dict) else None})
             raise ModelClientError(f"OpenRouter returned malformed structured output (finish={finish})") from None
         return GenerationResult(data=parsed, model=model, usage=self._usage(response))
 

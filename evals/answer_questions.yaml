@@ -1,0 +1,140 @@
+version: 3
+status: frozen
+examples_required: true
+answer_expectations:
+  - Use simple, concrete language that the user can understand on first reading.
+  - Include concrete examples as part of each answer; the listed examples are suggestions, and other relevant examples are acceptable. Identify any newly invented application as an adaptation.
+source_revisions:
+  bending_spoons: {document_id: 99bcc380-46a8-5083-8cc6-28cb901aa1ad, source_sha256: f54fc568fa48ab338c36662bda6574ddb7dd9c08839f1451127bd493ad2ee7be}
+  sivers: {document_id: bd796d1a-c36b-57fb-b799-b3e10315959a, source_sha256: 7404d484ec839bc654b8082942b0fa56867f966deea7b222b578bc8633071c12}
+  ferriss: {document_id: 25bb2079-575e-5072-82b9-f866068fd7aa, source_sha256: 3a372b289b975c4baddc4443e18d462f922657bd0d886a1d8faa1cc38551d564}
+  anger: {document_id: 892bc053-92a4-5798-9843-5cc1cef59a30, source_sha256: c70219a4d148175b54519dac29a170dc11f07b04b2cfca2bb2d1bff58bfd1358}
+  decisions: {document_id: 8b05b784-fe85-5616-a0c7-4fe54dca5c9a, source_sha256: b67d63ea2e37918a9d9073e103d3ec505eaff776324f2c18c5cac941e4d75146}
+  movie_logic: {document_id: 163a6a66-968b-5be8-91b8-e4fbbc581cfa, source_sha256: 0dabc26e32e620dba7abe5565ffacd8fe6f044107ead237f004374423e9c4553}
+questions:
+  - id: Q1
+    review_status: approved
+    question: What are the unusual principles Bending Spoons uses to grow and work on the different products?
+    purpose: Understand the company's distinctive operating system across products.
+    answerability: full
+    sources: [bending_spoons]
+    essential_facets:
+      - Favor talent and drive over experience, then create conditions for autonomy and growth.
+      - Enable great people to do great work as they see fit, with as few rigid rules and processes as the work allows.
+      - Centralize talent decisions to reduce local hiring pressure and learn across roles.
+      - Avoid variable pay tied to narrow KPIs; trust intrinsically motivated managers to build strong teams instead.
+      - Saturate promising employees' capacity by giving them more work than they can comfortably complete, so they must prioritize and grow.
+      - Relentlessly simplify; require those proposing added complexity to justify it, and actively remove existing complexity.
+      - Treat acquired businesses as long-term operating products, not assets bought to resell.
+      - Explain how ownership and small teams support work across products.
+    suggested_examples: [Eliminating internal titles, rotating people across products, internal AI tools, Evernote]
+    alternative_evidence: Any original transcript passages that support each principle and its operating context.
+    qualifications: Separate Ferrari's stated practices from the interviewer's framing; do not imply every product uses identical tactics.
+    prohibited_inferences: [Specific acquisition prices or unspoken financial returns, universal success of every practice]
+    useful_answer: Organize distinct principles, explain why they matter, and illustrate how they apply across products.
+  - id: Q2
+    review_status: approved
+    question: I am starting a new business project and I need help from Derek Sivers. What ideas or prompts would he suggest considering to challenge or stretch my thinking about how to build the business?
+    purpose: Turn Sivers' highlighted ideas into questions for a new project.
+    answerability: full
+    sources: [sivers]
+    essential_facets:
+      - Put time into ideas that get a strong public response, including people wanting to pay; if the response is lukewarm, improve, invent, or move on rather than keep pushing the same idea.
+      - Make decisions for the benefit of customers; when priorities are unclear, ask how you can best help them now and act on their requests.
+      - Question whether supposedly necessary corporate formalities actually serve the business; Sivers describes refusing employee review plans and other formalities at CD Baby, while pointing to businesses that work without them.
+      - Choose whom the business is for, confidently exclude others, and clearly say what it is not.
+    suggested_examples: [Jim's Fish Bait Shop as an example of a business without corporate formalities, CD Baby excluding record labels, CD Baby special favors, designing for twice the current volume]
+    alternative_evidence: Any highlighted source passage supporting an equivalent prompt.
+    qualifications: Identify reader-added notes separately from Sivers' words; a non-hit can merit improvement before abandonment. His rejection of corporate formalities is a business-design challenge, not a claim that legal obligations can be ignored.
+    prohibited_inferences: [Claims that Sivers personally assessed the user's project, claims that every idea should be abandoned immediately, claims that all formalities or legal obligations are unnecessary]
+    useful_answer: Offer concrete questions or prompts that challenge the user's assumptions and open up different ways to think about the business; explain them with source examples and distinguish Sivers' ideas from adapted prompts.
+  - id: Q3
+    review_status: approved
+    question: What copy advice would Tim Ferriss give me to maximize impact of my company's homepage?
+    purpose: Improve homepage messaging and test it with an audience.
+    answerability: full
+    sources: [ferriss]
+    essential_facets:
+      - Lead with the audience's concrete benefit or relief, and explain it with Tim's Mentava example of selling parents relief from teaching or nagging alongside faster learning for children.
+      - Put credible testimonials and proof prominently where visitors first look.
+      - Make the call to action specific and reduce friction in the path to trying the product.
+      - Test language in person through conversations and presentations; notice what prompts questions or interest, then test promising wording on the website using purchase-intent signals.
+    suggested_examples: [Mentava parent relief, readiness-check CTA, homepage visual flow, informal conversation tests]
+    alternative_evidence: Other original Tim Ferriss passages from the same transcript supporting equivalent advice.
+    qualifications: Distinguish Tim's advice from Niels Hoven's product facts; adapt examples to the user's unknown business.
+    prohibited_inferences: [A guaranteed conversion lift, invented testimonials, treating a mock-up's unverified claim as fact]
+    useful_answer: Give prioritized, testable homepage changes; make the advice concrete with Tim's examples from coaching Mentava's Niels Hoven, and explain how in-person conversations and presentations can uncover better wording.
+  - id: Q4
+    review_status: approved
+    question: What steps could I take to calm myself down when I realize I feel anger?
+    purpose: Get an immediately usable sequence from the short note.
+    answerability: full
+    sources: [anger]
+    essential_facets:
+      - Notice the note's warning signs, including pointing your fist, raising your voice, heavy breathing, flaring nostrils, and head shaking.
+      - Drop the heavy breathing when you notice anger, label the reaction as weakness as the note suggests, detach from it, and take a breath to regain control.
+      - Nod slowly to buy time, consider the next move, and count down if needed.
+    suggested_examples: [Raised voice, clenched or pointing fist, flared nostrils]
+    alternative_evidence: Any original note span covering the same steps.
+    qualifications: Present these as the note's tactics, not a clinical treatment.
+    prohibited_inferences: [A claim that these steps always prevent anger, an invented study]
+    useful_answer: Supply a short sequence usable in the moment.
+  - id: Q5
+    review_status: approved
+    question: What two practical rules could help me make decisions when stuck looking for more information?
+    purpose: Escape analysis paralysis while limiting downside.
+    answerability: full
+    sources: [decisions]
+    essential_facets:
+      - Set a decision deadline and make a go or no-go call then.
+      - Prefer small, short, low-risk go experiments when uncertainty remains.
+    suggested_examples: [Why overanalysis can block action]
+    alternative_evidence: Any original note spans supporting the deadline and experiment rules.
+    qualifications: The rules reduce paralysis and risk, not uncertainty to zero.
+    prohibited_inferences: [A specific calendar deadline the source never set, guaranteed outcomes]
+    useful_answer: State exactly two actionable rules and the reason for each.
+  - id: Q6
+    review_status: approved
+    question: What practical tips could I use to get better at having hard conversations?
+    purpose: Address awkwardness and feedback without waiting for a perfect script.
+    answerability: full
+    sources: [movie_logic]
+    essential_facets:
+      - Name an awkward or difficult issue directly instead of waiting for events to resolve it.
+      - Say that something feels wrong, explain what you have noticed, and ask about it instead of assuming you already know why it is happening.
+      - Make room for a possible argument or correction rather than treating discomfort as proof to stay silent.
+    suggested_examples: [The law-school classmate, relationship language, poor feedback cultures]
+    alternative_evidence: Any original article passage supporting the practical behavior.
+    qualifications: Separate the author's situation from the user's unknown relationship or workplace.
+    prohibited_inferences: [A guaranteed positive reaction, a diagnosis of the other person's motives]
+    useful_answer: Use simple language and concrete examples of how to start the conversation and respond, drawing on the article's situations and reasoning.
+  - id: Q7
+    review_status: approved
+    question: I am starting a business from scratch with no investors. Give me three constraints that would help me find customers willing to pay in my first month.
+    purpose: Choose three practical limits for early customer discovery.
+    answerability: partial
+    sources: [sivers, ferriss]
+    essential_facets:
+      - Use direct customer conversations or open-ended requests to identify a real need.
+      - Keep the offer and message narrow enough to test with likely buyers.
+      - Run a small, observable, low-cost test of purchase intent before broad expansion.
+    suggested_examples: [Founder contact with customers, messaging tests, a simple offer]
+    alternative_evidence: Any original passages in the checked corpus supporting the proposed constraints.
+    qualifications: The three constraints are the agent's synthesis; these sources do not promise paying customers within one month.
+    prohibited_inferences: [A first-month revenue guarantee, a quantified cold-outreach playbook not in the corpus, calling adapted constraints direct quotations]
+    useful_answer: Give three clearly labeled constraints, their source rationale, and a candid limit on the first-month goal.
+  - id: Q8
+    review_status: approved
+    question: I need to hire two people for my team and don't know how to do this. If Luca Ferrari and Derek Sivers were here in this room, how would they help me do so?
+    purpose: Compare two perspectives to plan two new hires.
+    answerability: partial
+    sources: [bending_spoons, sivers]
+    essential_facets:
+      - Attribute talent-over-experience and deliberate hiring signals to Ferrari.
+      - Explain Ferrari's caution against hiring merely to fill an urgent seat.
+      - Use Sivers' ownership and question-led management ideas only as an adaptation to leading hires.
+    suggested_examples: [Centralized talent team's broad sample, asking about an employee's reasoning]
+    alternative_evidence: Other original passages supporting each attributed perspective.
+    qualifications: The Sivers highlights do not lay out a two-person recruiting system; do not invent a dialogue between the men.
+    prohibited_inferences: [Attributing Ferrari's hiring process to Sivers, claiming either source reviewed the user's candidates]
+    useful_answer: Give a practical hiring sequence while distinguishing Ferrari's explicit views from adaptations of Sivers' management ideas.

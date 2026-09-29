@@ -55,3 +55,36 @@ class SearchHit(StrictRecord):
     chunk_id: str
     source_spans: list[dict]
     raw_text: str
+
+
+class FusedHit(StrictRecord):
+    rank: int
+    rrf_score: float
+    channels: list[str]
+    hit: SearchHit
+
+
+class CardHit(StrictRecord):
+    rank: int
+    score: float
+    document_id: str
+    run_id: str
+    source_sha256: str
+    root_alias: str
+    relative_path: str
+    card_id: str
+    chunk_id: str
+    statement: str
+    evidence_span: dict
+
+
+class SourcePassage(StrictRecord):
+    document_id: str
+    run_id: str
+    source_sha256: str
+    root_alias: str
+    relative_path: str
+    chunk_id: str
+    start_char: int
+    end_char: int
+    text: str
