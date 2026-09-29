@@ -1,5 +1,22 @@
 # Source-span eval labels
 
+## Frozen answer pilot
+
+`answer_questions.yaml` version 3 contains eight user-reviewed, frozen questions bound to the six selected source hashes. Essential facets are coverage expectations, with alternate wording and evidence allowed. Relevant examples are mandatory; `suggested_examples` are interchangeable illustrations. Qualifications preserve nuance, prohibited inferences identify overclaims, and usefulness describes the user outcome rather than a fixed answer structure.
+
+For a completed private answer report, prepare a review sheet and summarize the completed review:
+
+```powershell
+python -m evals.answer_trial make-review .local/answer-Q4.json .local/review-Q4.json --question-id Q4
+python -m evals.answer_trial summarize .local/review-Q4.json .local/score-Q4.json
+```
+
+Each facet is covered, partial, or missing, with answer evidence or a reason. Grade examples and qualifications separately, review material claims against their cited originals, record inference/attribution failures, and judge usefulness. Unreviewed fields remain unreviewed. Changed source hashes or rubric versions invalidate comparisons. Runtime citation validity does not establish semantic support; the pilot requires human review. Failed or unfinished model attempts cannot enter grading as completed answers.
+
+`python -m evals.answer_trial run <private-config.json> .local/pilot-directory --live` executes one sequential configuration over its selected frozen question IDs. The config specifies `question_ids`, `model`, `reasoning_effort`, `generation_provider_tag`, `max_generation_usd_per_million`, and per-attempt `max_usd`. Only the planned pinned model routes are accepted. The `.local/stage5-budget.json` ledger reserves the per-attempt ceiling before calls and replaces it with measured cost only when usage is known; unknown-cost failures retain the reservation. Completed answers resume without another call. A failed attempt requires explicit `--retry-failed`, which preserves its report and creates a new numbered attempt. Changed questions, source revisions, rubric content, or prompt content cannot silently resume a comparison. Finished attempts remain marked review-pending until semantic support and usefulness are graded.
+
+`python -m evals.retrieval_trial` separately measures vector, FTS, and RRF required-span Recall@5/10/20 against stored source revisions, without reading the external vault. All 37 questions remain visible; only the 31 supported questions contribute the 51 required spans to recall. See [RETRIEVAL.md](../RETRIEVAL.md) for the measured results and commands. Stage 5 has approved $8 / $10 cumulative ceilings, replacing the older Stage 4 allowance for this work; accounting remains based on retained private reports.
+
 `questions_*.yaml` contains 37 questions for six real vault files: the Tim Ferriss and Luca Ferrari transcripts, the movie-logic article, Derek Sivers highlights, and two short notes. The long book is deferred. Supported questions point to enough exact source text to answer them, using multiple required passages when the answer has several parts. Each of the newer five files also has one question the file cannot answer. The labels bind to a document ID and source hash, so changed source text must be reviewed and relabeled. Preview with `--eval-file evals/questions_transcript_tim_ferriss.yaml` validates and maps its source spans to both raw chunk variants. Overlapping chunks can contain the same span, but it remains one labeled source span.
 
 `fixture_*.yaml` adds one manually checked source span each for bracket transcripts, highlights, books, articles, and notes. The labels refer to the short synthetic Markdown in `sources/fixtures/`, copied to the corresponding source category and named `sample_*.md`. They test mapping and category coverage without committing vault passages.

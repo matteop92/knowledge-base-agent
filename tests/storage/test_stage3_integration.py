@@ -8,20 +8,22 @@ import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import psycopg
 
-from app.ingestion.contracts import ChunkSet
+from app.ingestion.contracts import ChunkSet, ParsedDocument
+from app.ingestion.enrichment import extract_evidence_cards
 from app.ingestion.embeddings import EmbeddedChunk, EmbeddingBatch, EmbeddingSpec
 from app.ingestion.preview import preview_markdown
 from app.ingestion.run_manifest import RunManifest, write_artifact_json
-from app.models.client import ModelUsage
+from app.models.client import GenerationResult, ModelSpec, ModelUsage
 from app.storage import StorageError
 from app.storage.loader import load_run
 from app.storage.publication import create_profile, publish_run, select_profile
 from app.storage.records import PublicationSelection, SearchProfile, spec_id
 from app.storage.search import search_text, search_vector
+from app.storage.retrieval import read_passage, search_cards, selected_embedding_spec
 
 
 def add_vectors(run_dir: Path, spec: EmbeddingSpec):
@@ -72,6 +74,78 @@ class Stage3IntegrationTest(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.conn.close()
+
+    def test_passage_read_is_scoped_to_selected_revision_and_chunk(self):
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder)
+            first, spec, _ = fixture_run(base, "# Orchard\n\nThe coral pear is ripe.\n")
+            load_run(self.conn, first)
+            profile_id = "passage-proof"
+            create_profile(self.conn, SearchProfile(
+                profile_id=profile_id, variant="fixed_raw", chunking_version=spec.chunking_version,
+                embedding_spec_id=spec_id(spec)))
+            publish_run(self.conn, PublicationSelection(run_id=first.name, profile_id=profile_id))
+            select_profile(self.conn, profile_id)
+            self.assertEqual(selected_embedding_spec(self.conn)[0], spec_id(spec))
+            hit = search_text(self.conn, "coral pear")[0]
+            span = hit.source_spans[-1]
+            args = dict(document_id=hit.document_id, run_id=hit.run_id,
+                        source_sha256=hit.source_sha256, chunk_id=hit.chunk_id,
+                        start_char=span["start_char"], end_char=span["end_char"])
+            self.assertIn("coral pear", read_passage(self.conn, **args).text)
+            for changed in ({"source_sha256": "0" * 64}, {"document_id": "unknown"},
+                            {"chunk_id": "unknown"}, {"start_char": -1},
+                            {"end_char": span["end_char"] + 1}):
+                with self.subTest(changed=changed), self.assertRaises(StorageError):
+                    read_passage(self.conn, **{**args, **changed})
+            second, _, _ = fixture_run(base, "# Orchard\n\nThe teal plum is ripe.\n")
+            load_run(self.conn, second)
+            publish_run(self.conn, PublicationSelection(run_id=second.name, profile_id=profile_id))
+            self.assertEqual({h.run_id for h in search_text(self.conn, "ripe")}, {second.name})
+            with self.assertRaises(StorageError):
+                read_passage(self.conn, **args)
+            with self.conn.transaction():
+                self.conn.execute("set transaction read only")
+                with self.assertRaises(psycopg.errors.ReadOnlySqlTransaction), self.conn.transaction():
+                    self.conn.execute("update knowledge.corpus_state set profile_id=profile_id where false")
+
+    def test_only_published_cards_are_searchable_and_open_originals(self):
+        with tempfile.TemporaryDirectory() as folder:
+            run_dir, spec, chunks = fixture_run(Path(folder),
+                "# Orchard\n\nThe crimson pear helps customers.\n\nThis improves service.\n")
+            document = ParsedDocument.model_validate_json((run_dir / "parsed.json").read_text(encoding="utf-8"))
+            start = document.source_text.index("The crimson pear")
+            end = document.source_text.index("This improves service.") + len("This improves service.")
+            quote = document.source_text[start:end]
+            client = MagicMock()
+            client.live_run_selection = (False, 0, 0)
+            model = ModelSpec(provider="fixture", model_id="cards", model_version="1")
+            client.generate_json.return_value = GenerationResult(model=model, data={"cards": [{
+                "card_type": "claim", "statement": "Customers enjoy crimson pears.",
+                "evidence_start_char": start, "evidence_end_char": start + len(quote),
+                "evidence_text": quote}]})
+            manifest = RunManifest.load(run_dir)
+            extract_evidence_cards(document, chunks, chunks.chunks[0], client, model, manifest, run_dir)
+            load_run(self.conn, run_dir)
+            create_profile(self.conn, SearchProfile(profile_id="card-proof", variant="fixed_raw",
+                chunking_version=spec.chunking_version, embedding_spec_id=spec_id(spec)))
+            publish_run(self.conn, PublicationSelection(run_id=run_dir.name, profile_id="card-proof"))
+            select_profile(self.conn, "card-proof")
+            self.assertEqual(search_cards(self.conn, "crimson"), [])
+            with self.assertRaises(StorageError):
+                read_passage(self.conn, document_id=document.document_id, run_id=document.run_id,
+                    source_sha256=document.source_sha256, chunk_id=chunks.chunks[0].chunk_id,
+                    start_char=start, end_char=end)
+            card_ids = [item.artifact_id for item in manifest.artifacts.values() if item.kind == "cards"]
+            publish_run(self.conn, PublicationSelection(run_id=run_dir.name, profile_id="card-proof",
+                                                       required_artifact_ids=card_ids))
+            cards = search_cards(self.conn, "crimson")
+            self.assertEqual(len(cards), 1)
+            card = cards[0]
+            passage = read_passage(self.conn, document_id=card.document_id, run_id=card.run_id,
+                source_sha256=card.source_sha256, chunk_id=card.chunk_id,
+                start_char=card.evidence_span["start_char"], end_char=card.evidence_span["end_char"])
+            self.assertEqual(passage.text, quote)
 
     def test_stale_retry_preserves_the_newer_manifest(self):
         with tempfile.TemporaryDirectory() as folder:
