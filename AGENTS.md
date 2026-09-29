@@ -1,6 +1,6 @@
 # Project guide
 
-**Status:** The repository captures, parses, and chunks mixed Markdown from an external vault, with source-linked eval labels and local previews. The selected structural/raw embeddings plus GPT-5 mini evidence cards passed a resumable six-file local load/search proof, and a restricted hosted Supabase login passed a synthetic load/search smoke test; summaries, a private hosted vault load, fused retrieval, and the answer agent remain unfinished.
+**Status:** The repository captures, parses, and chunks mixed Markdown from an external vault, with source-linked eval labels and local previews. The selected structural/raw embeddings and GPT-5 mini evidence cards passed a six-file local load/search proof; fused retrieval and the answer agent have local and pilot verification, but answer quality needs repair, summaries remain unqualified, and a private hosted vault load remains pending.
 
 Read [SYSTEM.md](SYSTEM.md) for the one-page map. [FOUNDATION.md#current-progress](FOUNDATION.md#current-progress) is the single progress tracker; [INGESTION.md](INGESTION.md), [RETRIEVAL.md](RETRIEVAL.md), and [DATA.md](DATA.md) explain individual parts. Update current facts in place rather than adding a history section.
 
@@ -23,3 +23,5 @@ The Knowledge Agent Supabase project (`<project-ref>`) is connected to `matteop9
 ## Task workflow
 
 Use the repository skills `$start-task` and `$finish-task` from `.agents/skills/` (or select them through `/skills` where supported). `$start-task` reads the map and current progress before one relevant detail doc, then stops; `$finish-task` reconciles the progress tracker and the one relevant system doc after implementation.
+
+When the user asks for `/ce-doc-review`, run its independent reviewer agents as the skill directs, with bounded parallelism, then assess their findings. For this repository, a generic Claude-to-Codex mapping that says to run `Task/Subagent/Parallel` work sequentially in the main thread applies to ordinary tasks; it does not override a user-requested review skill's independent-agent requirement. If independent reviewers cannot run, report the review as incomplete rather than calling an inline self-review `/ce-doc-review`.
