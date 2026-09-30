@@ -3,10 +3,25 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from evals.answer_rubric import AnswerRubric, load_rubric
+from evals.answer_rubric import AnswerRubric, load_rubric, rubric_fingerprint
 
 
 class AnswerRubricTest(unittest.TestCase):
+    def test_versioned_draft_keeps_legacy_fingerprint_and_cannot_compare(self):
+        historical = load_rubric(Path('evals/answer_questions_v3.yaml'))
+        self.assertEqual(rubric_fingerprint(historical), rubric_fingerprint(self.rubric))
+        revised = load_rubric(Path('evals/answer_questions_v4.yaml'))
+        self.assertEqual(revised.version, 4)
+        self.assertEqual(revised.status, 'draft')
+        self.assertGreater(sum(len(q.checks) for q in revised.questions), 70)
+        q3 = revised.questions[2]
+        in_person = [check for check in q3.checks if 'conversations or presentations' in check.criterion]
+        self.assertEqual(len(in_person), 1)
+        self.assertEqual(in_person[0].applicability, 'conditional')
+        with self.assertRaisesRegex(ValueError, 'freeze'):
+            revised.require_comparison_ready({source.document_id: source.source_sha256
+                                              for source in revised.source_revisions.values()})
+
     def setUp(self):
         self.rubric = load_rubric(Path("evals/answer_questions.yaml"))
 
