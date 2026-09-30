@@ -1,12 +1,31 @@
 # Personal knowledge agent
 
-This repository captures Markdown from an external Knowledge folder and produces source-linked local artifacts. It supports bold-label and bracket-label transcripts, notes, articles, highlights, and book exports. The original files remain unchanged. A private Postgres storage and candidate-search path is available; the answer agent remains later work.
+This repository captures Markdown from an external Knowledge folder and produces source-linked local artifacts. It supports bold-label and bracket-label transcripts, notes, articles, highlights, and book exports. The original files remain unchanged. Private Postgres storage, hybrid retrieval, and a bounded local answer CLI are available. Live answer quality remains unmeasured.
 
 Start with [SYSTEM.md](SYSTEM.md) for the whole flow and [FOUNDATION.md#current-progress](FOUNDATION.md#current-progress) for stage-by-stage progress; [INGESTION.md](INGESTION.md), [RETRIEVAL.md](RETRIEVAL.md), and [DATA.md](DATA.md) describe each part at its current stage.
 
 For the current Stage 4 experiment and a new-chat handoff, use the [results and next-screen plan](docs/plans/2026-09-24-001-feat-live-enrichment-ingestion-plan.md) and the [trial script commands](evals/README.md#stage-4-trial-scripts-and-handoff).
 
+## Ask a question
+
+Set `KNOWLEDGE_DATABASE_URL` to the private runtime connection and `OPENROUTER_API_KEY` to your key; the CLI does not load `.env` automatically. It reads only the selected published index, with no `KNOWLEDGE_SOURCE_ROOT` dependency. Configuration and current endpoint checks can run without generation or query embedding:
+
+```powershell
+python -m app.agent.cli 'What steps could I take to calm myself down when I realize I feel anger?' `
+  --dry-run --embedding-provider-tag perplexity/int8 --generation-provider-tag azure `
+  --max-embedding-usd-per-million 0.004 --max-generation-usd-per-million 2 `
+  --max-usd 0.25 --report .local/answer-preflight.json
+```
+
+Replace `--dry-run` with `--live` and choose a new report filename for an answer. Live mode sends questions/searches and relevant candidate snippets and inspected source passages through OpenRouter to the qualified pinned providers. The default generation configuration is GPT-5 mini at minimal reasoning. Each request has fresh usage budgets and an evidence ledger; answering uses a read-only transaction. Defaults allow 12 model actions, five hybrid searches, two card searches, eight source reads, and a 120-second investigation deadline. `--input-byte-budget` conservatively counts serialized request bytes plus 512 tokens per request; ingestion retains its existing default budget behavior.
+
+Human output includes the answer, cited locators, bounded excerpts, and evidence gaps. `--json` explicitly outputs the full result. Optional `--report` files must be new paths under ignored `.local/`; they contain private answers, inspected passages, action/rank traces, stop reasons, model configuration, usage, and estimated cost. Interrupted or failed attempts are retained when a report was requested; they are not quality passes. Runtime citation checks establish inspected-source provenance; the frozen pilot review establishes semantic support and usefulness.
+
+The approved Stage 5 ceiling is $8 and the cumulative ceiling is $10. A CLI call enforces its own conservative cost bound; the operator must account for previous reports before selecting a new per-call cap. No answer API or deployment is included.
+
 ## Preview a source
+
+For answering an already published index, see [Ask a question](#ask-a-question); that path does not require the external vault.
 
 Use Python 3.11 or newer and install dependencies with `python -m pip install -e .`. Set `KNOWLEDGE_SOURCE_ROOT` to the parent Knowledge folder. The root alias defaults to `primary`; keep it stable when moving that folder.
 
