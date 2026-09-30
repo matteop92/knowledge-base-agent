@@ -1,6 +1,6 @@
 import unittest
 
-from app.agent.harness import answer_question
+from tests.agent.test_harness import answer_question
 from app.agent.records import AnswerLimits
 from tests.agent.test_actions import action
 from tests.agent.test_harness import FakeClient, FakeRetriever, MODEL

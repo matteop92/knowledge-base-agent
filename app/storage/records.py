@@ -76,6 +76,11 @@ class CardHit(StrictRecord):
     chunk_id: str
     statement: str
     evidence_span: dict
+    situation: str | None = None
+    action: str | None = None
+    result: str | None = None
+    principle: str | None = None
+    query_mode: Literal["all_terms", "or_fallback"] = "all_terms"
 
 
 class SourcePassage(StrictRecord):
@@ -88,3 +93,6 @@ class SourcePassage(StrictRecord):
     start_char: int
     end_char: int
     text: str
+    span_end_char: int | None = None
+    next_offset: int | None = None
+    truncated: bool = False
