@@ -1,0 +1,47 @@
+import contextlib
+import io
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+from app.agent.cli import main
+from app.models.client import ModelClientError
+from tests.storage.test_retrieval import hit
+
+
+class CLITest(unittest.TestCase):
+    def args(self, report):
+        return ["A question", "--dry-run", "--embedding-provider-tag", "embed",
+                "--generation-provider-tag", "generate", "--max-embedding-usd-per-million", "0.004",
+                "--max-generation-usd-per-million", "2", "--max-usd", "1", "--report", str(report)]
+
+    def test_failure_report_survives_and_does_not_expose_exception_contents(self):
+        with tempfile.TemporaryDirectory(dir=".local") as folder:
+            report = Path(folder) / "failure.json"
+            with patch("app.agent.cli.connect_runtime", side_effect=ModelClientError("secret credential")), \
+                 contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(main(self.args(report)), 1)
+            self.assertTrue(report.exists())
+            self.assertNotIn("secret credential", report.read_text())
+            self.assertNotIn("secret credential", err.getvalue())
+
+    def test_dry_run_checks_route_and_read_only_transaction_without_answering(self):
+        from app.ingestion.embeddings import EmbeddingSpec
+        from app.storage.records import spec_id
+        spec = EmbeddingSpec(provider="openrouter", model="embed-model", model_version="1",
+            dimensions=3, distance_metric="cosine", input_recipe_version="raw-v1", chunking_version="v1")
+        conn = MagicMock()
+        conn.execute.return_value.fetchall.return_value = [(hit("c", 0).document_id, "a" * 64)]
+        client = MagicMock()
+        client.require_zdr_route.return_value = {"pricing": {"prompt": "0.000000004", "completion": "0.000002"},
+            "supported_parameters": ["reasoning", "response_format", "structured_outputs"]}
+        with tempfile.TemporaryDirectory(dir=".local") as folder, \
+             patch("app.agent.cli.connect_runtime") as connect, \
+             patch("app.agent.cli.OpenRouterClient", return_value=client), \
+             patch("app.agent.cli.selected_embedding_spec", return_value=(spec_id(spec), spec)), \
+             patch("app.agent.cli.answer_question") as answer, contextlib.redirect_stdout(io.StringIO()):
+            connect.return_value.__enter__.return_value = conn
+            self.assertEqual(main(self.args(Path(folder) / "dry.json")), 0)
+            answer.assert_not_called()
+            conn.execute.assert_any_call("set transaction isolation level repeatable read read only")

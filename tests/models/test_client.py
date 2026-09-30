@@ -8,6 +8,21 @@ from app.models.openrouter import OpenRouterClient
 
 
 class ModelClientTests(unittest.TestCase):
+    def test_malformed_generation_is_retained_only_with_explicit_capture(self):
+        import json
+        response = {'choices':[{'finish_reason':'stop','message':{'content':'private malformed JSON'}}],
+                    'usage':{'prompt_tokens':4,'completion_tokens':3}}
+        for capture in (False, True):
+            client = OpenRouterClient(allow_live=True, api_key='synthetic', request_budget=1,
+                                      estimated_input_token_budget=100, capture_failed_outputs=capture)
+            with patch('app.models.openrouter.request.urlopen', return_value=io.BytesIO(json.dumps(response).encode())):
+                with self.assertRaises(ModelClientError):
+                    client.generate_json(model=self.model, system_prompt='Return JSON', input_text='source',
+                        schema_name='test', json_schema={'type':'object'}, max_output_tokens=32)
+            self.assertEqual(bool(client.failed_outputs), capture)
+            if capture:
+                self.assertEqual(client.failed_outputs[0]['message']['content'], 'private malformed JSON')
+
     def setUp(self) -> None:
         self.model = ModelSpec(
             provider="openrouter", model_id="example/open-model", model_version="2026-09"
@@ -27,10 +42,40 @@ class ModelClientTests(unittest.TestCase):
                 estimated_input_token_budget=100,
             ).generate_json(**kwargs)
         with self.assertRaisesRegex(ModelClientError, "not configured"):
-            OpenRouterClient(
-                allow_live=True, api_key="", request_budget=1,
-                estimated_input_token_budget=100,
-            ).generate_json(**kwargs)
+            OpenRouterClient(allow_live=True, api_key="", request_budget=1,
+                             estimated_input_token_budget=100).generate_json(**kwargs)
+
+    def test_answer_byte_budget_accounts_for_request_body_before_egress(self):
+        client = OpenRouterClient(allow_live=True, api_key="test-key", request_budget=1,
+                                  estimated_input_token_budget=600, conservative_input_budget=True)
+        with patch("app.models.openrouter.request.urlopen") as send:
+            with self.assertRaisesRegex(ModelClientError, "budget exceeded"):
+                client.embed(model=self.model, texts=["word" * 200])
+            send.assert_not_called()
+
+    def test_expired_answer_deadline_prevents_another_http_request(self):
+        client = OpenRouterClient(allow_live=True, api_key="test-key", request_budget=1,
+                                  estimated_input_token_budget=100)
+        client.set_deadline(0)
+        with patch("app.models.openrouter.request.urlopen") as send, self.assertRaises(ModelClientError):
+            client.embed(model=self.model, texts=["source"])
+        send.assert_not_called()
+
+    def test_reasoning_override_and_truncation_do_not_change_defaults(self):
+        client = OpenRouterClient()
+        model = ModelSpec(provider="openrouter", model_id="openai/gpt-5-mini", model_version="1")
+        response = {"choices": [{"finish_reason": "stop", "message": {"content": '{"value":1}'}}]}
+        kwargs = dict(model=model, system_prompt="JSON", input_text="Source", schema_name="example",
+                      json_schema={"type": "object"}, max_output_tokens=20)
+        with patch.object(client, "_post", return_value=response) as post:
+            client.generate_json(**kwargs)
+            self.assertEqual(post.call_args.args[1]["reasoning"], {"effort": "minimal"})
+            client.generate_json(**kwargs, reasoning_effort="medium")
+            self.assertEqual(post.call_args.args[1]["reasoning"], {"effort": "medium"})
+            self.assertEqual(post.call_args.args[1]["max_completion_tokens"], 80)
+        response["choices"][0]["finish_reason"] = "length"
+        with patch.object(client, "_post", return_value=response), self.assertRaises(ModelClientError):
+            client.generate_json(**kwargs)
 
     def test_structured_response_and_embedding_shape(self) -> None:
         client = OpenRouterClient(
