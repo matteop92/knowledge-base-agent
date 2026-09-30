@@ -1,5 +1,6 @@
 import contextlib
 import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -45,3 +46,27 @@ class CLITest(unittest.TestCase):
             self.assertEqual(main(self.args(Path(folder) / "dry.json")), 0)
             answer.assert_not_called()
             conn.execute.assert_any_call("set transaction isolation level repeatable read read only")
+
+    def test_broad_profile_records_finite_allowances_and_schema(self):
+        from app.ingestion.embeddings import EmbeddingSpec
+        from app.storage.records import spec_id
+        spec = EmbeddingSpec(provider="openrouter", model="embed-model", model_version="1",
+            dimensions=3, distance_metric="cosine", input_recipe_version="raw-v1", chunking_version="v1")
+        conn = MagicMock()
+        conn.execute.return_value.fetchall.return_value = []
+        client = MagicMock()
+        client.require_zdr_route.return_value = {"pricing": {"prompt": "0.000000004", "completion": "0.000002"},
+            "supported_parameters": ["reasoning", "response_format", "structured_outputs"]}
+        with tempfile.TemporaryDirectory(dir=".local") as folder, \
+             patch("app.agent.cli.connect_runtime") as connect, \
+             patch("app.agent.cli.OpenRouterClient", return_value=client), \
+             patch("app.agent.cli.selected_embedding_spec", return_value=(spec_id(spec), spec)), \
+             contextlib.redirect_stdout(io.StringIO()):
+            connect.return_value.__enter__.return_value = conn
+            path = Path(folder) / "broad.json"
+            self.assertEqual(main(self.args(path) + ["--budget-profile", "broad"]), 0)
+            config = json.loads(path.read_text())["configuration"]
+            self.assertEqual(config["action_schema_version"], 2)
+            self.assertEqual(config["limits"]["max_finds"], 4)
+            self.assertEqual(config["limits"]["max_reads"], 14)
+            self.assertEqual(config["request_budget"], 28)

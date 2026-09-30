@@ -12,6 +12,7 @@ from pathlib import Path
 import psycopg
 
 from app.agent.harness import answer_question, PROMPT, PROMPT_PATH, PROMPT_VERSION
+from app.agent.actions import ACTION_SCHEMA_V2
 from app.agent.records import AnswerLimits
 from app.models.client import ModelClientError, ModelSpec
 from app.models.openrouter import OpenRouterClient
@@ -52,14 +53,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-embedding-usd-per-million", type=_positive_decimal, required=True)
     parser.add_argument("--max-generation-usd-per-million", type=_positive_decimal, required=True)
     parser.add_argument("--max-usd", type=_positive_decimal, required=True)
-    parser.add_argument("--request-budget", type=int, default=18)
-    parser.add_argument("--input-byte-budget", type=int, default=400000,
+    parser.add_argument("--budget-profile", choices=("compact", "broad"), default="compact",
+                        help="finite investigation allowances; broad permits more search, find, reads, and synthesis")
+    parser.add_argument("--request-budget", type=int)
+    parser.add_argument("--input-byte-budget", type=int,
                         help="conservative input allowance: request UTF-8 bytes plus 512 tokens per request")
     parser.add_argument("--model", default="openai/gpt-5-mini")
     parser.add_argument("--reasoning-effort", choices=("none", "minimal", "low", "medium", "high"), default="minimal")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--report", type=Path, help="explicit private report under .local/")
     args = parser.parse_args(argv)
+    limits = AnswerLimits.broad() if args.budget_profile == "broad" else AnswerLimits()
+    if args.request_budget is None:
+        args.request_budget = 28 if args.budget_profile == "broad" else 18
+    if args.input_byte_budget is None:
+        args.input_byte_budget = 700000 if args.budget_profile == "broad" else 400000
     if not args.question.strip():
         parser.error("question must not be empty")
     if args.reasoning_effort != "none" and not args.model.startswith("openai/"):
@@ -100,7 +108,7 @@ def main(argv: list[str] | None = None) -> int:
             # plus every allowed request at the completion-token bound.
             upper_bound = (Decimal(args.input_byte_budget) * max(
                 prompt_price, Decimal(str(embedding_endpoint["pricing"]["prompt"])))
-                + Decimal(args.request_budget * 3600) * completion_price)
+                + Decimal(args.request_budget * limits.max_output_tokens * 4) * completion_price)
             if upper_bound > args.max_usd:
                 raise ModelClientError("configured worst-case spend exceeds --max-usd")
             hashes = dict(conn.execute("""select r.document_id,r.source_sha256 from knowledge.runs r
@@ -111,7 +119,10 @@ def main(argv: list[str] | None = None) -> int:
                         "embedding_spec_id": sid, "source_revisions": hashes,
                         "prompt_version": PROMPT_VERSION, "prompt_sha256": hashlib.sha256(PROMPT.encode("utf-8")).hexdigest(),
                         "prompt_file_sha256": hashlib.sha256(PROMPT_PATH.read_bytes()).hexdigest(),
-                        "limits": AnswerLimits().model_dump(), "request_budget": args.request_budget,
+                        "action_schema_version": 2,
+                        "action_schema_sha256": hashlib.sha256(json.dumps(ACTION_SCHEMA_V2, sort_keys=True).encode()).hexdigest(),
+                        "budget_profile": args.budget_profile,
+                        "limits": limits.model_dump(), "request_budget": args.request_budget,
                         "input_byte_budget": args.input_byte_budget, "input_budget_mode": "utf8_bytes_plus_512_per_request",
                         "max_usd": str(args.max_usd),
                         "worst_case_usd": str(upper_bound)}
@@ -123,7 +134,7 @@ def main(argv: list[str] | None = None) -> int:
                 result = answer_question(args.question, retriever=retriever, client=client,
                                          model=ModelSpec(provider="openrouter", model_id=args.model,
                                                          model_version="current"),
-                                         limits=AnswerLimits(), reasoning_effort=None if args.reasoning_effort == "none" else args.reasoning_effort)
+                                         limits=limits, reasoning_effort=None if args.reasoning_effort == "none" else args.reasoning_effort)
                 prices = {args.model: (prompt_price, completion_price),
                           spec.model: (Decimal(str(embedding_endpoint["pricing"]["prompt"])), Decimal(0))}
                 known_usage = len(client.request_timings) == len(client.billable_requests) and all(usage.input_tokens is not None and (
@@ -149,8 +160,6 @@ def main(argv: list[str] | None = None) -> int:
             for ref, passage in result.citations.items():
                 print(f"\n[{ref}] {passage.root_alias}/{passage.relative_path} "
                       f"({passage.start_char}:{passage.end_char})\n{passage.text[:420]}")
-            if result.gaps:
-                print("\nEvidence gaps: " + "; ".join(result.gaps))
         return 0 if value["status"] != "failed" else 1
     except (StorageError, ModelClientError, psycopg.Error, OSError, ValueError, KeyboardInterrupt) as exc:
         if args.report is not None:
