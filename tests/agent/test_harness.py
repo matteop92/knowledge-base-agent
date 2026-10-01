@@ -45,6 +45,47 @@ class FakeRetriever:
 
 
 class HarnessTest(unittest.TestCase):
+    def test_nonfinish_draft_answer_does_not_discard_valid_source_read(self):
+        draft_read = action_v2("read", reference_id="E1", span_index=0,
+                               answer="Unverified draft", citation_ids=["E1.0"],
+                               completeness="partial", sufficient=False,
+                               gaps=["More to inspect"])
+        resolved = [{"id": "N1", "description": "Explain", "status": "resolved",
+                     "evidence_ids": ["E1.0"], "rationale": None}]
+        client = FakeClient([action_v2("search", query="source"), draft_read,
+                             action_v2("finish", answer="Grounded [E1.0]",
+                                       citation_ids=["E1.0"], completeness="complete",
+                                       sufficient=True, need_updates=resolved)])
+        result = answer_question("Explain", retriever=FakeRetriever(), client=client, model=MODEL,
+                                 limits=AnswerLimits(max_model_calls=3))
+        self.assertEqual(result.termination, "completed")
+        self.assertEqual(result.actions[1]["ignored_draft_fields"],
+                         ["answer", "citation_ids", "completeness", "gaps", "sufficient"])
+        self.assertEqual(result.citations["E1.0"].text, "actual source")
+
+    def test_two_discovery_actions_require_an_original_read(self):
+        class CapturingClient(FakeClient):
+            def __init__(self, actions):
+                super().__init__(actions)
+                self.allowed = []
+
+            def generate_json(self, **kwargs):
+                self.allowed.append(kwargs["json_schema"]["properties"]["action"]["enum"])
+                return super().generate_json(**kwargs)
+
+        client = CapturingClient([
+            action_v2("search", query="first"),
+            action_v2("search", query="second"),
+            action_v2("read", reference_id="E1", span_index=0),
+            action_v2("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
+                      completeness="complete", sufficient=True,
+                      need_updates=[{"id": "N1", "description": "Explain", "status": "resolved",
+                                     "evidence_ids": ["E1.0"], "rationale": None}]),
+        ])
+        result = answer_question("Explain", retriever=FakeRetriever(), client=client, model=MODEL)
+        self.assertEqual(client.allowed[2], ["read"])
+        self.assertEqual(result.termination, "completed")
+
     def test_new_run_rejects_legacy_action_version(self):
         client = FakeClient([action('search', query='source'),
                              action_v2('finish', answer='No verified source.',
