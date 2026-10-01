@@ -98,12 +98,12 @@ questions:
     - Q1.F2
   - id: Q1.C4
     dimension: coverage
-    criterion: Centralize talent decisions to reduce local hiring pressure and learn across roles.
+    criterion: Centralize hiring to counter local pressure to fill an urgent seat.
     applicability: required
     condition: null
     evidence_alternatives:
     - source: bending_spoons
-      description: Centralize talent decisions to reduce local hiring pressure and learn across roles.
+      description: Centralize hiring to counter local pressure to fill an urgent seat.
       start_char: 27480
       end_char: 28903
     legacy_facet_ids:
@@ -124,16 +124,14 @@ questions:
     - Q1.F4
   - id: Q1.C6
     dimension: coverage
-    criterion: Saturate promising employees' capacity by giving them more work than they can comfortably complete,
-      so they must prioritize and grow.
+    criterion: Give promising employees substantially more work than feels comfortable.
     applicability: required
     condition: null
     evidence_alternatives:
     - source: bending_spoons
-      description: Saturate promising employees' capacity by giving them more work than they can comfortably
-        complete, so they must prioritize and grow.
-      start_char: 53012
-      end_char: 54489
+      description: Give promising employees substantially more work than feels comfortable.
+      start_char: 50011
+      end_char: 50511
     legacy_facet_ids:
     - Q1.F5
   - id: Q1.C7
@@ -250,6 +248,28 @@ questions:
       description: Keep source speakers and the agent's adaptations distinct.
       start_char: 14093
       end_char: 14633
+    legacy_facet_ids: []
+  - id: Q1.C18
+    dimension: coverage
+    criterion: Explain how the centralized talent team learns across roles and candidates.
+    applicability: required
+    condition: null
+    evidence_alternatives:
+    - source: bending_spoons
+      description: Explain how the centralized talent team learns across roles and candidates.
+      start_char: 32393
+      end_char: 33116
+    legacy_facet_ids: []
+  - id: Q1.C19
+    dimension: coverage
+    criterion: Explain how capacity pressure teaches prioritization and growth.
+    applicability: required
+    condition: null
+    evidence_alternatives:
+    - source: bending_spoons
+      description: Explain how capacity pressure teaches prioritization and growth.
+      start_char: 53012
+      end_char: 54489
     legacy_facet_ids: []
 - id: Q2
   review_status: pending
@@ -484,7 +504,8 @@ questions:
     condition: null
     evidence_alternatives:
     - source: ferriss
-      description: Make the call to action specific and reduce friction in the path to trying the product.
+      description: Make the next step concrete and easy to try, such as Ferriss's two-minute readiness quiz
+        before sign-up.
       start_char: 40190
       end_char: 40499
     legacy_facet_ids:
@@ -497,7 +518,8 @@ questions:
     condition: null
     evidence_alternatives:
     - source: ferriss
-      description: Use conversations or presentations as one possible way to discover promising wording.
+      description: Test candidate wording with prospective buyers; conversations, presentations, and controlled
+        website tests are acceptable methods.
       start_char: 100900
       end_char: 104975
     legacy_facet_ids:
@@ -633,12 +655,12 @@ questions:
     - Q4.F2
   - id: Q4.C4
     dimension: coverage
-    criterion: Nod slowly to buy time, consider the next move, and count down if needed.
+    criterion: Nod slowly to buy time before reacting.
     applicability: required
     condition: null
     evidence_alternatives:
     - source: anger
-      description: Nod slowly to buy time, consider the next move, and count down if needed.
+      description: Nod slowly to buy time before reacting.
       start_char: 1219
       end_char: 1395
     legacy_facet_ids:
@@ -695,6 +717,28 @@ questions:
       description: Keep source speakers and the agent's adaptations distinct.
       start_char: 212
       end_char: 621
+    legacy_facet_ids: []
+  - id: Q4.C11
+    dimension: coverage
+    criterion: Pause to consider the next move rather than react emotionally.
+    applicability: required
+    condition: null
+    evidence_alternatives:
+    - source: anger
+      description: Pause to consider the next move rather than react emotionally.
+      start_char: 1396
+      end_char: 1532
+    legacy_facet_ids: []
+  - id: Q4.C12
+    dimension: coverage
+    criterion: Count down if needed to regain control.
+    applicability: required
+    condition: null
+    evidence_alternatives:
+    - source: anger
+      description: Count down if needed to regain control.
+      start_char: 1533
+      end_char: 1702
     legacy_facet_ids: []
 - id: Q5
   review_status: pending
@@ -1124,7 +1168,7 @@ questions:
     - Q8.F2
   - id: Q8.C4
     dimension: coverage
-    criterion: Use Sivers' ownership and question-led management ideas only as an adaptation to leading hires.
+    criterion: Use Sivers' question-led management only as an adaptation to leading hires.
     applicability: required
     condition: null
     evidence_alternatives:
@@ -1134,14 +1178,9 @@ questions:
       start_char: null
       end_char: null
     - source: sivers
-      description: Use Sivers' ownership and question-led management ideas only as an adaptation to leading
-        hires.
+      description: Use Sivers' question-led management only as an adaptation to leading hires.
       start_char: 10472
       end_char: 10863
-    - source: sivers
-      description: Sivers explains decisions and then lets employees decide without him.
-      start_char: 9040
-      end_char: 9601
     legacy_facet_ids:
     - Q8.F3
   - id: Q8.C5
@@ -1207,6 +1246,17 @@ questions:
       description: Keep source speakers and the agent's adaptations distinct.
       start_char: null
       end_char: null
+    legacy_facet_ids: []
+  - id: Q8.C11
+    dimension: coverage
+    criterion: Keep Sivers' ownership advice distinct from Ferrari's hiring practices.
+    applicability: required
+    condition: null
+    evidence_alternatives:
+    - source: sivers
+      description: Keep Sivers' ownership advice distinct from Ferrari's hiring practices.
+      start_char: 9804
+      end_char: 10449
     legacy_facet_ids: []
 criteria_changes:
 - Split bundled version-3 facets into individually assessable checks with stable IDs; legacy_facet_ids preserve
