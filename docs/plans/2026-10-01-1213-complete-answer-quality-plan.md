@@ -329,6 +329,27 @@ Use the repository's unittest discovery for `tests/ingestion`, `tests/evals`, `t
 
 ---
 
+## Execution outcomes
+
+**Overall status: incomplete.** The selected local profile does not yet answer the pilot questions well enough to pass Stage 5. Running later experiments did not close U1's failed answer-quality check. The card rejection is a result for this candidate, not a resolution of the card-quality problem. This plan remains the owner of the unfinished work; no replacement plan was created.
+
+| Unit | Work completed | Outcome and remaining issue |
+| --- | --- | --- |
+| U1 — Current-card answers | Ran live Q1, Q2, Q8, and Q4 on the selected `v5` cards; retained prompt, route, source/card identities, reads, answers, and spending in private receipts. Repaired action handling and tried Q1 again with a larger investigation allowance. | **Not complete as an acceptable baseline.** Q1 still omitted essential principles and overstated support after six reads; Q2 exhausted its allowance without a substantive answer; Q8 invented a hiring sequence; Q4 gave generic advice after one read. In Q1, early relevant search leads disappeared from the later candidate view while the agent focused on narrower results. That issue was identified but no subsequent live repair was accepted. |
+| U2 — Source field labels | Audited the 510 selected cards and labeled 27 source groups across six checked files before viewing candidate output. Wrote the field guide and audit code. | **Audit complete.** The sampled originals support 56 structured fields; the selected cards populate one. Labels and source excerpts remain under ignored `.local/`. This measurement does not improve answers by itself. |
+| U3 — Richer card candidate | Added versioned `evidence_cards_v8` extraction and separate-highlight grouping; generated a bounded 18-chunk candidate without changing `v5`. | **Trial artifact complete, card improvement unfinished.** The prompt and trial outputs are available for diagnosis, but the candidate did not qualify for use. |
+| U4 — Candidate screen | Screened all 18 chunks and reviewed held-out cards against their original passages. All 18 generation responses were ready; 47 of 56 applicable fields were provisionally populated. | **Failed factuality gate.** One card reversed the source's action-result relationship. The field count cannot override that error. The useful-fact gate and six-file expansion were not run after this failure. |
+| U5 — Matched card comparison and selection | No matched answer comparison was run after U4 failed. | **Skipped under the plan's dependency rule.** `v5` remains selected; there was no publication switch. The rejected `v8` result does not prove that richer cards cannot work. |
+| U6 — Revised answer rubric | Preserved rubric v3 and the 21 submitted human judgments. Drafted 91 individually assessable v4 checks and verified 59 source-block alternatives against six captured source hashes; kept in-person wording tests optional for Q3. | **Not complete.** V4 is still a draft pending user review and has not been frozen. Historical v3 ratings were not transferred to v4. |
+| U7 — Grader calibration | Added local checks that inspected passages match the checked originals and that positive grounding excerpts include their cited passage ID. | **Not complete.** No human calibration, fault-control run, or question-grouped held-out validation was performed. The grader cannot establish an answer-quality pass. |
+| U8 — Final Stage 5 gate | Recorded a private failure decision, retained receipts, reconciled spending, and updated current project documentation. | **Acceptance did not pass; formal final evaluation is unfinished.** Known coverage and grounding failures already rule out acceptance. New human usefulness judgments, frozen-v4 grading, and a passing repaired-answer run are absent. |
+
+The accounted upper bounds are **$1.462607 Stage 4**, **$5.661205 Stage 5**, and **$7.123812 cumulative** against their $3.50, $8, and $10 ceilings. Ingestion, evaluation, agent, model, and storage unit suites passed; the storage suite skipped six integration tests without a disposable database. The 59 rubric spans passed a separate check against the six captured source hashes. Private receipts and the failure decision are retained under `.local/`; no vault content or model output is committed.
+
+The immediate unresolved work is to make the current-card answers pass U1, then repair and re-screen the card candidate before any card comparison or final acceptance. U6 and U7 remain unfinished as stated above.
+
+---
+
 ## Sources and Research
 
 - `prompts/evidence_cards_v5.md`, `app/ingestion/enrichment.py`, `app/ingestion/contracts.py`, `app/storage/retrieval.py`, and `app/storage/publication.py` define current extraction, provenance, search, and selection boundaries.
