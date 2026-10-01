@@ -1,19 +1,33 @@
 ---
-title: Retrieval Answer Quality Repairs - Plan
+title: Retrieval Answer Quality Repairs - Status Record
 type: fix
 date: 2026-09-29
 artifact_contract: ce-unified-plan/v1
 artifact_readiness: implementation-ready
 product_contract_source: ce-plan-bootstrap
 execution: code
+superseded_by: docs/plans/2026-10-01-1213-complete-answer-quality-plan.md
 ---
 
-# Retrieval Answer Quality Repairs - Plan
+# Retrieval Answer Quality Repairs - Status Record
+
+## Execution Status — 2026-10-01
+
+This document records the original repair work and its current proof state. The sole execution sequence for remaining answer-quality work is `docs/plans/2026-10-01-1213-complete-answer-quality-plan.md`; the original requirements and decisions below remain historical context, not a second work queue.
+
+| Original unit | Done | Still unverified or incomplete | Continue in |
+| --- | --- | --- | --- |
+| U3 — answer instructions and card-tool semantics | Prompt v8, action guidance, bounded OR card fallback, focused tests, and a stored-card probe are complete. | Live answer quality is not established by these checks. | New plan U1 and U8 |
+| U4 — investigation depth and document exploration | Action schema v2, document-scoped find, within-span continuation, need tracking, finite broad-question profile, and isolated local database tests are complete. | Representative live Q1/Q2/Q8 answers on the existing cards, with Q4 if affordable, have not been checked. Material answer failures may still need repair. | New plan U1 |
+| U1 — revised rubric and human reference data | The 21 submitted review entries were recovered with exact answer identities; a version-4 rubric draft exists and records the Q3 scope choice. | Source-span alternatives need verification and v4 is not frozen. | New plan U6 |
+| U2 — automatic grading | The evidence-backed grader core and focused local tests exist. | Human calibration, frozen grader identity, held-out validation, and final answer-quality assessment are not done. | New plan U7–U8 |
+
+No semantic answer-quality baseline has passed. The current 510-card `v5` profile remains selected, and no revised card extraction has been generated or published under the new plan. This status reflects the repository progress tracker and local artifacts; it does not count planned live checks as completed.
 
 ## Goal Capsule
 
 - **Objective:** Answers cover the user's requested ideas with concrete source examples, supported citations, and useful explanations, including questions spanning long transcripts or multiple sources.
-- **Means:** Repair answer instructions and investigation tools first, then prepare and calibrate automatic grading (KTD1).
+- **Means:** Repair answer instructions and investigation tools, then verify the resulting answer behavior (KTD1). The remaining sequence now lives in `docs/plans/2026-10-01-1213-complete-answer-quality-plan.md`.
 - **Authority:** This conversation defines the revised behavior; `FOUNDATION.md` owns project progress; `docs/plans/2026-09-27-001-feat-retrieval-answer-agent-plan.md` supplies the existing local architecture and Stage 5 constraints.
 - **Execution profile:** Local Python core and CLI over the existing six-file profile. Continue the current feature branch and preserve existing work.
 - **Stop conditions:** No accepted quality baseline while a known material grounding or required-coverage failure remains; stop live work before exceeding the approved spending ceilings.
@@ -59,11 +73,13 @@ These observations justify repairs now without another model ranking exercise.
 - R12. Calibrate the grader against human judgments and evaluate frozen grader behavior on held-out cases before using it to select configurations.
 - R13. Keep source text, answers, reviews, and grader receipts under ignored `.local/`; maintain read-only source access and the existing pinned ZDR provider controls.
 - R14. Charge all live answer and grader calls to the existing ledger: $8 Stage 5 and $10 cumulative, including the $0.25 unknown-usage hold; reserve conservative costs before calling.
+- R15. Attribute each repaired-answer receipt and comparison to the exact selected card artifacts. A changed card set requires a matched answer check before acceptance; no candidate card field becomes citation evidence without an original read.
 
 ### Scope Boundaries
 
 The work repairs the existing local answer core and adds grading after those repairs.
-It does not change ingestion, embedding selection, the six-file profile, or hosted publication.
+It does not change ingestion, source/chunk/embedding selection, or hosted publication.
+The successor plan, `docs/plans/2026-10-01-1213-complete-answer-quality-plan.md`, combines the remaining live-answer, card-extraction, rubric, grader, and final acceptance work in one sequence. This document preserves the rationale and implementation contract for the repairs already made.
 
 #### Deferred to Follow-Up Work
 
@@ -76,6 +92,7 @@ Separate trained search planners, multi-agent orchestration, semantic card embed
 - AE3. An empty card query produces reformulation guidance; a useful card remains a lead until its original evidence is read. Covers R5, R6, R8.
 - AE4. A multi-source question includes the required contributions with correct attribution, or explains the specific requested part that remains unsupported. Covers R1, R3, R7.
 - AE5. A grade of covered includes an exact answer excerpt and relevant source support; an unreviewed check cannot increase a pass rate. Covers R10, R11.
+- AE6. The repaired agent's answers are inspected on the existing cards before a candidate card set is compared; if the selected set changes, the same questions are checked again with unchanged agent settings. Covers R2, R9, R15.
 
 ---
 
@@ -91,6 +108,7 @@ Separate trained search planners, multi-agent orchestration, semantic card embed
 - KTD6. **Separate product answer from investigation metadata.** Keep detailed gaps, actions, and evidence coverage in private structured reports. The prompt produces the useful answer directly and includes only limitations needed under R4. A broad question receives an explicit bounded configuration with enough synthesis allowance; record every changed call/read/time/output limit and the actual finalization trigger. Choose numeric allowances during U4 after local characterization and cost preflight, without removing hard limits. Governs R1, R4, R7, R14.
 - KTD7. **Freeze new criteria after repair implementation, before comparisons using them.** Retain rubric v3 in a versioned file and its historical ratings. Prepare v4 through a compatible loader rather than relabeling old ratings as v4 truth; source examples become the requirement in R2. Question-derived investigation needs are available to the runtime, but evaluation answer keys never are. Governs R7, R9, R10.
 - KTD8. **Grade each semantic dimension with evidence, then aggregate in code.** The grader receives the frozen question/checks, generated answer, inspected evidence, and separately labeled gold evidence alternatives. Answers and source passages are untrusted data, separate from grader instructions and criteria. Citation support is judged against inspected passages; coverage and diagnostics can also use gold alternatives. The grader must not confuse facts available in the corpus with passages the agent actually read. Governs R10-R12.
+- KTD9. **Make the card-artifact decision before final answer comparison.** First retain a small repaired-answer baseline on the current published cards. The successor plan audits and trials revised extraction; a qualifying candidate receives a matched answer check before selection. Freeze the revised rubric and calibrate the grader against the final selected profile. (session-settled: user-approved — the initial split kept card generation distinct from harness repair; the successor plan now puts the remaining work in one sequence.) Governs R2, R9-R12, R15.
 
 ### High-Level Technical Design
 
@@ -198,7 +216,7 @@ An unaffordable live batch is reported with its concrete reservation estimate; n
 - Two requested authors are investigated separately; unsupported contributions remain specifically identified. Covers AE4.
 - Provider errors, time exhaustion, and CLI calls preserve isolation, inspected evidence, and finite costs.
 
-**Verification:** Synthetic storage-to-harness integration proves new exploration and citation behavior. A small affordable live repair check covers Q1, Q2, and Q8, plus Q4 if allowance permits: broad themes, source examples, relevant gaps, and attribution are inspected against existing expectations. Material remaining failures are recorded and repaired before calling the system acceptable. U1 is not a prerequisite for these checks.
+**Verification:** Synthetic storage-to-harness integration proves new exploration and citation behavior. A small affordable live repair check covers Q1, Q2, and Q8 on the existing card set, plus Q4 if allowance permits: broad themes, source examples, relevant gaps, and attribution are inspected against existing expectations. Retain the prompt, model, limits, source, and card-artifact identities so a qualifying replacement can be compared on the same questions under KTD9 and AE6. Material remaining failures are recorded and repaired before calling the system acceptable. U1 is not a prerequisite for these checks.
 
 ### U1. Prepare the revised rubric and human reference data
 
@@ -206,7 +224,7 @@ An unaffordable live batch is reported with its concrete reservation estimate; n
 
 **Requirements:** R9, R10, R13; KTD1, KTD7.
 
-**Dependencies:** U4 implementation and representative repair checks.
+**Dependencies:** U4 implementation and representative repair checks, followed by the successor plan's card-selection decision. If its candidate is rejected, retain the existing card profile and its limitations explicitly.
 
 **Files:** `evals/answer_questions_v3.yaml`, `evals/answer_questions_v4.yaml`, `evals/answer_rubric.py`, `evals/answer_trial.py`, `evals/README.md`, `tests/evals/test_answer_rubric.py`, `tests/evals/test_answer_trial.py`; private submitted-review receipt under `.local/`.
 
@@ -272,7 +290,7 @@ Before any live batch, re-read the ledger and reserve conservative answer or gra
 Each receipt records prompt/schema/rubric identities, source hashes, model/route/effort, limits, usage knowledge, finalization reasons, and provenance checks.
 Repaired answers retain old expectations as diagnostics; the new source-example policy is labeled explicitly until v4 is frozen.
 
-After U2, compare repaired configurations only on common questions with frozen criteria and grader identity. Run card on/off comparisons only when the corrected card tool demonstrably returns useful leads. Citation provenance, semantic grounding, coverage, usefulness, runtime success, latency, and spend remain separate.
+After U2, compare repaired configurations only on common questions with frozen criteria, grader identity, and card-artifact identity. The successor plan's card experiment makes its own matched current-versus-candidate comparison before publication; run later card on/off comparisons only when the corrected card tool demonstrably returns useful leads. Citation provenance, semantic grounding, coverage, usefulness, runtime success, latency, and spend remain separate.
 
 ## Definition of Done
 
@@ -280,12 +298,14 @@ After U2, compare repaired configurations only on common questions with frozen c
 - U4: targeted investigation and document continuation resolve representative known failures without breaking provenance or budgets.
 - U1: submitted judgments and historical identities are preserved; revised checks and source alternatives are frozen after targeted clarification.
 - U2: the grader is evidence-validated and calibrated, with held-out disagreement reporting and explicit unresolved cases.
+- The successor plan records whether the current or a revised card set is selected; any selection change is followed by a matched repaired-answer check before the final quality gate.
 - The Stage 5 quality gate from the original plan remains authoritative; code completion or automatic scores alone do not accept a baseline.
 - Current progress and the relevant retrieval document are reconciled; obsolete experimental code is removed while historical private receipts remain retained.
 
 ## Sources and Research
 
 - Local architecture and constraints: `docs/plans/2026-09-27-001-feat-retrieval-answer-agent-plan.md`, `FOUNDATION.md`, `RETRIEVAL.md`, and the owning code/test paths named above.
+- Remaining work and card-selection checks: `docs/plans/2026-10-01-1213-complete-answer-quality-plan.md`.
 - Private diagnostic evidence: `.local/stage5-pilot-v6/selection.json`, `.local/stage5-pilot-v6/summary.json`, attempt receipts, and the submitted interactive review.
 - [Anthropic tool guidance, September 2025](https://www.anthropic.com/engineering/writing-tools-for-agents) informs explicit action descriptions and meaningful result context in KTD3/KTD5.
 - [Google sufficient-context retrieval, June 2026](https://research.google/blog/unlocking-dependable-responses-with-gemini-enterprise-agent-platforms-agentic-rag/) informs targeted needs checks in KTD2 without requiring its multi-agent architecture.
