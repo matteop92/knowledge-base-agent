@@ -161,7 +161,7 @@ def generate_chunk_context(
 
 
 def _card_schema(*, quote_location: bool = False, block_location: bool = False,
-                 group_location: bool = False) -> dict[str, Any]:
+                 group_location: bool = False, rich_descriptions: bool = False) -> dict[str, Any]:
     properties: dict[str, Any] = {
         "card_type": {"type": "string", "enum": CARD_TYPES},
         "statement": {"type": "string"},
@@ -186,6 +186,18 @@ def _card_schema(*, quote_location: bool = False, block_location: bool = False,
         del properties["evidence_end_char"]
         del properties["evidence_text"]
         properties["evidence_group_index"] = {"type": "integer"}
+    if rich_descriptions:
+        descriptions = {
+            "statement": "One short useful fact or episode directly supported by this group.",
+            "situation": "Particular starting context or problem; null for a general claim.",
+            "action": "Reported action or explicit advice; distinguish did from advised.",
+            "result": "Observed or reported outcome of this episode; null for predictions or aspirations.",
+            "principle": "Supported derived generalization that adds to the statement; otherwise null.",
+            "evidence_group_index": "Zero-based index of exactly one numbered source group.",
+        }
+        for key, description in descriptions.items():
+            if key in properties:
+                properties[key]["description"] = description
     return {
         "type": "object",
         "properties": {
@@ -319,17 +331,20 @@ def _validated_block_card(
                             "evidence_text": quote}, index, document, chunk)
 
 
-def _card_groups(document: ParsedDocument, chunk: Chunk) -> list[tuple[int, int]]:
+def _card_groups(document: ParsedDocument, chunk: Chunk, *,
+                 split_highlights: bool = False) -> list[tuple[int, int]]:
     groups: list[tuple[int, int]] = []
     current: tuple[int, int] | None = None
     current_key: tuple[str, str | None] | None = None
     previous_index: int | None = None
+    previous_kind: str | None = None
     for block in document.blocks:
         if block.index not in chunk.block_indices or block.kind == "heading":
             if current is not None:
                 groups.append(current)
                 current = None
             previous_index = None
+            previous_kind = None
             continue
         start, end = _card_block_span(block, chunk)
         attribution = ("personal_note" if block.content_role == "personal_note"
@@ -339,6 +354,7 @@ def _card_groups(document: ParsedDocument, chunk: Chunk) -> list[tuple[int, int]
         key = (block.content_role, attribution)
         if (current is not None and key == current_key
                 and previous_index is not None and block.index == previous_index + 1
+                and not (split_highlights and (block.kind == "highlight" or previous_kind == "highlight"))
                 and end - current[0] <= 1200):
             current = (current[0], end)
         else:
@@ -347,6 +363,7 @@ def _card_groups(document: ParsedDocument, chunk: Chunk) -> list[tuple[int, int]
             current = (start, end)
         current_key = key
         previous_index = block.index
+        previous_kind = block.kind
     if current is not None:
         groups.append(current)
     return [(start, end) for start, end in groups
@@ -354,8 +371,9 @@ def _card_groups(document: ParsedDocument, chunk: Chunk) -> list[tuple[int, int]
 
 
 def _group_card_input(document: ParsedDocument, chunk: Chunk, max_input_tokens: int,
-                      *, explicit_indices: bool = False) -> str:
-    groups = _card_groups(document, chunk)
+                      *, explicit_indices: bool = False,
+                      split_highlights: bool = False) -> str:
+    groups = _card_groups(document, chunk, split_highlights=split_highlights)
     body = "\n".join(f"[{index}] {document.source_text[start:end]}"
                      for index, (start, end) in enumerate(groups))
     index_hint = (f"Valid evidence_group_index values (zero-based): "
@@ -372,9 +390,10 @@ def _group_card_input(document: ParsedDocument, chunk: Chunk, max_input_tokens: 
 
 def _validated_group_card(
     item: dict[str, Any], index: int, document: ParsedDocument, chunk: Chunk,
+    *, split_highlights: bool = False,
 ) -> EvidenceCard:
     group_index = item.get("evidence_group_index")
-    groups = _card_groups(document, chunk)
+    groups = _card_groups(document, chunk, split_highlights=split_highlights)
     if type(group_index) is not int or not (0 <= group_index < len(groups)):
         raise EnrichmentError("card selected an invalid source group")
     start, end = groups[group_index]
@@ -393,17 +412,19 @@ def extract_evidence_cards(
     _check_source(document, chunks, manifest, client)
     if chunk.chunk_id not in {item.chunk_id for item in chunks.chunks}:
         raise EnrichmentError("chunk is not in its declared variant")
-    if prompt_version not in ("evidence_cards_v1", "evidence_cards_v2", "evidence_cards_v3", "evidence_cards_v4", "evidence_cards_v5", "evidence_cards_v6", "evidence_cards_v7"):
+    if prompt_version not in ("evidence_cards_v1", "evidence_cards_v2", "evidence_cards_v3", "evidence_cards_v4", "evidence_cards_v5", "evidence_cards_v6", "evidence_cards_v7", "evidence_cards_v8"):
         raise EnrichmentError("unsupported evidence-card prompt version")
     quote_location = prompt_version == "evidence_cards_v2"
     block_location = prompt_version in ("evidence_cards_v3", "evidence_cards_v4")
     strict_blocks = prompt_version == "evidence_cards_v4"
-    group_location = prompt_version in ("evidence_cards_v5", "evidence_cards_v6", "evidence_cards_v7")
+    group_location = prompt_version in ("evidence_cards_v5", "evidence_cards_v6", "evidence_cards_v7", "evidence_cards_v8")
+    split_highlights = prompt_version == "evidence_cards_v8"
     extraction_version = ("same-speaker-group-v5" if group_location else
                           "complete-block-v4" if strict_blocks else
                           "block-locate-v3" if block_location else
                           "quote-locate-v2" if quote_location else "cards-v1")
-    recipe_version = ("explicit-zero-based-speaker-groups-v7" if prompt_version == "evidence_cards_v7" else
+    recipe_version = ("separate-highlights-speaker-groups-v8" if split_highlights else
+                      "explicit-zero-based-speaker-groups-v7" if prompt_version == "evidence_cards_v7" else
                       "contiguous-speaker-groups-v5" if group_location else
                       "self-contained-block-cards-v4" if strict_blocks else
                       "source-block-cards-v3" if block_location else
@@ -426,20 +447,22 @@ def extract_evidence_cards(
         result = client.generate_json(
             model=model, system_prompt=prompt,
             input_text=(_group_card_input(document, chunk, max(max_input_tokens, 1800),
-                                         explicit_indices=prompt_version == "evidence_cards_v7")
+                                         explicit_indices=prompt_version in ("evidence_cards_v7", "evidence_cards_v8"),
+                                         split_highlights=split_highlights)
                         if group_location else
                         _block_card_input(document, chunk, max(max_input_tokens, 1800),
                                           strict_blocks=strict_blocks) if block_location
                         else _input(document, chunk, max_input_tokens=max_input_tokens)),
             schema_name="evidence_cards", json_schema=_card_schema(
                 quote_location=quote_location, block_location=block_location,
-                group_location=group_location),
-            max_output_tokens=1400 if prompt_version in ("evidence_cards_v6", "evidence_cards_v7") else 700,
+                group_location=group_location, rich_descriptions=split_highlights),
+            max_output_tokens=1400 if prompt_version in ("evidence_cards_v6", "evidence_cards_v7", "evidence_cards_v8") else 700,
         )
         proposed = result.data.get("cards")
         if not isinstance(proposed, list) or any(not isinstance(item, dict) for item in proposed):
             raise EnrichmentError("model returned malformed cards")
-        cards = [(_validated_group_card(item, index, document, chunk) if group_location else
+        cards = [(_validated_group_card(item, index, document, chunk,
+                                        split_highlights=split_highlights) if group_location else
                   _validated_block_card(item, index, document, chunk,
                                         strict_blocks=strict_blocks) if block_location else
                   _validated_quoted_card(item, index, document, chunk) if quote_location else
