@@ -15,9 +15,13 @@ class AnswerRubricTest(unittest.TestCase):
         self.assertEqual(revised.status, 'draft')
         self.assertGreater(sum(len(q.checks) for q in revised.questions), 70)
         q3 = revised.questions[2]
-        in_person = [check for check in q3.checks if 'conversations or presentations' in check.criterion]
-        self.assertEqual(len(in_person), 1)
-        self.assertEqual(in_person[0].applicability, 'conditional')
+        wording = [check for check in q3.checks if check.id == 'Q3.C5']
+        self.assertEqual(len(wording), 1)
+        self.assertIn('website tests are acceptable', wording[0].criterion)
+        self.assertEqual(wording[0].applicability, 'required')
+        self.assertTrue(all(any(alt.start_char is not None for alt in check.evidence_alternatives)
+                            for question in revised.questions for check in question.checks
+                            if check.dimension in ('coverage', 'example', 'attribution')))
         with self.assertRaisesRegex(ValueError, 'freeze'):
             revised.require_comparison_ready({source.document_id: source.source_sha256
                                               for source in revised.source_revisions.values()})

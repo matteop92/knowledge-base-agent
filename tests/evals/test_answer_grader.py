@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import unittest
+import hashlib
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.models.client import GenerationResult, ModelSpec
-from evals.answer_grader import GraderResponse, grade_answer, validate_judgments
+from evals.answer_grader import GraderResponse, grade_answer, prepare_evidence, validate_judgments
 
 
 MODEL = ModelSpec(provider="fake", model_id="grader", model_version="1")
@@ -45,6 +47,31 @@ class AnswerGraderTest(unittest.TestCase):
         data['citations'] = {}
         with self.assertRaisesRegex(ValueError, 'was not cited'):
             validate_judgments(data, response())
+        data = response().model_dump(mode='json')
+        data['judgments'][1]['answer_excerpt'] = 'A specific claim'
+        with self.assertRaisesRegex(ValueError, 'supporting citation'):
+            validate_judgments(payload(), GraderResponse.model_validate(data))
+
+    def test_inspected_text_must_match_checked_original(self):
+        raw = b'A specific source fact.'
+        sha = hashlib.sha256(raw).hexdigest()
+        revision = SimpleNamespace(document_id='doc', source_sha256=sha)
+        alternative = SimpleNamespace(source='source', start_char=0, end_char=len(raw))
+        check = SimpleNamespace(id='Q1.C1', dimension='coverage', criterion='Claim',
+                                applicability='required', condition=None,
+                                evidence_alternatives=[alternative])
+        question = SimpleNamespace(id='Q1', question='Question?', checks=[check])
+        rubric = SimpleNamespace(version=4, source_revisions={'source': revision},
+                                 questions=[question], require_comparison_ready=lambda observed: None)
+        evidence = {'document_id': 'doc', 'source_sha256': sha, 'start_char': 0,
+                    'end_char': len(raw), 'text': raw.decode()}
+        receipt = {'configuration': {'source_revisions': {'doc': sha}},
+                   'result': {'answer': 'Claim [E1.0]', 'inspected': {'E1.0': evidence},
+                              'citations': {'E1.0': evidence}}}
+        self.assertEqual(prepare_evidence(rubric, 'Q1', receipt, {'doc': raw})['question_id'], 'Q1')
+        evidence['text'] = 'An altered source fact.'
+        with self.assertRaisesRegex(ValueError, 'checked original'):
+            prepare_evidence(rubric, 'Q1', receipt, {'doc': raw})
 
     def test_missing_check_or_injected_output_is_invalid(self):
         data = response().model_dump(mode='json')
