@@ -45,7 +45,20 @@ The repaired harness has local proof but no representative live-answer quality r
 
 - R1. A card's statement and any populated situation, action, result, or principle must be supported by its one exact source group and preserve speaker or personal-note attribution.
 - R2. Populate a structured field when the group clearly supplies that detail, even if the statement also summarizes it; leave genuinely absent or ambiguous details null. A result must not be inferred merely because an action was described.
-- R3. Keep statements specific and useful without copying the same sentence mechanically into every field; a derived principle must remain labelled as interpretation.
+- R3. Keep one coherent, useful fact or episode per card without copying the same sentence mechanically into every field. A source group may yield zero, one, or several cards when it contains distinct supported facts; split independent episodes or lessons rather than mixing them, and do not make duplicates merely to increase field occupancy. A derived principle must remain labelled as interpretation.
+
+### Field and Card Boundaries
+
+These are proposed extraction definitions to verify against real source groups in U2, then version in `evals/card_field_guidelines_v1.md`. They define field *meaning*; the model supplies the source-specific values.
+
+| Field | Put in it | Leave it null when |
+| --- | --- | --- |
+| `situation` | The starting context, problem, or constraint for this one episode. | The source gives a general claim with no particular context. |
+| `action` | What someone did, or what the source explicitly advises doing; retain the did-versus-advised distinction in the wording. | No behavior or recommended step is stated. |
+| `result` | An observed or reported outcome of that episode, attributed to the source. | The source only predicts a benefit, states an aspiration, or gives an action without an outcome. |
+| `principle` | One concise generalizable interpretation supported by this group, marked as derived under the current card contract. A principle stated directly by the source may instead be the card's `statement`. | Generalizing would add an unsupported causal claim or merely repeat the statement. |
+
+Each card has one short `statement` and at most one coherent value per structured field. Multiple independent principles or examples from one group become separate cards with the same source-group link; no useful grounded fact means zero cards. Card type and field definitions are fixed for the experiment, while the model chooses the values and how many distinct cards the passage warrants.
 
 **Comparison and publication**
 
@@ -92,6 +105,7 @@ The plan completes the local Stage 5 answer-quality work and may change the loca
 - KTD5. **Finish the repaired-answer check before card comparison.** Use the existing local harness, published six-file profile, and source-linked answer receipts. A representative live result is the comparison baseline only after material failures are repaired or explicitly classified; it is not final acceptance. This implements R10, R13, and R14.
 - KTD6. **Freeze criteria after selecting cards.** Preserve rubric v3 and the 21 submitted reviews. Complete source-bound v4 alternatives and individual checks, then freeze criteria before final configuration comparison or grader validation. This implements R11 and R12.
 - KTD7. **Keep grading evidence-backed and separate from acceptance.** The grader receives frozen checks, generated answers, inspected evidence, and separately labelled gold alternatives; code validates excerpts, citations, applicability, and denominators. Human review and the original Stage 5 gate still decide acceptance. This implements R12-R14.
+- KTD8. **Give extraction one versioned meaning.** U2 writes and source-tests a concise field guide with positive, negative, and multi-card examples. U3 puts the operational rules and examples in the versioned card prompt and clear field descriptions in its structured-output schema; code validates structure and source identity, while held-out source review checks semantic support. Keep these surfaces aligned without treating schema validity as proof that a field is true. This implements R1-R6.
 
 ### High-Level Technical Design
 
@@ -150,9 +164,9 @@ Run U1 through U8 in order. A failed U4 card screen skips U5 and keeps `v5`; the
 
 **Dependencies:** U1's fixed current-card answer baseline, the current `v5` artifacts, and captured six-file sources.
 
-**Files:** `evals/card_field_audit.py`, `tests/evals/test_card_field_audit.py`, ignored `.local/` audit labels and report.
+**Files:** `evals/card_field_guidelines_v1.md`, `evals/card_field_audit.py`, `tests/evals/test_card_field_audit.py`, ignored `.local/` audit labels and report.
 
-**Approach:** Reuse the selected 510-card receipts and exact source spans. Choose a deterministic sample across documents and card types, with enough examples and tactics to test the complaint. Mark each field as supported, absent, or ambiguous from the original group; record why any old empty field was eligible. Reserve whole chunks for prompt development or validation, and keep validation outputs uninspected until the prompt and threshold are fixed. Publish aggregate counts only.
+**Approach:** Reuse the selected 510-card receipts and exact source spans. Choose a deterministic sample across documents and card types, with enough examples and tactics to test the complaint. Verify the proposed field and card boundaries against those originals, then version the annotation guide before labeling candidate output. Mark each field as supported, absent, or ambiguous from the original group; record why any old empty field was eligible. Include examples with zero, one, and multiple distinct cards from a group. Reserve whole chunks for prompt development or validation, and keep validation outputs uninspected until the prompt and threshold are fixed. Publish aggregate counts only; keep private source excerpts in `.local/`.
 
 **Execution note:** Characterize the selected artifact and source applicability before editing generation behavior.
 
@@ -163,25 +177,27 @@ Run U1 through U8 in order. A failed U4 card screen skips U5 and keeps `v5`; the
 - A changed source hash or card span prevents an audit label from being reused.
 - Two cards from one generation chunk cannot be split across development and validation, even when they reference different source groups.
 
-**Verification:** The audit reproduces the 510-card total and four-field occupancy counts, retains source-group identities privately, and defines a baseline denominator for candidate comparison.
+**Verification:** The versioned guide defines each field, null boundary, one-card versus multiple-card decision, and source-grounding rule with synthetic examples; private labels point to checked source groups. The audit reproduces the 510-card total and four-field occupancy counts, retains source-group identities privately, and defines a baseline denominator for candidate comparison.
 
 ### U3. Extract supported structured details
 
 **Goal:** Produce richer cards without sacrificing their one-group factual boundary.
 
-**Requirements:** R1-R4, R6; KTD2, KTD4.
+**Requirements:** R1-R4, R6; KTD2, KTD4, KTD8.
 
 **Dependencies:** U2's applicability definitions.
 
 **Files:** `prompts/evidence_cards_v8.md`, `app/ingestion/enrichment.py`, `app/ingestion/contracts.py` if validation needs adjustment, `tests/ingestion/test_enrichment.py`.
 
-**Approach:** Version the selected GPT-5 mini prompt. Tell the model that source-supported details belong in their fields even when the statement summarizes the same fact, while absent or uncertain details remain null. Keep the existing group index, exact-span validation, attribution, and derived-principle marker. Add no heuristic that silently fills old cards from statements.
+**Approach:** Version the selected GPT-5 mini prompt using U2's field guide: concise field definitions, null and did-versus-advised rules, and short synthetic positive, negative, and multi-card examples. Add clear key descriptions to the output schema. Tell the model that source-supported details belong in their fields even when the statement summarizes the same fact, while absent or uncertain details remain null. Let it emit zero, one, or multiple distinct cards per group without a forced count. Keep the existing group index, exact-span validation, attribution, and derived-principle marker. Add no heuristic that silently fills old cards from statements.
 
 **Test scenarios:**
 
 - Covers AE1. A validated model response with a stated situation, action, and outcome preserves those fields and the unchanged exact source span; the live screen checks whether the revised prompt elicits this response.
 - Covers AE2. A validated response for a group without an observed outcome retains a null result; the live screen checks that the model avoids inventing one.
 - Covers AE3. Adjacent speaker groups or highlights cannot be combined into one card's supported fields.
+- One group with two independent useful facts can yield two nonduplicate cards, while a group with no useful grounded fact yields none.
+- A predicted benefit cannot be presented as an observed `result`, and advised behavior cannot be worded as something the speaker already did.
 - A malformed group index, changed source text, or failed model response cannot leave a ready candidate artifact.
 - The same run may retain `v5` and new artifacts with distinct identities without changing historical bytes.
 
