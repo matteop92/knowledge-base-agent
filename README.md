@@ -49,6 +49,16 @@ The direct OpenRouter adapter is opt in. Construct `OpenRouterClient(allow_live=
 
 ## Private storage and candidate search
 
+### Browse the local database
+
+With local Supabase Postgres running, start the read-only viewer from the repository directory:
+
+```powershell
+python -m app.storage.local_viewer
+```
+
+Open [http://127.0.0.1:8765/](http://127.0.0.1:8765/) in your browser. The evidence cards page has a source-document filter and card-text search; results show 25 cards per page and link to full evidence. The viewer reads `KNOWLEDGE_DATABASE_URL` from your environment or the repository's ignored `.env`, binds only to this computer, and stops when you close its terminal. Restart the same command after a reboot. It reads the selected profile's active cards; other tables remain available as raw views.
+
 Run a local Supabase Postgres instance with Docker and apply the versioned migration:
 
 ```powershell
