@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from decimal import Decimal, InvalidOperation
 import json
+import re
 
 import psycopg
 from pydantic import ValidationError
@@ -132,12 +133,13 @@ def search_cards(conn: psycopg.Connection, query: str, *, k: int = 10) -> list[C
         return []
     with conn.cursor() as cur:
         profile = _profile(cur, None, None)
-        cur.execute("""select ts_rank(to_tsvector('simple'::regconfig,
+        sql = """select ts_rank(to_tsvector('simple'::regconfig,
                      concat_ws(' ', x.payload->>'statement',x.payload->>'situation',
                      x.payload->>'action',x.payload->>'result',x.payload->>'principle')),
                      websearch_to_tsquery('simple'::regconfig,%s)) as score,
                 r.document_id,x.run_id,r.source_sha256,d.root_alias,d.relative_path,
-                x.card_id,x.chunk_id,x.payload->>'statement',x.payload->'evidence_span'
+                x.card_id,x.chunk_id,x.payload->>'statement',x.payload->'evidence_span',
+                x.payload->>'situation',x.payload->>'action',x.payload->>'result',x.payload->>'principle'
             from knowledge.cards x
             join knowledge.artifacts a on a.run_id=x.run_id and a.artifact_id=x.artifact_id
             join knowledge.runs r on r.run_id=x.run_id
@@ -154,8 +156,17 @@ def search_cards(conn: psycopg.Connection, query: str, *, k: int = 10) -> list[C
                   concat_ws(' ',x.payload->>'statement',x.payload->>'situation',
                   x.payload->>'action',x.payload->>'result',x.payload->>'principle'))
                   @@ websearch_to_tsquery('simple'::regconfig,%s)
-            order by score desc,x.card_id,x.run_id limit %s""", (query, profile[0], query, k))
+            order by score desc,x.card_id,x.run_id limit %s"""
+        cur.execute(sql, (query, profile[0], query, k))
         rows = cur.fetchall()
+        query_mode = "all_terms"
+        if not rows:
+            terms = list(dict.fromkeys(re.findall(r"\w+", query, re.UNICODE)))[:64]
+            if len(terms) > 1:
+                fallback = " OR ".join(f'"{term}"' for term in terms)
+                cur.execute(sql, (fallback, profile[0], fallback, k))
+                rows = cur.fetchall()
+                query_mode = "or_fallback"
     result: list[CardHit] = []
     seen: set[tuple[str, int, int]] = set()
     for row in rows:
@@ -167,8 +178,63 @@ def search_cards(conn: psycopg.Connection, query: str, *, k: int = 10) -> list[C
         result.append(CardHit(rank=len(result) + 1, score=float(row[0]),
                               document_id=row[1], run_id=row[2], source_sha256=row[3],
                               root_alias=row[4], relative_path=row[5], card_id=row[6],
-                              chunk_id=row[7], statement=row[8], evidence_span=span))
+                              chunk_id=row[7], statement=row[8], evidence_span=span,
+                              situation=row[10], action=row[11], result=row[12],
+                              principle=row[13], query_mode=query_mode))
     return result
+
+
+def find_in_document(conn: psycopg.Connection, reference: FusedHit | CardHit,
+                     query: str, *, k: int = 10) -> list[FusedHit]:
+    """Find published original chunks in the exact document revision of a lead."""
+    _check_k(k)
+    if k > 20:
+        raise StorageError("document find K exceeds 20")
+    if not isinstance(query, str) or not query.strip():
+        raise StorageError("document find needs a query")
+    lead = reference.hit if isinstance(reference, FusedHit) else reference
+    with conn.cursor() as cur:
+        profile = _profile(cur, None, None)
+        cur.execute("""select 1 from knowledge.active_runs ar
+            join knowledge.runs r on r.run_id=ar.run_id
+            cross join knowledge.corpus_state state
+            where ar.profile_id=%s and state.profile_id=ar.profile_id
+              and ar.document_id=%s and ar.run_id=%s and r.source_sha256=%s""",
+                    (profile[0], lead.document_id, lead.run_id, lead.source_sha256))
+        if cur.fetchone() is None:
+            raise StorageError("document reference is not in the active published revision")
+        sql = """select ts_rank(to_tsvector('simple'::regconfig,c.raw_text),
+                    websearch_to_tsquery('simple'::regconfig,%s)) as score,
+                r.document_id,c.run_id,r.source_sha256,d.root_alias,d.relative_path,
+                c.chunk_id,c.source_spans,c.raw_text
+            from knowledge.chunks c
+            join knowledge.runs r on r.run_id=c.run_id
+            join knowledge.documents d on d.document_id=r.document_id
+            join knowledge.active_runs ar on ar.run_id=c.run_id and ar.document_id=r.document_id
+            join knowledge.profiles p on p.profile_id=ar.profile_id
+            cross join knowledge.corpus_state state
+            where state.profile_id=p.profile_id and p.profile_id=%s
+              and r.document_id=%s and r.run_id=%s and r.source_sha256=%s
+              and c.variant=p.variant and c.chunking_version=p.chunking_version
+              and to_tsvector('simple'::regconfig,c.raw_text) @@
+                  websearch_to_tsquery('simple'::regconfig,%s)
+            order by score desc,c.chunk_id,c.run_id limit %s"""
+        args = (query, profile[0], lead.document_id, lead.run_id, lead.source_sha256, query, k)
+        cur.execute(sql, args)
+        rows = cur.fetchall()
+        if not rows:
+            terms = list(dict.fromkeys(re.findall(r"\w+", query, re.UNICODE)))[:64]
+            if len(terms) > 1:
+                fallback = " OR ".join(f'"{term}"' for term in terms)
+                cur.execute(sql, (fallback, profile[0], lead.document_id, lead.run_id,
+                                  lead.source_sha256, fallback, k))
+                rows = cur.fetchall()
+    return [FusedHit(rank=index, rrf_score=float(row[0]), channels=["document_find"],
+                     hit=SearchHit(rank=index, score=float(row[0]), document_id=row[1],
+                                   run_id=row[2], source_sha256=row[3], root_alias=row[4],
+                                   relative_path=row[5], chunk_id=row[6],
+                                   source_spans=row[7], raw_text=row[8]))
+            for index, row in enumerate(rows, 1)]
 
 
 def read_passage(conn: psycopg.Connection, *, document_id: str, run_id: str,
@@ -185,7 +251,8 @@ def read_passage(conn: psycopg.Connection, *, document_id: str, run_id: str,
                   and a.status='ready' and a.kind='cards'
                   and (ar.selection->'required_artifact_ids') ? x.artifact_id
                   and (x.payload->'evidence_span'->>'start_char')::integer <= %s
-                  and (x.payload->'evidence_span'->>'end_char')::integer >= %s)
+                  and (x.payload->'evidence_span'->>'end_char')::integer >= %s),
+            r.parsed->'excluded_spans'
             from knowledge.runs r join knowledge.documents d on d.document_id=r.document_id
             join knowledge.active_runs ar on ar.run_id=r.run_id and ar.document_id=r.document_id
             join knowledge.chunks c on c.run_id=r.run_id
@@ -198,11 +265,15 @@ def read_passage(conn: psycopg.Connection, *, document_id: str, run_id: str,
         row = cur.fetchone()
     if row is None:
         raise StorageError("source passage is not in the active published run")
-    source_text, root_alias, relative_path, spans, within_card = row
+    source_text, root_alias, relative_path, spans, within_card, excluded = row
     if end_char > len(source_text) or not (within_card or any(
         span["start_char"] <= start_char < end_char <= span["end_char"] for span in spans
     )):
         raise StorageError("passage is outside the selected chunk source spans")
+    if any(item.get("reason") != "whitespace" and
+           item["span"]["start_char"] < end_char and start_char < item["span"]["end_char"]
+           for item in (excluded or [])):
+        raise StorageError("passage crosses an excluded source gap")
     return SourcePassage(document_id=document_id, run_id=run_id,
                          source_sha256=source_sha256, root_alias=root_alias,
                          relative_path=relative_path, chunk_id=chunk_id,
@@ -228,7 +299,10 @@ class DatabaseRetriever:
     def search_cards(self, query: str) -> list[CardHit]:
         return search_cards(self.conn, query)
 
-    def read(self, reference: FusedHit | CardHit, span_index: int) -> SourcePassage:
+    def find(self, reference: FusedHit | CardHit, query: str) -> list[FusedHit]:
+        return find_in_document(self.conn, reference, query)
+
+    def read(self, reference: FusedHit | CardHit, span_index: int, *, offset: int = 0) -> SourcePassage:
         if isinstance(reference, FusedHit):
             hit = reference.hit
             span = hit.source_spans[span_index]
@@ -239,8 +313,14 @@ class DatabaseRetriever:
             span = reference.evidence_span
             fields = (reference.document_id, reference.run_id, reference.source_sha256,
                       reference.chunk_id)
-        start = span["start_char"]
+        if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset < span["end_char"] - span["start_char"]:
+            raise ValueError("read offset is outside the selected span")
+        start = span["start_char"] + offset
         end = min(span["end_char"], start + MAX_PASSAGE_CHARS)
-        return read_passage(self.conn, document_id=fields[0], run_id=fields[1],
+        passage = read_passage(self.conn, document_id=fields[0], run_id=fields[1],
                             source_sha256=fields[2], chunk_id=fields[3],
                             start_char=start, end_char=end)
+        next_offset = offset + len(passage.text)
+        return passage.model_copy(update={"span_end_char": span["end_char"],
+                                  "next_offset": next_offset if end < span["end_char"] else None,
+                                  "truncated": end < span["end_char"]})

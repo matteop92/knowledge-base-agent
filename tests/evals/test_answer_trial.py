@@ -1,13 +1,35 @@
 import unittest
 import json
+import hashlib
 import tempfile
 from pathlib import Path
 
 from evals.answer_rubric import load_rubric
-from evals.answer_trial import review_template, summarize_review, run_configuration
+from evals.answer_trial import load_submitted_review, review_template, summarize_review, run_configuration
 
 
 class AnswerTrialTest(unittest.TestCase):
+    def test_submitted_review_preserves_blank_fields_and_checks_identity(self):
+        with tempfile.TemporaryDirectory(dir='.local') as folder:
+            root = Path(folder)
+            answer = root/'attempt.json'
+            answer.write_text('{"result":{"answer":"Example"}}', encoding='utf-8')
+            message = 'identified failures: '+json.dumps({'answer_agent_v6/Q1/mini': {
+                'facets': {'Q1.F1': 'Covered', 'Q1.F2': ''}, 'note': ''}})
+            raw = root/'raw.txt'
+            raw.write_text(message, encoding='utf-8')
+            receipt = root/'receipt.json'
+            receipt.write_text(json.dumps({'raw_sha256':hashlib.sha256(raw.read_bytes()).hexdigest(),
+                'entry_count':1,'entries':[{'identity':'answer_agent_v6/Q1/mini',
+                    'answer_receipt':str(answer),
+                    'answer_receipt_sha256':hashlib.sha256(answer.read_bytes()).hexdigest()}]}), encoding='utf-8')
+            loaded = load_submitted_review(raw, receipt)
+            self.assertEqual(loaded['raw']['answer_agent_v6/Q1/mini']['facets']['Q1.F2'], '')
+            self.assertIsNone(loaded['normalized']['answer_agent_v6/Q1/mini']['facets']['Q1.F2'])
+            answer.write_text('{}', encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, 'receipt changed'):
+                load_submitted_review(raw, receipt)
+
     def test_run_resumes_completed_answers_and_reserves_budget_before_call(self):
         rubric = load_rubric(Path('evals/answer_questions.yaml'))
         observed = {source.document_id: source.source_sha256 for source in rubric.source_revisions.values()}
@@ -27,11 +49,12 @@ class AnswerTrialTest(unittest.TestCase):
                 return 0
             config = {'question_ids':['Q4'],'model':'openai/gpt-5-mini','reasoning_effort':'minimal',
                 'generation_provider_tag':'azure','max_generation_usd_per_million':'2','max_usd':'0.25',
-                'input_byte_budget':400000}
+                'input_byte_budget':400000, 'budget_profile':'broad'}
             run_configuration(rubric, config, root/'pilot', ledger, observed, invoke=invoke)
             run_configuration(rubric, config, root/'pilot', ledger, observed, invoke=invoke)
             self.assertEqual(len(calls), 1)
             self.assertEqual(calls[0][calls[0].index('--input-byte-budget') + 1], '400000')
+            self.assertEqual(calls[0][calls[0].index('--budget-profile') + 1], 'broad')
             state = json.loads(ledger.read_text())
             self.assertAlmostEqual(state['stage5_estimated_usd_upper_bound'], 0.010002128)
             manifest_path = root/'pilot'/'pilot.json'

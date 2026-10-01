@@ -15,7 +15,7 @@ from app.agent.cli import main
 from app.storage.loader import load_run
 from app.storage.publication import create_profile, publish_run, select_profile
 from app.storage.records import PublicationSelection, SearchProfile, spec_id
-from tests.agent.test_actions import action
+from tests.agent.test_actions import action_v2
 from tests.storage.test_stage3_integration import fixture_run
 
 
@@ -41,10 +41,12 @@ class CLIIntegrationTest(unittest.TestCase):
                 select_profile(setup, "cli-proof")
         current = []
         inputs = []
-        responses = iter([action("search", query="ripe pear"),
-                          action("read", reference_id="E1", span_index=1),
-                          action("finish", answer="The pear is ripe. Example: choose it for today's snack [E1.1].",
-                                 citation_ids=["E1.1"], completeness="complete", sufficient=True)])
+        responses = iter([action_v2("search", query="ripe pear"),
+                          action_v2("read", reference_id="E1", span_index=1),
+                          action_v2("finish", answer="The pear is ripe. Example: choose it for today's snack [E1.1].",
+                                 citation_ids=["E1.1"], completeness="complete", sufficient=True,
+                                 need_updates=[{"id": "N1", "description": "Explain the orchard",
+                                                "status": "resolved", "evidence_ids": ["E1.1"], "rationale": None}])])
         second = False
 
         def connect():
@@ -68,7 +70,7 @@ class CLIIntegrationTest(unittest.TestCase):
                 self.assertEqual(current[0].execute("show transaction_read_only").fetchone()[0], "on")
                 with self.assertRaises(psycopg.errors.ReadOnlySqlTransaction), current[0].transaction():
                     current[0].execute("update knowledge.corpus_state set profile_id=profile_id where false")
-                proposed = (action("finish", answer="Old evidence [E1.1]", citation_ids=["E1.1"],
+                proposed = (action_v2("finish", answer="Old evidence [E1.1]", citation_ids=["E1.1"],
                                    completeness="complete", sufficient=True) if second else next(responses))
                 data = {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(proposed)}}],
                         "usage": {"prompt_tokens": 100, "completion_tokens": 40, "total_tokens": 140}}

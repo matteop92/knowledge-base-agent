@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
+import json
 from typing import Literal
 
 import yaml
@@ -14,6 +16,37 @@ from app.ingestion.contracts import StrictRecord
 class SourceRevision(StrictRecord):
     document_id: str = Field(min_length=1)
     source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class EvidenceAlternative(StrictRecord):
+    source: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    start_char: int | None = Field(default=None, ge=0)
+    end_char: int | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def paired_span(self) -> EvidenceAlternative:
+        if (self.start_char is None) != (self.end_char is None):
+            raise ValueError("evidence alternative needs both span offsets")
+        if self.start_char is not None and self.end_char <= self.start_char:
+            raise ValueError("evidence alternative has an invalid span")
+        return self
+
+
+class AnswerCheck(StrictRecord):
+    id: str = Field(pattern=r"^Q[1-8]\.C[1-9][0-9]*$")
+    dimension: Literal["coverage", "example", "grounding", "qualification", "gap", "usefulness", "attribution"]
+    criterion: str = Field(min_length=1)
+    applicability: Literal["required", "conditional"] = "required"
+    condition: str | None = None
+    evidence_alternatives: list[EvidenceAlternative] = Field(default_factory=list)
+    legacy_facet_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def conditional_reason(self) -> AnswerCheck:
+        if self.applicability == "conditional" and not self.condition:
+            raise ValueError("conditional check needs a condition")
+        return self
 
 
 class AnswerQuestion(StrictRecord):
@@ -29,6 +62,7 @@ class AnswerQuestion(StrictRecord):
     qualifications: str = Field(min_length=1)
     prohibited_inferences: list[str]
     useful_answer: str = Field(min_length=1)
+    checks: list[AnswerCheck] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def check_facets(self) -> AnswerQuestion:
@@ -46,6 +80,7 @@ class AnswerRubric(StrictRecord):
     examples_required: Literal[True]
     source_revisions: dict[str, SourceRevision]
     questions: list[AnswerQuestion]
+    criteria_changes: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def check_questions(self) -> AnswerRubric:
@@ -57,6 +92,20 @@ class AnswerRubric(StrictRecord):
             raise ValueError("question cites an unknown source revision")
         if self.status == "frozen" and any(question.review_status != "approved" for question in self.questions):
             raise ValueError("frozen rubric requires approval of every question")
+        if self.version == 4:
+            for question in self.questions:
+                check_ids = [check.id for check in question.checks]
+                if not check_ids or len(check_ids) != len(set(check_ids)) or any(
+                    not check_id.startswith(question.id + ".") for check_id in check_ids
+                ):
+                    raise ValueError("version 4 needs unique question-scoped check IDs")
+                if any(alt.source not in question.sources for check in question.checks
+                       for alt in check.evidence_alternatives):
+                    raise ValueError("check evidence cites a source outside its question")
+                if self.status == "frozen" and any(check.dimension in ("coverage", "example", "attribution")
+                   and not any(alt.start_char is not None for alt in check.evidence_alternatives)
+                   for check in question.checks):
+                    raise ValueError("frozen version 4 needs source-span evidence alternatives")
         return self
 
     def require_comparison_ready(self, observed_hashes: dict[str, str]) -> None:
@@ -69,3 +118,12 @@ class AnswerRubric(StrictRecord):
 
 def load_rubric(path: Path) -> AnswerRubric:
     return AnswerRubric.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+
+
+def rubric_fingerprint(rubric: AnswerRubric) -> str:
+    data = rubric.model_dump(mode="json")
+    if rubric.version == 3:
+        data.pop("criteria_changes", None)
+        for question in data["questions"]:
+            question.pop("checks", None)
+    return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()

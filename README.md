@@ -17,7 +17,7 @@ python -m app.agent.cli 'What steps could I take to calm myself down when I real
   --max-usd 0.25 --report .local/answer-preflight.json
 ```
 
-Replace `--dry-run` with `--live` and choose a new report filename for an answer. Live mode sends questions/searches and relevant candidate snippets and inspected source passages through OpenRouter to the qualified pinned providers. The default generation configuration is GPT-5 mini at minimal reasoning. Each request has fresh usage budgets and an evidence ledger; answering uses a read-only transaction. Defaults allow 12 model actions, five hybrid searches, two card searches, eight source reads, and a 120-second investigation deadline. `--input-byte-budget` conservatively counts serialized request bytes plus 512 tokens per request; ingestion retains its existing default budget behavior.
+Replace `--dry-run` with `--live` and choose a new report filename for an answer. Live mode sends questions/searches and relevant candidate snippets and inspected source passages through OpenRouter to the qualified pinned providers. The default generation configuration is GPT-5 mini at minimal reasoning. Each request has fresh usage budgets and an evidence ledger; answering uses a read-only transaction. The compact profile allows 12 model actions, five hybrid searches, two card searches, two document finds, eight source reads, and 120 seconds. Add `--budget-profile broad` for a finite 18-action, seven-search, three-card-search, four-find, 14-read, 180-second allowance and more answer output; its request/input budgets and worst-case cost are checked separately. `--input-byte-budget` conservatively counts serialized request bytes plus 512 tokens per request; ingestion retains its existing default budget behavior.
 
 Human output includes the answer, cited locators, bounded excerpts, and evidence gaps. `--json` explicitly outputs the full result. Optional `--report` files must be new paths under ignored `.local/`; they contain private answers, inspected passages, action/rank traces, stop reasons, model configuration, usage, and estimated cost. Interrupted or failed attempts are retained when a report was requested; they are not quality passes. Runtime citation checks establish inspected-source provenance; the frozen pilot review establishes semantic support and usefulness.
 
@@ -48,6 +48,16 @@ The exact source bytes determine `source_sha256`; Unicode character offsets refe
 The direct OpenRouter adapter is opt in. Construct `OpenRouterClient(allow_live=True, request_budget=..., estimated_input_token_budget=...)` only after choosing to send source text externally; it also requires `OPENROUTER_API_KEY`. Request and estimated input budgets are enforced before each call. The automated tests use fake clients and require no key. Model outputs and source snapshots stay in the ignored runtime directory; do not commit them. The token estimate uses a local lexical count, so it is a budget guard rather than provider billing data.
 
 ## Private storage and candidate search
+
+### Browse the local database
+
+With local Supabase Postgres running, start the read-only viewer from the repository directory:
+
+```powershell
+python -m app.storage.local_viewer
+```
+
+Open [http://127.0.0.1:8765/](http://127.0.0.1:8765/) in your browser. The evidence cards page has a source-document filter and card-text search; results show 25 cards per page and link to full evidence. The viewer reads `KNOWLEDGE_DATABASE_URL` from your environment or the repository's ignored `.env`, binds only to this computer, and stops when you close its terminal. Restart the same command after a reboot. It reads the selected profile's active cards; other tables remain available as raw views.
 
 Run a local Supabase Postgres instance with Docker and apply the versioned migration:
 
