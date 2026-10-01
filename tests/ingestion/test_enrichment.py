@@ -262,7 +262,7 @@ class EnrichmentTests(unittest.TestCase):
                 prompt_version="evidence_cards_v4",
             )
 
-    def test_v5_through_v7_group_adjacent_turns_from_one_speaker(self) -> None:
+    def test_v5_through_v8_group_adjacent_turns_from_one_speaker(self) -> None:
         capture, document, chunks, manifest = self.setup_source(
             "Transcripts/grouped.md",
             "**Host:** A useful observation begins here, and it concerns a decision that needs more context.\n\n"
@@ -274,7 +274,8 @@ class EnrichmentTests(unittest.TestCase):
                 "principle": None, "evidence_group_index": 0}
         for prompt_version, output_bound in (("evidence_cards_v5", 700),
                                              ("evidence_cards_v6", 1400),
-                                             ("evidence_cards_v7", 1400)):
+                                             ("evidence_cards_v7", 1400),
+                                             ("evidence_cards_v8", 1400)):
             with self.subTest(prompt_version=prompt_version):
                 client = FakeClient({"cards": [card]})
                 artifact = extract_evidence_cards(
@@ -283,7 +284,7 @@ class EnrichmentTests(unittest.TestCase):
                     prompt_version=prompt_version,
                 )
                 self.assertEqual(client.calls[0]["max_output_tokens"], output_bound)
-                if prompt_version == "evidence_cards_v7":
+                if prompt_version in ("evidence_cards_v7", "evidence_cards_v8"):
                     self.assertIn("Valid evidence_group_index values (zero-based):",
                                   client.calls[0]["input_text"])
                 self.assertIn("A useful observation", artifact.cards[0].evidence_text)
@@ -291,6 +292,30 @@ class EnrichmentTests(unittest.TestCase):
                 self.assertNotIn("Guest", artifact.cards[0].evidence_text)
                 self.assertEqual(artifact.cards[0].attribution, "Host")
                 artifact.cards[0].validate_against(document, chunks.chunks[0])
+
+    def test_v8_preserves_supported_fields_and_separate_facts(self) -> None:
+        text = ("**Host:** When signups fell, I interviewed five customers and changed the form. "
+                "Signups recovered the next week. Separately, I asked our support team to "
+                "try a shorter reply template; no outcome was reported for that advice.\n")
+        capture, document, chunks, manifest = self.setup_source("Transcripts/fields.md", text)
+        client = FakeClient({"cards": [
+            {"card_type": "example", "statement": "The speaker revised a form after signups fell.",
+             "situation": "Signups fell", "action": "The speaker interviewed five customers and changed the form",
+             "result": "The speaker reports signups recovered the next week",
+             "principle": None, "evidence_group_index": 0},
+            {"card_type": "tactic", "statement": "The speaker advised a shorter support reply template.",
+             "situation": "Support reply template", "action": "The speaker advised trying a shorter template",
+             "result": None, "principle": None, "evidence_group_index": 0},
+        ]})
+        artifact = extract_evidence_cards(document, chunks, chunks.chunks[0], client,
+                                          self.model, manifest, capture.run_dir,
+                                          prompt_version="evidence_cards_v8")
+        self.assertEqual(len(artifact.cards), 2)
+        self.assertEqual(artifact.cards[0].evidence_span, artifact.cards[1].evidence_span)
+        self.assertNotEqual(artifact.cards[0].card_id, artifact.cards[1].card_id)
+        self.assertIsNone(artifact.cards[1].result)
+        self.assertIn("Observed or reported outcome", client.calls[0]["json_schema"]
+                      ["properties"]["cards"]["items"]["properties"]["result"]["description"])
 
     def test_personal_annotation_is_not_attributed_to_book_author(self) -> None:
         capture, document, chunks, manifest = self.setup_source(
@@ -313,6 +338,19 @@ class EnrichmentTests(unittest.TestCase):
         )
         self.assertEqual(artifact.cards[0].content_role, "personal_note")
         self.assertEqual(artifact.cards[0].attribution, "personal_note")
+
+    def test_new_group_recipe_keeps_adjacent_highlights_separate(self) -> None:
+        from app.ingestion.enrichment import _card_groups
+
+        text = ("---\ntitle: A small book\nauthor: Example Author\nsource: Kindle\n---\n\n"
+                "# A small book\n\n## A useful idea\n\n"
+                "**Highlight · p. 12 · aqua **\n\n> The first independent passage describes a concrete action and its outcome in enough detail to be useful.\n\n"
+                "**Highlight · p. 13 · aqua **\n\n> The second independent passage describes another episode and must not inherit the first outcome, attribution, or action when a new card is produced.\n")
+        capture, document, chunks, manifest = self.setup_source("Book Highlights/adjacent.md", text)
+        old = _card_groups(document, chunks.chunks[0])
+        revised = _card_groups(document, chunks.chunks[0], split_highlights=True)
+        self.assertEqual(len(old), 1)
+        self.assertEqual(len(revised), 2)
 
     def test_invented_evidence_and_model_failure_leave_no_ready_artifact(self) -> None:
         capture, document, chunks, manifest = self.setup_source(

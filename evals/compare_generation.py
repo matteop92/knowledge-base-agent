@@ -12,6 +12,7 @@ import math
 import time
 from pathlib import Path
 
+from app.ingestion.contracts import ChunkSet, ParsedDocument
 from app.ingestion.enrichment import EnrichmentError, EvidenceCardsArtifact, _block_card_input, _group_card_input, _input, _prompt, extract_evidence_cards
 from app.ingestion.run_manifest import RunManifest
 from app.ingestion.summary import summarize_document
@@ -56,6 +57,47 @@ def sample(prepared: list[Prepared]) -> tuple[list[tuple[Prepared, object]], lis
     return cards, summaries
 
 
+def prepared_from_runs(runtime_dir: Path) -> list[Prepared]:
+    """Use captured, versioned local runs without recapturing the external vault."""
+    prepared = []
+    for run_dir in sorted(runtime_dir.iterdir()):
+        if not run_dir.is_dir():
+            continue
+        parsed = ParsedDocument.model_validate_json((run_dir / "parsed.json").read_text(encoding="utf-8"))
+        sets = {variant: ChunkSet.model_validate_json((run_dir / f"{variant}.json").read_text(encoding="utf-8"))
+                for variant in ("fixed_raw", "structural_raw")}
+        manifest = RunManifest.load(run_dir)
+        if (manifest.run_id, manifest.document_id, manifest.source_sha256) != (
+                parsed.run_id, parsed.document_id, parsed.source_sha256):
+            raise ValueError("captured run identity changed")
+        prepared.append(Prepared(run_dir, parsed, sets, [], {}))
+    if len(prepared) != 6:
+        raise ValueError("card comparison requires the six captured local runs")
+    return prepared
+
+
+def sample_with_audit(cards: list[tuple[Prepared, object]], prepared: list[Prepared],
+                      audit_path: Path) -> list[tuple[Prepared, object]]:
+    audit = json.loads(audit_path.read_text(encoding="utf-8"))
+    by_chunk = {(item.parsed.document_id, chunk.chunk_id): (item, chunk)
+                for item in prepared for chunk in item.sets["structural_raw"].chunks}
+    required = {(item["document_id"], item["chunk_id"]) for item in audit["sample"]}
+    if len(required) != len(audit["sample"]) or not required.issubset(by_chunk):
+        raise ValueError("audit sample disagrees with captured structural chunks")
+    ordered = [by_chunk[key] for key in sorted(required)]
+    seen = set(required)
+    for item, chunk in cards:
+        key = (item.parsed.document_id, chunk.chunk_id)
+        if len(ordered) >= 18:
+            break
+        if key not in seen:
+            ordered.append((item, chunk))
+            seen.add(key)
+    if len(ordered) != 18:
+        raise ValueError("18-chunk screen could not include the audited chunks")
+    return ordered
+
+
 def estimate(cards: list[tuple[Prepared, object]], summaries: list[Prepared],
              models: tuple[str, ...] = MODELS,
              card_prompt_version: str = "evidence_cards_v1",
@@ -63,8 +105,9 @@ def estimate(cards: list[tuple[Prepared, object]], summaries: list[Prepared],
     cards_prompt, _ = _prompt(card_prompt_version)
     cards_input_bound = sum(len(cards_prompt.encode()) + len(
         (_group_card_input(item.parsed, chunk, 1800,
-                           explicit_indices=card_prompt_version == "evidence_cards_v7")
-         if card_prompt_version in ("evidence_cards_v5", "evidence_cards_v6", "evidence_cards_v7") else
+                           explicit_indices=card_prompt_version in ("evidence_cards_v7", "evidence_cards_v8"),
+                           split_highlights=card_prompt_version == "evidence_cards_v8")
+         if card_prompt_version in ("evidence_cards_v5", "evidence_cards_v6", "evidence_cards_v7", "evidence_cards_v8") else
          _block_card_input(item.parsed, chunk, 1800,
                            strict_blocks=card_prompt_version == "evidence_cards_v4")
          if card_prompt_version in ("evidence_cards_v3", "evidence_cards_v4")
@@ -90,7 +133,7 @@ def estimate(cards: list[tuple[Prepared, object]], summaries: list[Prepared],
                                 900 if summary_prompt_family in ("v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17") else
                                 700 if summary_prompt_family in ("v2", "v3", "v4", "v5") else 400)
         summary_multiplier = 8 if model == "deepseek/deepseek-v4.1-flash" else 4
-        card_output_bound = 1400 if card_prompt_version in ("evidence_cards_v6", "evidence_cards_v7") else 700
+        card_output_bound = 1400 if card_prompt_version in ("evidence_cards_v6", "evidence_cards_v7", "evidence_cards_v8") else 700
         cost = ((cards_input_bound + summary_input_bound) * input_price
                 + (len(cards) * card_output_bound * 4
                    + summary_calls_bound * summary_output_bound * summary_multiplier) * output_price) / 1_000_000
@@ -121,13 +164,15 @@ class TimedClient:
 
 
 def _model_report(prepared: list[Prepared], model: ModelSpec,
-                  timed: TimedClient) -> dict:
+                  timed: TimedClient, card_prompt_version: str) -> dict:
     records = []
     card_count = 0
     for item in prepared:
         manifest = RunManifest.load(item.run_dir)
         for record in manifest.artifacts.values():
             if record.model != model or record.kind not in ("cards", "summary"):
+                continue
+            if record.kind == "cards" and record.version_inputs.get("prompt_version") != card_prompt_version:
                 continue
             records.append(record)
             if record.kind == "cards" and record.status == "ready" and record.path:
@@ -204,21 +249,25 @@ def run(prepared: list[Prepared], cards: list[tuple[Prepared, object]],
                                "transport_error": str(exc) if isinstance(exc, ModelClientError) else None})
         report["models"].append({"status": "complete" if not errors else "complete_with_failures",
                                  "sample_errors": errors,
-                                 **_model_report(prepared, model, client)})
+                               **_model_report(prepared, model, client, card_prompt_version)})
         output.write_text(json.dumps(report, indent=2), encoding="utf-8")
     return report
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--source-root", type=Path, required=True)
+    parser.add_argument("--source-root", type=Path)
     parser.add_argument("--root-alias", default="primary")
     parser.add_argument("--eval-dir", type=Path, default=Path("evals"))
     parser.add_argument("--runtime-dir", type=Path, default=Path(".local/stage4-generation/runs"))
+    parser.add_argument("--existing-runtime-dir", type=Path,
+                        help="use copied captured runs in --runtime-dir, without vault access")
+    parser.add_argument("--audit-sample", type=Path,
+                        help="include the source-labelled chunks in the 18-chunk screen")
     parser.add_argument("--output", type=Path, default=Path(".local/stage4-generation/report.json"))
     parser.add_argument("--max-usd", type=float, required=True)
     parser.add_argument("--models", nargs="+", choices=tuple(CONTEXT_PRICES), default=list(MODELS))
-    parser.add_argument("--card-prompt-version", choices=("evidence_cards_v1", "evidence_cards_v2", "evidence_cards_v3", "evidence_cards_v4", "evidence_cards_v5", "evidence_cards_v6", "evidence_cards_v7"),
+    parser.add_argument("--card-prompt-version", choices=("evidence_cards_v1", "evidence_cards_v2", "evidence_cards_v3", "evidence_cards_v4", "evidence_cards_v5", "evidence_cards_v6", "evidence_cards_v7", "evidence_cards_v8"),
                         default="evidence_cards_v1")
     parser.add_argument("--summary-prompt-family", choices=("v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17"), default="v1")
     parser.add_argument("--all-cards", action="store_true")
@@ -228,9 +277,18 @@ def main() -> int:
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()
-    prepared = prepare(args.source_root, args.eval_dir, args.runtime_dir, args.root_alias,
-                       resume=args.resume)
+    if args.existing_runtime_dir:
+        if args.source_root or args.existing_runtime_dir.resolve() != args.runtime_dir.resolve():
+            parser.error("existing run mode uses --runtime-dir without --source-root")
+        prepared = prepared_from_runs(args.runtime_dir)
+    else:
+        if args.source_root is None:
+            parser.error("--source-root or --existing-runtime-dir is required")
+        prepared = prepare(args.source_root, args.eval_dir, args.runtime_dir, args.root_alias,
+                           resume=args.resume)
     cards, summaries = sample(prepared)
+    if args.audit_sample:
+        cards = sample_with_audit(cards, prepared, args.audit_sample)
     if args.all_cards:
         cards = [(item, chunk) for item in prepared
                  for chunk in item.sets["structural_raw"].chunks]
