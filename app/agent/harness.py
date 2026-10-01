@@ -16,7 +16,7 @@ from app.models.client import ModelClient, ModelClientError, ModelSpec
 from app.storage import StorageError
 from app.storage.records import CardHit, FusedHit, SearchHit, SourcePassage
 
-PROMPT_VERSION = "answer_agent_v8"
+PROMPT_VERSION = "answer_agent_v10"
 PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / f"{PROMPT_VERSION}.md"
 PROMPT = PROMPT_PATH.read_text(encoding="utf-8")
 CITATION = re.compile(r"\[(E\d+\.\d+(?:@\d+)?)\]")
@@ -58,6 +58,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
     needs: dict[str, dict] = {"N1": {"description": question, "status": "open", "evidence_ids": [], "rationale": None}}
     actions: list[dict] = []
     calls = searches = card_searches = finds = reads = 0
+    discoveries_since_read = 0
     finish_correction_used = False
     finalization_reason: str | None = None
     def stopped(reason: str, termination: str) -> AnswerResult:
@@ -84,7 +85,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                           "next_offset": item.next_offset, "truncated": item.truncated,
                           "text": item.text}
                          for key, item in inspected.items()]
-        input_text = json.dumps({"question": question, "candidates": available[-30:],
+        input_text = json.dumps({"question": question, "candidates": available[-16:],
                                  "inspected": read_evidence, "needs": needs, "feedback": feedback,
                                  "remaining": {"searches": limits.max_searches - searches,
                                                "card_searches": limits.max_card_searches - card_searches,
@@ -98,13 +99,15 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
         recent_timings = getattr(client, "request_timings", [])[-3:]
         finish_seconds = max(30.0, 2 * max((duration for _, duration in recent_timings), default=0.0))
         triggers = []
-        if limits.max_model_calls - calls <= 1: triggers.append("model_calls")
+        if limits.max_model_calls >= 6 and limits.max_model_calls - calls <= 2:
+            triggers.append("model_calls")
         if reads >= limits.max_reads: triggers.append("reads")
         if limits.max_seconds - (time.monotonic() - started) <= finish_seconds: triggers.append("time_reserve")
         if getattr(client, "remaining_requests", 99) <= 2: triggers.append("transport_requests")
         if isinstance(remaining_bytes, int) and remaining_bytes < 2 * next_request_bytes: triggers.append("input_reserve")
         force_finish = bool(triggers)
         schema = ACTION_SCHEMA_V2
+        must_read = not force_finish and discoveries_since_read >= 2 and bool(candidates)
         if force_finish:
             finalization_reason = ",".join(triggers)
             value = json.loads(input_text)
@@ -113,6 +116,13 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
             input_text = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
             schema = copy.deepcopy(ACTION_SCHEMA_V2)
             schema["properties"]["action"]["enum"] = ["finish"]
+        elif must_read:
+            value = json.loads(input_text)
+            value["feedback"] = (feedback + "\nYou have enough discovery leads for now. "
+                                 "Read one listed original span before another search or finish.")
+            input_text = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+            schema = copy.deepcopy(ACTION_SCHEMA_V2)
+            schema["properties"]["action"]["enum"] = ["read"]
         try:
             calls += 1
             result = client.generate_json(model=model, system_prompt=PROMPT,
@@ -122,11 +132,23 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                                           reasoning_effort=reasoning_effort)
             if result.model != model:
                 raise ModelClientError("answer response model differs from requested model")
-            action = AgentAction.model_validate(result.data)
+            payload = result.data
+            ignored_draft_fields = []
+            if isinstance(payload, dict) and payload.get("action") in (
+                    "search", "search_cards", "find", "read"):
+                draft_defaults = {"answer": None, "citation_ids": [],
+                                  "completeness": None, "gaps": [], "sufficient": None}
+                ignored_draft_fields = [key for key, default in draft_defaults.items()
+                                        if payload.get(key) != default]
+                if ignored_draft_fields:
+                    payload = {**payload, **draft_defaults}
+            action = AgentAction.model_validate(payload)
             if action.version != 2 and not allow_legacy_actions:
                 raise ValueError("new answer runs require action schema version 2")
             if force_finish and action.action != "finish":
                 raise ValueError("final allowance permits only finish")
+            if must_read and action.action != "read":
+                raise ValueError("discovery allowance requires an original read")
         except ModelClientError as exc:
             safe_reasons = {
                 "model request or estimated input budget exceeded": "request_or_input_budget",
@@ -148,9 +170,16 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
             feedback = ("Invalid model action. Use search or search_cards with a query; read with a known "
                         "reference_id and span_index, and no query; or finish with the answer and citations. "
                         "Only the fields for the chosen action may be non-null. Produce a valid bounded action.")
-            actions.append({"action": "invalid", "reason": type(exc).__name__})
+            invalid = {"action": "invalid", "reason": type(exc).__name__}
+            if hasattr(exc, "errors"):
+                invalid["fields"] = [{"path": ".".join(map(str, error["loc"])),
+                                      "type": error["type"], "message": error["msg"]}
+                                     for error in exc.errors(include_input=False)]
+            actions.append(invalid)
             continue
         actions.append(action.model_dump(exclude={"answer"}))
+        if ignored_draft_fields:
+            actions[-1]["ignored_draft_fields"] = ignored_draft_fields
         if force_finish:
             actions[-1]["budget_finalization"] = True
             actions[-1]["finalization_reason"] = finalization_reason
@@ -174,6 +203,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                 feedback = "Search budget exhausted; inspect existing candidates or finish with gaps."
                 continue
             searches += 1
+            discoveries_since_read += 1
             try:
                 found = retriever.search(action.query or "")
             except (StorageError, ModelClientError, psycopg.Error) as exc:
@@ -192,6 +222,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                 feedback = "Card-search budget exhausted; inspect existing candidates or finish with gaps."
                 continue
             card_searches += 1
+            discoveries_since_read += 1
             try:
                 found = retriever.search_cards(action.query or "")
             except (StorageError, ModelClientError, psycopg.Error) as exc:
@@ -215,6 +246,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                 actions[-1]["rejected"] = "Unknown reference or find budget"
                 continue
             finds += 1
+            discoveries_since_read += 1
             try:
                 found = retriever.find(candidates[ref], action.query or "")
             except (StorageError, ModelClientError, psycopg.Error) as exc:
@@ -273,6 +305,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                             "next_offset": next_offset if passage.end_char < span["end_char"] else None,
                             "truncated": passage.end_char < span["end_char"]})
                     inspected[citation_id] = passage
+                    discoveries_since_read = 0
                     actions[-1]["inspected_id"] = citation_id
                     actions[-1]["next_offset"] = passage.next_offset
                 except (StorageError, ModelClientError, psycopg.Error) as exc:
