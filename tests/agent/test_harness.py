@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import unittest
 
-from app.agent.harness import answer_question
+from app.agent.harness import answer_question as _answer_question
 from app.agent.records import AnswerLimits
 from app.models.client import GenerationResult, ModelSpec
 from app.storage import StorageError
 from app.storage.records import FusedHit, SearchHit, SourcePassage
-from tests.agent.test_actions import action
+from tests.agent.test_actions import action, action_v2
 
 
 MODEL = ModelSpec(provider="fake", model_id="fake", model_version="1")
+
+
+def answer_question(*args, **kwargs):
+    return _answer_question(*args, allow_legacy_actions=True, **kwargs)
 
 
 class FakeClient:
@@ -41,6 +45,92 @@ class FakeRetriever:
 
 
 class HarnessTest(unittest.TestCase):
+    def test_new_run_rejects_legacy_action_version(self):
+        client = FakeClient([action('search', query='source'),
+                             action_v2('finish', answer='No verified source.',
+                                       completeness='unsupported', sufficient=False,
+                                       gaps=['No source was inspected'])])
+        result = _answer_question('Explain', retriever=FakeRetriever(), client=client,
+                                  model=MODEL, limits=AnswerLimits(max_model_calls=2))
+        self.assertEqual(result.actions[0], {'action': 'invalid', 'reason': 'ValueError'})
+        self.assertFalse(result.inspected)
+
+    def test_find_registers_same_document_lead_then_read_supports_answer(self):
+        class FindingRetriever(FakeRetriever):
+            def find(self, reference, query):
+                self.find_query = query
+                later = reference.hit.model_copy(update={"chunk_id": "later", "raw_text": "later source",
+                    "source_spans": [{"start_char": 20, "end_char": 32}]})
+                return [FusedHit(rank=1, rrf_score=0.5, channels=["document_find"], hit=later)]
+
+            def read(self, reference, span_index, *, offset=0):
+                if reference.hit.chunk_id == "later":
+                    return SourcePassage(document_id="doc", run_id="run", source_sha256="a" * 64,
+                        root_alias="root", relative_path="note.md", chunk_id="later",
+                        start_char=20, end_char=32, text="later source")
+                return super().read(reference, span_index)
+
+        retriever = FindingRetriever()
+        needs = [{"id": "N1", "description": "Explain the later source", "status": "resolved",
+                  "evidence_ids": ["E2.0"], "rationale": None}]
+        client = FakeClient([action_v2("search", query="source"),
+            action_v2("find", reference_id="E1", query="later detail"),
+            action_v2("read", reference_id="E2", span_index=0),
+            action_v2("finish", answer="Later fact [E2.0]", citation_ids=["E2.0"],
+                      completeness="complete", sufficient=True, need_updates=needs)])
+        result = answer_question("Explain the later source", retriever=retriever, client=client, model=MODEL)
+        self.assertEqual(retriever.find_query, "later detail")
+        self.assertEqual(result.completeness, "complete")
+        self.assertEqual(result.citations["E2.0"].chunk_id, "later")
+
+    def test_unresolved_need_gets_one_targeted_finish_correction(self):
+        class CapturingClient(FakeClient):
+            def generate_json(self, **kwargs):
+                self.last_input = kwargs["input_text"]
+                return super().generate_json(**kwargs)
+
+        resolved = [{"id": "N1", "description": "Explain", "status": "resolved",
+                     "evidence_ids": ["E1.0"], "rationale": None}]
+        client = CapturingClient([action_v2("search", query="source"),
+            action_v2("read", reference_id="E1", span_index=0),
+            action_v2("finish", answer="Too early [E1.0]", citation_ids=["E1.0"],
+                      completeness="complete", sufficient=True),
+            action_v2("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
+                      completeness="complete", sufficient=True, need_updates=resolved)])
+        result = answer_question("Explain", retriever=FakeRetriever(), client=client, model=MODEL)
+        self.assertEqual(result.completeness, "complete")
+        self.assertEqual(result.actions[2]["rejected"], "Material investigation needs remain open")
+        self.assertIn("still-open material needs", client.last_input)
+
+    def test_continuation_has_distinct_citation_and_exact_offset(self):
+        class LongRetriever(FakeRetriever):
+            def search(self, query):
+                item = super().search(query)[0]
+                return [item.model_copy(update={"hit": item.hit.model_copy(update={
+                    "source_spans": [{"start_char": 0, "end_char": 5000}], "raw_text": "x" * 5000})})]
+
+            def read(self, reference, span_index, *, offset=0):
+                self.offsets.append(offset)
+                return SourcePassage(document_id="doc", run_id="run", source_sha256="a" * 64,
+                    root_alias="root", relative_path="note.md", chunk_id="chunk",
+                    start_char=offset, end_char=offset + 2400, text="x" * 2400)
+
+        retriever = LongRetriever()
+        retriever.offsets = []
+        resolved = [{"id": "N1", "description": "Later detail", "status": "resolved",
+                     "evidence_ids": ["E1.0@2400"], "rationale": None}]
+        client = FakeClient([action_v2("search", query="detail"),
+            action_v2("read", reference_id="E1", span_index=0),
+            action_v2("read", reference_id="E1", span_index=0, offset=100),
+            action_v2("read", reference_id="E1", span_index=0, offset=2400),
+            action_v2("finish", answer="Later detail [E1.0@2400]", citation_ids=["E1.0@2400"],
+                      completeness="complete", sufficient=True, need_updates=resolved)])
+        result = answer_question("Later detail", retriever=retriever, client=client, model=MODEL)
+        self.assertEqual(retriever.offsets, [0, 2400])
+        self.assertEqual(result.actions[2]['rejected'], 'Already inspected offset')
+        self.assertEqual(result.inspected["E1.0"].next_offset, 2400)
+        self.assertEqual(result.citations["E1.0@2400"].start_char, 2400)
+
     def test_later_malformed_json_can_be_repaired_without_losing_reads(self):
         from app.models.client import ModelClientError
         class RepairClient(FakeClient):

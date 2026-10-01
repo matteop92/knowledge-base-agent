@@ -14,7 +14,34 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
-from evals.answer_rubric import AnswerRubric, load_rubric
+from evals.answer_rubric import AnswerRubric, load_rubric, rubric_fingerprint
+
+
+def load_submitted_review(raw_path: Path, receipt_path: Path) -> dict:
+    """Verify the immutable human submission without inferring missing labels."""
+    raw = raw_path.read_bytes()
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    if hashlib.sha256(raw).hexdigest() != receipt.get("raw_sha256"):
+        raise ValueError("submitted review checksum changed")
+    marker = "identified failures: "
+    message = raw.decode("utf-8")
+    if marker not in message:
+        raise ValueError("submitted review has no rating payload")
+    ratings = json.loads(message.split(marker, 1)[1])
+    entries = receipt.get("entries", [])
+    if len(entries) != receipt.get("entry_count") or set(ratings) != {entry["identity"] for entry in entries}:
+        raise ValueError("submitted review identities differ from receipt")
+    for entry in entries:
+        answer_path = Path(entry["answer_receipt"])
+        if hashlib.sha256(answer_path.read_bytes()).hexdigest() != entry["answer_receipt_sha256"]:
+            raise ValueError("historical answer receipt changed")
+    normalized = {}
+    for identity, rating in ratings.items():
+        normalized[identity] = {name: ({key: value or None for key, value in field.items()}
+                                       if isinstance(field, dict) else field or None)
+                                for name, field in rating.items()}
+    return {"entry_count": len(entries), "raw": ratings, "normalized": normalized,
+            "raw_sha256": receipt["raw_sha256"]}
 
 
 def _save_json(path: Path, data: dict) -> None:
@@ -48,7 +75,7 @@ def run_configuration(rubric: AnswerRubric, config: dict, directory: Path, ledge
     manifest = (json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else
                 {"configuration": config, "rubric_version": rubric.version,
                  "source_revisions": observed_hashes, "questions": {}, "status": "running"})
-    fingerprint = hashlib.sha256(json.dumps(rubric.model_dump(mode="json"), sort_keys=True).encode()).hexdigest()
+    fingerprint = rubric_fingerprint(rubric)
     from app.agent.harness import PROMPT
     prompt_fingerprint = hashlib.sha256(PROMPT.encode()).hexdigest()
     manifest.setdefault("rubric_sha256", fingerprint)
@@ -114,6 +141,10 @@ def run_configuration(rubric: AnswerRubric, config: dict, directory: Path, ledge
                 "--report", str(report_path)]
         if "input_byte_budget" in config:
             args.extend(["--input-byte-budget", str(config["input_byte_budget"])])
+        if "budget_profile" in config:
+            args.extend(["--budget-profile", config["budget_profile"]])
+        if "request_budget" in config:
+            args.extend(["--request-budget", str(config["request_budget"])])
         with contextlib.redirect_stdout(io.StringIO()):
             code = (invoke or answer_cli)(args)
         report = json.loads(report_path.read_text(encoding="utf-8")) if report_path.exists() else {"status": "failed"}
@@ -137,6 +168,8 @@ def run_configuration(rubric: AnswerRubric, config: dict, directory: Path, ledge
 
 
 def review_template(rubric: AnswerRubric, question_id: str) -> dict:
+    if rubric.version != 3:
+        raise ValueError("historical review template only supports rubric version 3")
     question = next((item for item in rubric.questions if item.id == question_id), None)
     if question is None or rubric.status != "frozen":
         raise ValueError("review requires a frozen question")

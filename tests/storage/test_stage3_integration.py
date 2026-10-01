@@ -23,7 +23,7 @@ from app.storage.loader import load_run
 from app.storage.publication import create_profile, publish_run, select_profile
 from app.storage.records import PublicationSelection, SearchProfile, spec_id
 from app.storage.search import search_text, search_vector
-from app.storage.retrieval import read_passage, search_cards, selected_embedding_spec
+from app.storage.retrieval import DatabaseRetriever, find_in_document, read_passage, search_cards, selected_embedding_spec
 
 
 def add_vectors(run_dir: Path, spec: EmbeddingSpec):
@@ -142,10 +142,47 @@ class Stage3IntegrationTest(unittest.TestCase):
             cards = search_cards(self.conn, "crimson")
             self.assertEqual(len(cards), 1)
             card = cards[0]
+            fallback = search_cards(self.conn, "crimson customers nonexistent")
+            self.assertTrue(fallback)
+            self.assertEqual(fallback[0].query_mode, "or_fallback")
+            within_document = find_in_document(self.conn, card, "improves service")
+            self.assertTrue(within_document)
+            self.assertEqual({hit.hit.document_id for hit in within_document}, {card.document_id})
             passage = read_passage(self.conn, document_id=card.document_id, run_id=card.run_id,
                 source_sha256=card.source_sha256, chunk_id=card.chunk_id,
                 start_char=card.evidence_span["start_char"], end_char=card.evidence_span["end_char"])
             self.assertEqual(passage.text, quote)
+
+    def test_long_span_continuation_cannot_cross_revision(self):
+        with tempfile.TemporaryDirectory() as folder:
+            run_dir, spec, _ = fixture_run(Path(folder), "# Long note\n\n" + "orchard " * 450 + "\n")
+            load_run(self.conn, run_dir)
+            profile_id = "continuation-proof"
+            create_profile(self.conn, SearchProfile(profile_id=profile_id, variant="fixed_raw",
+                chunking_version=spec.chunking_version, embedding_spec_id=spec_id(spec)))
+            publish_run(self.conn, PublicationSelection(run_id=run_dir.name, profile_id=profile_id))
+            select_profile(self.conn, profile_id)
+            hit = next(item for item in search_text(self.conn, "orchard")
+                       if any(span["end_char"] - span["start_char"] > 2400 for span in item.source_spans))
+            from app.storage.records import FusedHit
+            reference = FusedHit(rank=1, rrf_score=0.1, channels=["text"], hit=hit)
+            index = next(i for i, span in enumerate(hit.source_spans)
+                         if span["end_char"] - span["start_char"] > 2400)
+            reader = DatabaseRetriever(self.conn, MagicMock(), provider_tag="unused",
+                max_embedding_usd_per_million=0)
+            first = reader.read(reference, index)
+            self.assertEqual(first.next_offset, 2400)
+            self.assertTrue(first.truncated)
+            continuation = reader.read(reference, index, offset=first.next_offset)
+            self.assertEqual(continuation.start_char, first.end_char)
+            self.assertFalse(continuation.truncated)
+            with self.assertRaises(ValueError):
+                reader.read(reference, index, offset=hit.source_spans[index]["end_char"] - hit.source_spans[index]["start_char"])
+            replacement, _, _ = fixture_run(Path(folder), "# Long note\n\nNew source revision.\n")
+            load_run(self.conn, replacement)
+            publish_run(self.conn, PublicationSelection(run_id=replacement.name, profile_id=profile_id))
+            with self.assertRaises(StorageError):
+                reader.read(reference, index, offset=first.next_offset)
 
     def test_stale_retry_preserves_the_newer_manifest(self):
         with tempfile.TemporaryDirectory() as folder:
