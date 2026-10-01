@@ -88,11 +88,23 @@ def prepare_evidence(rubric: AnswerRubric, question_id: str, answer_receipt: dic
     if not set(citations).issubset(inspected):
         raise ValueError("answer cites passages outside the inspected ledger")
     revisions = {item.document_id: item.source_sha256 for item in rubric.source_revisions.values()}
+    checked_sources = {}
+    for document_id, expected_sha in revisions.items():
+        raw = gold_sources.get(document_id)
+        if raw is not None:
+            if hashlib.sha256(raw).hexdigest() != expected_sha:
+                raise ValueError("gold source revision is unavailable or changed")
+            checked_sources[document_id] = raw.decode("utf-8")
     for evidence in inspected.values():
-        if evidence.get("source_sha256") != revisions.get(evidence.get("document_id")):
+        document_id = evidence.get("document_id")
+        if evidence.get("source_sha256") != revisions.get(document_id):
             raise ValueError("inspected passage has an unexpected source revision")
-        if len(evidence.get("text", "")) != evidence.get("end_char", 0) - evidence.get("start_char", 0):
-            raise ValueError("inspected passage offsets do not match its text")
+        source_text = checked_sources.get(document_id)
+        start, end = evidence.get("start_char"), evidence.get("end_char")
+        if (source_text is None or not isinstance(start, int) or not isinstance(end, int)
+                or not 0 <= start < end <= len(source_text)
+                or source_text[start:end] != evidence.get("text")):
+            raise ValueError("inspected passage does not match the checked original")
     gold = {}
     for check in question.checks:
         alternatives = []
@@ -100,10 +112,9 @@ def prepare_evidence(rubric: AnswerRubric, question_id: str, answer_receipt: dic
             if alternative.start_char is None:
                 continue
             source = rubric.source_revisions[alternative.source]
-            raw = gold_sources.get(source.document_id)
-            if raw is None or hashlib.sha256(raw).hexdigest() != source.source_sha256:
+            text = checked_sources.get(source.document_id)
+            if text is None:
                 raise ValueError("gold source revision is unavailable or changed")
-            text = raw.decode("utf-8")
             if alternative.end_char > len(text):
                 raise ValueError("gold evidence span exceeds its source")
             alternatives.append({"source": alternative.source,
@@ -139,6 +150,9 @@ def validate_judgments(payload: dict, response: GraderResponse) -> dict:
                 raise ValueError("grader support is not an exact inspected excerpt")
             if check["dimension"] == "grounding" and support.id not in payload["citations"]:
                 raise ValueError("grounding support was not cited by the answer")
+            if (check["dimension"] == "grounding" and item.rating in ("pass", "partial")
+                    and f"[{support.id}]" not in item.answer_excerpt):
+                raise ValueError("grounding excerpt must include its supporting citation")
         if item.rating in ("pass", "partial") and check["dimension"] in SOURCE_DIMENSIONS and not item.inspected_support:
             raise ValueError("positive source-backed check has no inspected support")
         counts[check["dimension"]][item.rating] += 1
