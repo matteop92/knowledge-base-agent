@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import re
+from pathlib import PurePosixPath
 
 import psycopg
 
@@ -47,14 +48,38 @@ def _scope(historical_run_id: str | None) -> str:
 
 
 def _hits(rows) -> list[SearchHit]:
-    return [SearchHit(rank=index, score=float(row[0]), document_id=row[1], run_id=row[2],
-                      source_sha256=row[3], root_alias=row[4], relative_path=row[5],
-                      chunk_id=row[6], source_spans=row[7], raw_text=row[8])
-            for index, row in enumerate(rows, 1)]
+    result = []
+    for index, row in enumerate(rows, 1):
+        title, people, _ = source_label(row[9] if len(row) > 9 else {}, row[5])
+        result.append(SearchHit(rank=index, score=float(row[0]), document_id=row[1], run_id=row[2],
+                                source_sha256=row[3], root_alias=row[4], relative_path=row[5],
+                                chunk_id=row[6], source_spans=row[7], raw_text=row[8],
+                                title=title, people=people))
+    return result
+
+
+def source_label(metadata: object, relative_path: str) -> tuple[str, list[str], list[str]]:
+    """Use published run metadata, including older runs with guest only in frontmatter."""
+    data = metadata if isinstance(metadata, dict) else {}
+    title = data.get("title") or PurePosixPath(relative_path).stem
+    frontmatter = data.get("frontmatter") or {}
+    if not isinstance(frontmatter, dict):
+        frontmatter = {}
+
+    def names(value: object) -> list[str]:
+        values = value if isinstance(value, list) else [value]
+        return [item.removeprefix("[[").removesuffix("]]").strip()
+                for item in values if isinstance(item, str) and item.strip()]
+
+    people = list(dict.fromkeys(names(data.get("authors")) + names(data.get("guests"))
+                                + names(frontmatter.get("guest"))))
+    tags = names(data.get("tags"))
+    return str(title), people, tags
 
 
 def search_text(conn: psycopg.Connection, query: str, *, k: int = 10,
-                profile_id: str | None = None, historical_run_id: str | None = None) -> list[SearchHit]:
+                profile_id: str | None = None, historical_run_id: str | None = None,
+                document_id: str | None = None) -> list[SearchHit]:
     _check_k(k)
     if not isinstance(query, str):
         raise StorageError("text query must be a string")
@@ -68,7 +93,7 @@ def search_text(conn: psycopg.Connection, query: str, *, k: int = 10,
         sql = f"""select ts_rank(to_tsvector('simple'::regconfig,c.raw_text),
                      websearch_to_tsquery('simple'::regconfig,%(query)s)) as score,
                 r.document_id,c.run_id,r.source_sha256,d.root_alias,d.relative_path,
-                c.chunk_id,c.source_spans,c.raw_text
+                c.chunk_id,c.source_spans,c.raw_text,r.parsed->'metadata'
             from knowledge.chunks c
             join knowledge.runs r on r.run_id=c.run_id
             join knowledge.documents d on d.document_id=r.document_id
@@ -77,9 +102,11 @@ def search_text(conn: psycopg.Connection, query: str, *, k: int = 10,
             cross join knowledge.corpus_state state
             where c.variant=p.variant and c.chunking_version=p.chunking_version
               and {_scope(historical_run_id)}
+              and (%(document_id)s::text is null or r.document_id=%(document_id)s)
               and to_tsvector('simple'::regconfig,c.raw_text) @@ websearch_to_tsquery('simple'::regconfig,%(query)s)
             order by score desc,c.chunk_id,c.run_id limit %(k)s"""
-        params = {"query": query, "profile": profile[0], "history": historical_run_id, "k": k}
+        params = {"query": query, "profile": profile[0], "history": historical_run_id, "k": k,
+                  "document_id": document_id}
         cur.execute(sql, params)
         rows = cur.fetchall()
         if not rows:
@@ -95,7 +122,8 @@ def search_text(conn: psycopg.Connection, query: str, *, k: int = 10,
 
 def search_vector(conn: psycopg.Connection, vector: list[float], *, spec_id: str,
                   metric: str, k: int = 10, profile_id: str | None = None,
-                  historical_run_id: str | None = None) -> list[SearchHit]:
+                  historical_run_id: str | None = None,
+                  document_id: str | None = None) -> list[SearchHit]:
     _check_k(k)
     if metric not in OPERATORS:
         raise StorageError("unsupported vector metric")
@@ -114,7 +142,7 @@ def search_vector(conn: psycopg.Connection, vector: list[float], *, spec_id: str
         operator = OPERATORS[metric]
         sql = f"""select e.embedding OPERATOR(extensions.{operator}) %(vector)s::extensions.vector as distance,
                 r.document_id,c.run_id,r.source_sha256,d.root_alias,d.relative_path,
-                c.chunk_id,c.source_spans,c.raw_text
+                c.chunk_id,c.source_spans,c.raw_text,r.parsed->'metadata'
             from knowledge.embedding_vectors e
             join knowledge.chunks c on c.run_id=e.run_id and c.chunk_id=e.chunk_id
             join knowledge.runs r on r.run_id=c.run_id
@@ -124,6 +152,8 @@ def search_vector(conn: psycopg.Connection, vector: list[float], *, spec_id: str
             cross join knowledge.corpus_state state
             where c.variant=p.variant and c.chunking_version=p.chunking_version
               and {_scope(historical_run_id)}
+              and (%(document_id)s::text is null or r.document_id=%(document_id)s)
             order by distance asc,c.chunk_id,c.run_id limit %(k)s"""
-        cur.execute(sql, {"vector": value, "profile": profile[0], "history": historical_run_id, "k": k})
+        cur.execute(sql, {"vector": value, "profile": profile[0], "history": historical_run_id,
+                          "k": k, "document_id": document_id})
         return _hits(cur.fetchall())

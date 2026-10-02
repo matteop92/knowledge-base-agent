@@ -52,6 +52,7 @@ class SourceMetadata(StrictRecord):
     source_url: str | None = None
     source_origin: str | None = None
     authors: list[str] = Field(default_factory=list)
+    guests: list[str] = Field(default_factory=list)
     published: Date | None = None
     created: Date | None = None
     date: Date | None = None

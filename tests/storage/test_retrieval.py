@@ -8,7 +8,7 @@ from app.ingestion.embeddings import EmbeddingSpec
 from app.models.client import EmbeddingResult, ModelClientError
 from app.storage import StorageError
 from app.storage.records import FusedHit, SearchHit, spec_id
-from app.storage.retrieval import DatabaseRetriever, find_in_document, fuse_hits, hybrid_search, read_passage, selected_embedding_spec
+from app.storage.retrieval import DatabaseRetriever, _label_score, find_in_document, fuse_hits, hybrid_search, read_passage, selected_embedding_spec
 
 
 def hit(chunk: str, start: int, *, rank: int = 1, score: float = 0) -> SearchHit:
@@ -19,6 +19,14 @@ def hit(chunk: str, start: int, *, rank: int = 1, score: float = 0) -> SearchHit
 
 
 class RetrievalTest(unittest.TestCase):
+    def test_source_label_matches_names_titles_tags_and_skips_common_words(self):
+        self.assertGreater(_label_score("derek SIVERS decisions", "Anything You Want", ["Derek Sivers"], []), 0)
+        self.assertGreater(_label_score("What did LUCA ferrari say?", "Interview", ["Luca Ferrari"], []), 0)
+        self.assertGreater(_label_score("Inside Bending Spoons management", "Inside Bending Spoons", [], []), 0)
+        self.assertGreater(_label_score("notes on creativity", "Other", [], ["creativity"]), 0)
+        self.assertEqual(_label_score("how to", "How to Build a Company", [], []), 0)
+        self.assertEqual(_label_score("business growth", "Anything You Want", [], []), 0)
+
     def test_read_rejects_range_outside_chunk_even_if_historical_card_used_it(self):
         conn = MagicMock()
         cur = conn.cursor.return_value.__enter__.return_value
@@ -146,7 +154,8 @@ class RetrievalTest(unittest.TestCase):
         client.embed.return_value = EmbeddingResult(model=spec.model_spec(), vectors=[[1.0, 0.0, 0.0]])
         with patch("app.storage.retrieval.selected_embedding_spec", return_value=(spec_id(spec), spec)), \
              patch("app.storage.retrieval.search_vector", return_value=[]) as vector_search, \
-             patch("app.storage.retrieval.search_text", return_value=[]):
+             patch("app.storage.retrieval.search_text", return_value=[]), \
+             patch("app.storage.retrieval.named_sources", return_value=[]):
             self.assertEqual(hybrid_search(MagicMock(), client, "private question", provider_tag="pinned",
                                           max_embedding_usd_per_million=Decimal("0.01")), [])
         client.embed.assert_called_once_with(model=spec.model_spec(), texts=["private question"],

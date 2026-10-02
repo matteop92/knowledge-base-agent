@@ -12,6 +12,8 @@ Ingestion turns an external Markdown file into source-linked records and, in a s
 
 `python -m app.ingestion.preview --relative-path '<path inside vault>'` runs capture through checking and writes `source.md`, `capture.json`, `parsed.json`, both chunk sets, and `run-manifest.json` in `.local/ingestion-runs/<run_id>/`. `--eval-file` adds `eval_mapping.json`; `--source-kind` overrides automatic routing. The preview does not invoke enrichment.
 
+The parsed metadata retains `author` and `guest` as separate people lists, as well as title and tags. A missing title falls back to the file name. The preview report includes `missing_metadata` for absent title or author, alongside the file locator, so these files remain visible while still ingesting.
+
 Source text is matched by Unicode character offsets in the decoded snapshot. The same path under the same root alias keeps its document ID; editing the bytes changes the source hash and requires checking eval labels again. Generated artifacts record their model, prompt/input versions, source revision, and completion state so a failed or partial run is visible and resumable. The OpenRouter adapter in `app/models/` requires deliberate live-call selection, request/input budgets, and pinned zero-retention, no-collection routes. The selected raw embedding model is Perplexity 0.6B. The six previously loaded runs are now published under a profile with no required enrichment artifacts; the card artifacts in their old manifests are ignored by the loader. Hosted loading is separate.
 
 See [DATA.md](DATA.md) for the records, [RETRIEVAL.md](RETRIEVAL.md) for how they are intended to be searched, and [SYSTEM.md](SYSTEM.md) for the whole flow.

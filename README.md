@@ -21,6 +21,8 @@ Replace `--dry-run` with `--live` and choose a new report filename for an answer
 
 Human output includes the answer, cited locators, bounded excerpts, and evidence gaps. `--json` explicitly outputs the full result. Optional `--report` files must be new paths under ignored `.local/`; they contain private answers, inspected passages, action/rank traces, stop reasons, model configuration, usage, and estimated cost. Interrupted or failed attempts are retained when a report was requested; they are not quality passes. Runtime citation checks establish inspected-source provenance; the frozen pilot review establishes semantic support and usefulness.
 
+Search can recognize a named source from its title, author, guest, or tag even when those words are absent from the chunk text. The agent sees each candidate's title and people with its rank and short preview.
+
 The current Stage 5 reservation ceiling is $9 and the cumulative ceiling is $11; measured calls are recorded in `.local/stage5-budget.json`. A CLI call enforces its own conservative cost bound; the operator must account for previous reports before selecting a new per-call cap. No answer API or deployment is included.
 
 ## Preview a source
@@ -35,7 +37,7 @@ python -m app.ingestion.preview --relative-path 'Notes/<filename>.md'
 python -m app.ingestion.preview --relative-path 'Transcripts/<filename>.md' --eval-file evals/questions_transcript_tim_ferriss.yaml
 ```
 
-The command reports the chosen route, parsed block roles, coverage warnings, unresolved assets, fixed and structural chunk counts and boundary reasons, and any eval span mapping. It writes a captured snapshot, parsed document, both chunk sets, and run manifest under ignored `.local/ingestion-runs/<run_id>/`. The preview makes no model calls and prints no source passages. `--source-kind` overrides routing when needed.
+The command reports the chosen route, parsed block roles, coverage warnings, missing title or author, unresolved assets, fixed and structural chunk counts and boundary reasons, and any eval span mapping. It writes a captured snapshot, parsed document, both chunk sets, and run manifest under ignored `.local/ingestion-runs/<run_id>/`. The preview makes no model calls and prints no source passages. `--source-kind` overrides routing when needed.
 
 After a separate enrichment run, use `python -m app.ingestion.preview --inspect-run '.local/ingestion-runs/<run_id>'` to see artifact versions, ready/failed states, model usage, and configured budgets without showing source passages.
 
