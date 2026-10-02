@@ -42,6 +42,28 @@ class FakeRetriever:
 
 
 class HarnessTest(unittest.TestCase):
+    def test_candidate_shows_title_and_people_without_path(self):
+        class LabeledRetriever(FakeRetriever):
+            def search(self, query):
+                found = super().search(query)[0]
+                return [found.model_copy(update={"hit": found.hit.model_copy(update={
+                    "title": "Anything You Want", "people": ["Derek Sivers"]})})]
+
+        class CapturingClient(FakeClient):
+            def generate_json(self, **kwargs):
+                self.first_input = kwargs["input_text"]
+                return super().generate_json(**kwargs)
+
+        import json
+        client = CapturingClient([action_v3("finish", answer="No verified source.",
+            completeness="unsupported", sufficient=False, gaps=["Need a read"])])
+        answer_question("Explain", retriever=LabeledRetriever(), client=client, model=MODEL,
+                        limits=AnswerLimits(max_model_calls=1))
+        candidate = json.loads(client.first_input)["candidates"][0]
+        self.assertEqual(candidate["title"], "Anything You Want")
+        self.assertEqual(candidate["people"], ["Derek Sivers"])
+        self.assertNotIn("path", candidate)
+
     def test_nonfinish_draft_answer_does_not_discard_valid_source_read(self):
         draft_read = action_v3("read", reference_id="E1", span_index=0,
                                answer="Unverified draft", citation_ids=["E1.0"],
@@ -295,7 +317,8 @@ class HarnessTest(unittest.TestCase):
         self.assertEqual(retriever.calls, 2)  # host search plus one model search
         self.assertEqual(result.actions[1]["rejected"], "Repeated query")
         shown = json.loads(client.last_input)["candidates"]
-        self.assertEqual([item["path"] for item in shown].count("small.md"), 2)
+        self.assertEqual([item["title"] for item in shown].count("small.md"), 2)
+        self.assertTrue(all("path" not in item for item in shown))
         self.assertEqual(len(shown), 22)
 
     def test_unknown_card_action_does_not_call_retriever(self):

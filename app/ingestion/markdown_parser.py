@@ -56,6 +56,7 @@ def read_metadata(capture: CapturedSource) -> tuple[SourceMetadata, int]:
         source_url=url or (source if source_is_url else None),
         source_origin=source if source and not source_is_url else None,
         authors=authors,
+        guests=[person.removeprefix("[[").removesuffix("]]") for person in _text_list(frontmatter.get("guest"), "guest")],
         published=_optional_date(frontmatter.get("published"), "published"),
         created=_optional_date(frontmatter.get("created"), "created"),
         date=_optional_date(frontmatter.get("date"), "date"),

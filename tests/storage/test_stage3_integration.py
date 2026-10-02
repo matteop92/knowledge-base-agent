@@ -7,6 +7,7 @@ import tempfile
 import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -17,12 +18,13 @@ from app.ingestion.embeddings import EmbeddedChunk, EmbeddingBatch, EmbeddingSpe
 from app.ingestion.preview import preview_markdown
 from app.ingestion.run_manifest import RunManifest, write_artifact_json
 from app.models.client import ModelUsage
+from app.models.client import EmbeddingResult
 from app.storage import StorageError
 from app.storage.loader import load_run
 from app.storage.publication import create_profile, publish_run, select_profile
 from app.storage.records import PublicationSelection, SearchProfile, spec_id
 from app.storage.search import search_text, search_vector
-from app.storage.retrieval import DatabaseRetriever, find_in_document, read_passage, selected_embedding_spec
+from app.storage.retrieval import DatabaseRetriever, find_in_document, hybrid_search, read_passage, selected_embedding_spec
 
 
 def add_vectors(run_dir: Path, spec: EmbeddingSpec):
@@ -44,11 +46,12 @@ def add_vectors(run_dir: Path, spec: EmbeddingSpec):
     result.save(run_dir)
 
 
-def fixture_run(base: Path, text: str, *, vectors: bool = True):
-    source = base / "vault" / "Notes"
-    source.mkdir(parents=True, exist_ok=True)
-    (source / "sample.md").write_text(text, encoding="utf-8")
-    result = preview_markdown(base / "vault", "Notes/sample.md", base / "runs")
+def fixture_run(base: Path, text: str, *, vectors: bool = True,
+                relative_path: str = "Notes/sample.md"):
+    source = base / "vault" / relative_path
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(text, encoding="utf-8")
+    result = preview_markdown(base / "vault", relative_path, base / "runs")
     run_dir = base / "runs" / result["run_id"]
     chunk_set = ChunkSet.model_validate_json((run_dir / "fixed_raw.json").read_text(encoding="utf-8"))
     spec = EmbeddingSpec(provider="fixture", model="synthetic", model_version="1", dimensions=3,
@@ -73,6 +76,50 @@ class Stage3IntegrationTest(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.conn.close()
+
+    def test_a_named_source_reservation_uses_published_metadata(self):
+        # This suite shares one disposable database; remove the extra documents
+        # before later profile-switch tests assert complete-corpus publication.
+        def cleanup():
+            self.conn.execute("reset role")
+            self.conn.execute("update knowledge.corpus_state set profile_id=null where singleton=true")
+            self.conn.execute("truncate knowledge.documents cascade")
+            self.conn.execute("delete from knowledge.profiles where profile_id=%s", ("named-source-proof",))
+            self.conn.execute("set role knowledge_runtime")
+        self.addCleanup(cleanup)
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder)
+            files = (
+                ("Books/anything.md", "---\ntitle: Anything You Want\nauthor: Derek Sivers\n---\n# Note\n\nThe apricot is ripe.\n"),
+                ("Transcripts/interview.md", "---\ntitle: Inside Bending Spoons\nauthor: David Senra\nguest: Luca Ferrari\n---\n# Note\n\nThe plum is ripe.\n"),
+                ("Notes/how-to-grow.md", "---\ntitle: How to Grow a Company\ntags: [operations]\n---\n# Note\n\nThe peach is ripe.\n"),
+            )
+            runs = [fixture_run(base, body, relative_path=path) for path, body in files]
+            profile_id = "named-source-proof"
+            for run_dir, _, _ in runs:
+                load_run(self.conn, run_dir)
+            spec = runs[0][1]
+            create_profile(self.conn, SearchProfile(profile_id=profile_id, variant="fixed_raw",
+                chunking_version=spec.chunking_version, embedding_spec_id=spec_id(spec)))
+            for run_dir, _, _ in runs:
+                publish_run(self.conn, PublicationSelection(run_id=run_dir.name, profile_id=profile_id))
+            select_profile(self.conn, profile_id)
+            from app.storage.retrieval import named_sources
+            self.assertEqual(len(named_sources(self.conn, "What did Derek Sivers say?")), 1)
+            self.assertEqual(len(named_sources(self.conn, "What did LUCA FERRARI say?")), 1)
+            self.assertEqual(len(named_sources(self.conn, "how to")), 0)
+            self.assertEqual(len(named_sources(self.conn, "operations")), 1)
+            query = "Compare Derek Sivers with Inside Bending Spoons"
+            with patch("app.storage.retrieval.embed_queries", return_value=(
+                spec_id(spec), spec, EmbeddingResult(model=spec.model_spec(), vectors=[[1.0, 0.0, 0.0]]))):
+                hits = hybrid_search(self.conn, MagicMock(), query, provider_tag="unused",
+                                     max_embedding_usd_per_million=Decimal("0"))
+            titles = {item.hit.title for item in hits}
+            self.assertIn("Anything You Want", titles)
+            self.assertIn("Inside Bending Spoons", titles)
+            self.assertTrue(any("Derek Sivers" in item.hit.people for item in hits))
+            self.assertTrue(any("Luca Ferrari" in item.hit.people for item in hits))
+            self.assertTrue(all("Derek" not in item.hit.raw_text for item in hits))
 
     def test_passage_read_is_scoped_to_selected_revision_and_chunk(self):
         with tempfile.TemporaryDirectory() as folder:

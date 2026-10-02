@@ -57,6 +57,11 @@ class TranscriptParserTests(unittest.TestCase):
         self.assertIsNone(result.metadata.source_url)
         self.assertEqual(result.metadata.authors, [])
 
+    def test_guest_is_recorded_separately_from_author(self) -> None:
+        result = self.parse("---\nauthor: Host\nguest: '[[Luca Ferrari]]'\n---\n**Host:** Hello.\n")
+        self.assertEqual(result.metadata.authors, ["Host"])
+        self.assertEqual(result.metadata.guests, ["Luca Ferrari"])
+
     def test_missing_opening_bold_for_known_speaker_preserves_turn_boundary(self) -> None:
         result = self.parse("**Host:** Hello.\n**Guest:** Reply.\nHost:** Follow-up.\n")
         self.assertEqual([block.speaker for block in result.blocks], ["Host", "Guest", "Host"])

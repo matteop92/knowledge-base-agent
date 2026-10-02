@@ -101,7 +101,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
         return view
 
     def leads(refs: list[str]) -> list[tuple[str, str]]:
-        return [(ref, candidates[ref].hit.relative_path.rsplit("/", 1)[-1][:40])
+        return [(ref, (candidates[ref].hit.title or candidates[ref].hit.relative_path.rsplit("/", 1)[-1])[:40])
                 for ref in dict.fromkeys(refs) if ref not in read_refs][:8]
 
     # The host searches with the question itself so the first turn already has ranked leads.
@@ -117,10 +117,12 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
     feedback = (f"The host searched with the question and found {len(found)} chunks, listed best first. "
                 "Read promising chunks, or search with a short specific query.")
     while calls < limits.max_model_calls and time.monotonic() - started < limits.max_seconds:
-        available = [{"id": ref, "path": candidates[ref].hit.relative_path, "rank": best_rank[ref],
+        available = [{"id": ref, "title": candidates[ref].hit.title or candidates[ref].hit.relative_path.rsplit("/", 1)[-1],
+                      "people": candidates[ref].hit.people, "rank": best_rank[ref],
                       "preview": candidates[ref].hit.raw_text[:200]}
                      for ref in shown()]
-        read_evidence = [{"chunk": ref, "path": candidates[ref].hit.relative_path,
+        read_evidence = [{"chunk": ref, "title": candidates[ref].hit.title or candidates[ref].hit.relative_path.rsplit("/", 1)[-1],
+                          "people": candidates[ref].hit.people,
                           "passages": [[key, item.text] for key, item in inspected.items()
                                        if key.startswith(ref + ".")]}
                          for ref in candidates if ref in read_refs]

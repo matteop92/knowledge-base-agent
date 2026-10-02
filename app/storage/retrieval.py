@@ -15,11 +15,56 @@ from app.models.client import EmbeddingResult, ModelClientError
 from app.models.openrouter import OpenRouterClient
 from app.storage import StorageError
 from app.storage.records import FusedHit, SearchHit, SourcePassage, spec_id as embedding_spec_id
-from app.storage.search import _check_k, _profile, search_text, search_vector
+from app.storage.search import _check_k, _hits, _profile, search_text, search_vector, source_label
 
 RRF_K = 60
 MAX_CHANNEL_K = 20
 MAX_PASSAGE_CHARS = 2400
+COMMON_WORDS = frozenset("a an and are as at be by for from how in is it of on or the to what when where who why with you your".split())
+
+
+def _words(value: str) -> list[str]:
+    return re.findall(r"\w+", value.casefold(), re.UNICODE)
+
+
+def _label_score(query: str, title: str, people: list[str], tags: list[str]) -> int:
+    words = _words(query)
+    labels = [title, *people, *tags]
+    best = 0
+    for label in labels:
+        tokens = _words(label)
+        for length in range(min(len(words), len(tokens)), 1, -1):
+            for start in range(len(words) - length + 1):
+                phrase = words[start:start + length]
+                if any(word not in COMMON_WORDS for word in phrase) and any(
+                    tokens[index:index + length] == phrase
+                    for index in range(len(tokens) - length + 1)
+                ):
+                    best = max(best, length)
+        if label in people and tokens and tokens[-1] in words and tokens[-1] not in COMMON_WORDS:
+            best = max(best, 1)
+        if label in tags and len(tokens) == 1 and tokens[0] in words and tokens[0] not in COMMON_WORDS:
+            best = max(best, 1)
+    return best
+
+
+def named_sources(conn: psycopg.Connection, query: str) -> list[str]:
+    """Select at most three published files whose stored label appears in the query."""
+    with conn.cursor() as cur:
+        profile = _profile(cur, None, None)
+        cur.execute("""select r.document_id,d.relative_path,r.parsed->'metadata'
+            from knowledge.active_runs ar
+            join knowledge.runs r on r.run_id=ar.run_id and r.document_id=ar.document_id
+            join knowledge.documents d on d.document_id=r.document_id
+            join knowledge.corpus_state state on state.profile_id=ar.profile_id
+            where ar.profile_id=%s order by r.document_id""", (profile[0],))
+        rows = cur.fetchall()
+    matches = []
+    for document_id, relative_path, metadata in rows:
+        score = _label_score(query, *source_label(metadata, relative_path))
+        if score:
+            matches.append((score, document_id))
+    return [document_id for _, document_id in sorted(matches, key=lambda item: (-item[0], item[1]))[:3]]
 
 
 def fuse_hits(vector: list[SearchHit], lexical: list[SearchHit], *, k: int = 20) -> list[FusedHit]:
@@ -122,7 +167,28 @@ def hybrid_search(conn: psycopg.Connection, client: OpenRouterClient, query: str
     vector = search_vector(conn, embedded.vectors[0], spec_id=spec_id,
                            metric=spec.distance_metric, k=MAX_CHANNEL_K)
     lexical = search_text(conn, query, k=MAX_CHANNEL_K)
-    return fuse_hits(vector, lexical, k=k)
+    global_hits = fuse_hits(vector, lexical, k=k)
+    sources = named_sources(conn, query)
+    if not sources:
+        return global_hits
+    reserved: list[FusedHit] = []
+    for document_id in sources:
+        scoped_vector = search_vector(conn, embedded.vectors[0], spec_id=spec_id,
+                                      metric=spec.distance_metric, k=MAX_CHANNEL_K,
+                                      document_id=document_id)
+        scoped_text = search_text(conn, query, k=MAX_CHANNEL_K, document_id=document_id)
+        reserved.extend(fuse_hits(scoped_vector, scoped_text, k=5))
+    ordered = [*reserved, *global_hits]
+    unique: list[FusedHit] = []
+    seen: set[tuple[str, str]] = set()
+    for item in ordered:
+        key = (item.hit.run_id, item.hit.chunk_id)
+        if key not in seen:
+            seen.add(key)
+            unique.append(item.model_copy(update={"rank": len(unique) + 1}))
+        if len(unique) == k:
+            break
+    return unique
 
 
 def find_in_document(conn: psycopg.Connection, reference: FusedHit,
@@ -147,7 +213,7 @@ def find_in_document(conn: psycopg.Connection, reference: FusedHit,
         sql = """select ts_rank(to_tsvector('simple'::regconfig,c.raw_text),
                     websearch_to_tsquery('simple'::regconfig,%s)) as score,
                 r.document_id,c.run_id,r.source_sha256,d.root_alias,d.relative_path,
-                c.chunk_id,c.source_spans,c.raw_text
+                c.chunk_id,c.source_spans,c.raw_text,r.parsed->'metadata'
             from knowledge.chunks c
             join knowledge.runs r on r.run_id=c.run_id
             join knowledge.documents d on d.document_id=r.document_id
@@ -170,12 +236,8 @@ def find_in_document(conn: psycopg.Connection, reference: FusedHit,
                 cur.execute(sql, (fallback, profile[0], lead.document_id, lead.run_id,
                                   lead.source_sha256, fallback, k))
                 rows = cur.fetchall()
-    return [FusedHit(rank=index, rrf_score=float(row[0]), channels=["document_find"],
-                     hit=SearchHit(rank=index, score=float(row[0]), document_id=row[1],
-                                   run_id=row[2], source_sha256=row[3], root_alias=row[4],
-                                   relative_path=row[5], chunk_id=row[6],
-                                   source_spans=row[7], raw_text=row[8]))
-            for index, row in enumerate(rows, 1)]
+    return [FusedHit(rank=hit.rank, rrf_score=hit.score, channels=["document_find"], hit=hit)
+            for hit in _hits(rows)]
 
 
 def read_passage(conn: psycopg.Connection, *, document_id: str, run_id: str,

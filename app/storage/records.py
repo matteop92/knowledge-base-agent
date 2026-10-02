@@ -55,6 +55,8 @@ class SearchHit(StrictRecord):
     chunk_id: str
     source_spans: list[dict]
     raw_text: str
+    title: str | None = None
+    people: list[str] = Field(default_factory=list)
 
 
 class FusedHit(StrictRecord):

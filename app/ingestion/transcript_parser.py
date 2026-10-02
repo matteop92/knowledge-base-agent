@@ -140,6 +140,7 @@ def parse_transcript(capture: CapturedSource) -> ParsedDocument:
             else None
         ),
         authors=authors,
+        guests=[person.removeprefix("[[").removesuffix("]]") for person in _text_list(frontmatter.get("guest"), "guest")],
         published=_optional_date(frontmatter.get("published"), "published"),
         created=_optional_date(frontmatter.get("created"), "created"),
         date=_optional_date(frontmatter.get("date"), "date"),
