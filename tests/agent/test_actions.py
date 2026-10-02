@@ -21,6 +21,10 @@ def action_v2(kind: str, **updates):
     return data
 
 
+def action_v3(kind: str, **updates):
+    return {**action_v2(kind), "version": 3, **updates}
+
+
 class ActionsTest(unittest.TestCase):
     def test_v2_find_and_need_boundaries(self):
         self.assertEqual(AgentAction.model_validate(action_v2("find", query="later detail",

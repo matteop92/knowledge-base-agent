@@ -14,7 +14,7 @@ from app.ingestion.embeddings import EmbeddingSpec
 from app.models.client import EmbeddingResult, ModelClientError
 from app.models.openrouter import OpenRouterClient
 from app.storage import StorageError
-from app.storage.records import CardHit, FusedHit, SearchHit, SourcePassage, spec_id as embedding_spec_id
+from app.storage.records import FusedHit, SearchHit, SourcePassage, spec_id as embedding_spec_id
 from app.storage.search import _check_k, _profile, search_text, search_vector
 
 RRF_K = 60
@@ -125,98 +125,7 @@ def hybrid_search(conn: psycopg.Connection, client: OpenRouterClient, query: str
     return fuse_hits(vector, lexical, k=k)
 
 
-def search_cards(conn: psycopg.Connection, query: str, *, k: int = 10) -> list[CardHit]:
-    _check_k(k)
-    if k > 20:
-        raise StorageError("card K exceeds 20")
-    if not query.strip():
-        return []
-    with conn.cursor() as cur:
-        profile = _profile(cur, None, None)
-        sql = """select ts_rank(to_tsvector('simple'::regconfig,
-                     concat_ws(' ', x.payload->>'statement',x.payload->>'situation',
-                     x.payload->>'action',x.payload->>'result',x.payload->>'principle')),
-                     websearch_to_tsquery('simple'::regconfig,%s)) as score,
-                r.document_id,x.run_id,r.source_sha256,d.root_alias,d.relative_path,
-                x.card_id,x.chunk_id,x.payload->>'statement',x.payload->'evidence_span',
-                x.payload->>'situation',x.payload->>'action',x.payload->>'result',x.payload->>'principle',
-                c.source_spans,c.raw_text
-            from knowledge.cards x
-            join knowledge.artifacts a on a.run_id=x.run_id and a.artifact_id=x.artifact_id
-            join knowledge.runs r on r.run_id=x.run_id
-            join knowledge.documents d on d.document_id=r.document_id
-            join knowledge.active_runs ar on ar.run_id=x.run_id and ar.document_id=r.document_id
-            join knowledge.chunks c on c.run_id=x.run_id and c.chunk_id=x.chunk_id
-            join knowledge.profiles p on p.profile_id=ar.profile_id
-            cross join knowledge.corpus_state state
-            where state.profile_id=p.profile_id and p.profile_id=%s
-              and c.variant=p.variant and c.chunking_version=p.chunking_version
-              and a.status='ready' and a.kind='cards'
-              and (ar.selection->'required_artifact_ids') ? x.artifact_id
-              and to_tsvector('simple'::regconfig,
-                  concat_ws(' ',x.payload->>'statement',x.payload->>'situation',
-                  x.payload->>'action',x.payload->>'result',x.payload->>'principle'))
-                  @@ websearch_to_tsquery('simple'::regconfig,%s)
-            order by score desc,x.card_id,x.run_id limit %s"""
-        cur.execute(sql, (query, profile[0], query, k))
-        rows = cur.fetchall()
-        query_mode = "all_terms"
-        if not rows:
-            terms = list(dict.fromkeys(re.findall(r"\w+", query, re.UNICODE)))[:64]
-            if len(terms) > 1:
-                fallback = " OR ".join(f'"{term}"' for term in terms)
-                cur.execute(sql, (fallback, profile[0], fallback, k))
-                rows = cur.fetchall()
-                query_mode = "or_fallback"
-    result: list[CardHit] = []
-    seen: set[tuple[str, int, int]] = set()
-    for row in rows:
-        span = row[9]
-        key = (row[2], span["start_char"], span["end_char"])
-        if key in seen:
-            continue
-        seen.add(key)
-        result.append(CardHit(rank=len(result) + 1, score=float(row[0]),
-                              document_id=row[1], run_id=row[2], source_sha256=row[3],
-                              root_alias=row[4], relative_path=row[5], card_id=row[6],
-                              chunk_id=row[7], statement=row[8], evidence_span=span,
-                              situation=row[10], action=row[11], result=row[12],
-                              principle=row[13], query_mode=query_mode,
-                              chunk_spans=row[14], chunk_text=row[15]))
-    return result
-
-
-def chunk_cards(conn: psycopg.Connection, hits: list[FusedHit]) -> dict[tuple[str, str], list[dict]]:
-    """Selected published cards for each discovered chunk, in source order."""
-    keys = list(dict.fromkeys((item.hit.run_id, item.hit.chunk_id) for item in hits))
-    if not keys:
-        return {}
-    with conn.cursor() as cur:
-        profile = _profile(cur, None, None)
-        cur.execute("""select x.run_id,x.chunk_id,x.payload->>'card_type',x.payload->>'statement',
-                x.payload->>'situation',x.payload->>'action',x.payload->>'result',x.payload->>'principle'
-            from knowledge.cards x
-            join knowledge.artifacts a on a.run_id=x.run_id and a.artifact_id=x.artifact_id
-            join knowledge.active_runs ar on ar.run_id=x.run_id
-            cross join knowledge.corpus_state state
-            where state.profile_id=ar.profile_id and ar.profile_id=%s
-              and a.status='ready' and a.kind='cards'
-              and (ar.selection->'required_artifact_ids') ? x.artifact_id
-              and x.run_id=any(%s) and x.chunk_id=any(%s)
-            order by (x.payload->'evidence_span'->>'start_char')::integer,x.card_id""",
-                    (profile[0], [key[0] for key in keys], [key[1] for key in keys]))
-        rows = cur.fetchall()
-    result: dict[tuple[str, str], list[dict]] = {}
-    wanted = set(keys)
-    for row in rows:
-        if (row[0], row[1]) in wanted:
-            result.setdefault((row[0], row[1]), []).append({
-                "card_type": row[2], "statement": row[3], "situation": row[4],
-                "action": row[5], "result": row[6], "principle": row[7]})
-    return result
-
-
-def find_in_document(conn: psycopg.Connection, reference: FusedHit | CardHit,
+def find_in_document(conn: psycopg.Connection, reference: FusedHit,
                      query: str, *, k: int = 10) -> list[FusedHit]:
     """Find published original chunks in the exact document revision of a lead."""
     _check_k(k)
@@ -224,7 +133,7 @@ def find_in_document(conn: psycopg.Connection, reference: FusedHit | CardHit,
         raise StorageError("document find K exceeds 20")
     if not isinstance(query, str) or not query.strip():
         raise StorageError("document find needs a query")
-    lead = reference.hit if isinstance(reference, FusedHit) else reference
+    lead = reference.hit
     with conn.cursor() as cur:
         profile = _profile(cur, None, None)
         cur.execute("""select 1 from knowledge.active_runs ar
@@ -277,13 +186,6 @@ def read_passage(conn: psycopg.Connection, *, document_id: str, run_id: str,
     with conn.cursor() as cur:
         profile = _profile(cur, None, None)
         cur.execute("""select r.source_text,d.root_alias,d.relative_path,c.source_spans,
-            exists(select 1 from knowledge.cards x
-                join knowledge.artifacts a on a.run_id=x.run_id and a.artifact_id=x.artifact_id
-                where x.run_id=r.run_id and x.chunk_id=c.chunk_id
-                  and a.status='ready' and a.kind='cards'
-                  and (ar.selection->'required_artifact_ids') ? x.artifact_id
-                  and (x.payload->'evidence_span'->>'start_char')::integer <= %s
-                  and (x.payload->'evidence_span'->>'end_char')::integer >= %s),
             r.parsed->'excluded_spans'
             from knowledge.runs r join knowledge.documents d on d.document_id=r.document_id
             join knowledge.active_runs ar on ar.run_id=r.run_id and ar.document_id=r.document_id
@@ -293,14 +195,14 @@ def read_passage(conn: psycopg.Connection, *, document_id: str, run_id: str,
             where r.document_id=%s and r.run_id=%s and r.source_sha256=%s
               and c.chunk_id=%s and ar.profile_id=%s and state.profile_id=p.profile_id
               and c.variant=p.variant and c.chunking_version=p.chunking_version""",
-                    (start_char, end_char, document_id, run_id, source_sha256, chunk_id, profile[0]))
+                    (document_id, run_id, source_sha256, chunk_id, profile[0]))
         row = cur.fetchone()
     if row is None:
         raise StorageError("source passage is not in the active published run")
-    source_text, root_alias, relative_path, spans, within_card, excluded = row
-    if end_char > len(source_text) or not (within_card or any(
+    source_text, root_alias, relative_path, spans, excluded = row
+    if end_char > len(source_text) or not any(
         span["start_char"] <= start_char < end_char <= span["end_char"] for span in spans
-    )):
+    ):
         raise StorageError("passage is outside the selected chunk source spans")
     if any(item.get("reason") != "whitespace" and
            item["span"]["start_char"] < end_char and start_char < item["span"]["end_char"]
@@ -328,26 +230,13 @@ class DatabaseRetriever:
                              provider_tag=self.provider_tag,
                              max_embedding_usd_per_million=self.max_embedding_usd_per_million)
 
-    def search_cards(self, query: str) -> list[CardHit]:
-        return search_cards(self.conn, query)
-
-    def chunk_cards(self, hits: list[FusedHit]) -> dict[tuple[str, str], list[dict]]:
-        return chunk_cards(self.conn, hits)
-
-    def find(self, reference: FusedHit | CardHit, query: str) -> list[FusedHit]:
+    def find(self, reference: FusedHit, query: str) -> list[FusedHit]:
         return find_in_document(self.conn, reference, query)
 
-    def read(self, reference: FusedHit | CardHit, span_index: int, *, offset: int = 0) -> SourcePassage:
-        if isinstance(reference, FusedHit):
-            hit = reference.hit
-            span = hit.source_spans[span_index]
-            fields = (hit.document_id, hit.run_id, hit.source_sha256, hit.chunk_id)
-        else:
-            if span_index != 0:
-                raise IndexError("card has one evidence span")
-            span = reference.evidence_span
-            fields = (reference.document_id, reference.run_id, reference.source_sha256,
-                      reference.chunk_id)
+    def read(self, reference: FusedHit, span_index: int, *, offset: int = 0) -> SourcePassage:
+        hit = reference.hit
+        span = hit.source_spans[span_index]
+        fields = (hit.document_id, hit.run_id, hit.source_sha256, hit.chunk_id)
         if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset < span["end_char"] - span["start_char"]:
             raise ValueError("read offset is outside the selected span")
         start = span["start_char"] + offset

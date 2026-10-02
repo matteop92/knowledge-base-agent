@@ -66,7 +66,7 @@ class CLITest(unittest.TestCase):
             path = Path(folder) / "broad.json"
             self.assertEqual(main(self.args(path) + ["--budget-profile", "broad"]), 0)
             config = json.loads(path.read_text())["configuration"]
-            self.assertEqual(config["action_schema_version"], 2)
+            self.assertEqual(config["action_schema_version"], 3)
             self.assertEqual(config["limits"]["max_finds"], 4)
             self.assertEqual(config["limits"]["max_reads"], 10)
             self.assertEqual(config["request_budget"], 28)

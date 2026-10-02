@@ -10,54 +10,34 @@ from pathlib import Path
 from typing import Protocol
 import psycopg
 
-from app.agent.actions import ACTION_SCHEMA_V2, AgentAction
+from app.agent.actions import ACTION_SCHEMA_V3, AgentAction
 from app.agent.records import AnswerLimits, AnswerResult
 from app.models.client import ModelClient, ModelClientError, ModelSpec
 from app.storage import StorageError
-from app.storage.records import CardHit, FusedHit, SearchHit, SourcePassage
+from app.storage.records import FusedHit, SourcePassage
 
-PROMPT_VERSION = "answer_agent_v11"
+PROMPT_VERSION = "answer_agent_v12"
 PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / f"{PROMPT_VERSION}.md"
 PROMPT = PROMPT_PATH.read_text(encoding="utf-8")
 CITATION = re.compile(r"\[(E\d+\.\d+(?:@\d+)?)\]")
 
 
 MAX_CANDIDATES_SHOWN = 20
-MAX_FACTS_SHOWN = 5
 # Fields that belong to each action; a stray value elsewhere is ignored, not fatal.
-ACTION_FIELDS = {"search": {"query"}, "search_cards": {"query"}, "find": {"query", "reference_id"},
+ACTION_FIELDS = {"search": {"query"}, "find": {"query", "reference_id"},
                  "read": {"reference_id", "span_index", "offset"}, "finish": set()}
-
-
-def card_fact(card: dict) -> str:
-    """One discovery line per card; never citation evidence."""
-    parts = [f"{card.get('card_type') or 'card'}: {card.get('statement') or ''}"]
-    parts.extend(f"{name}: {card[name]}" for name in ("situation", "action", "result", "principle")
-                 if card.get(name))
-    return " | ".join(parts)[:320]
-
-
-def card_chunk(card: CardHit) -> FusedHit:
-    """A card lead points at its whole chunk; the card span alone is the fallback."""
-    hit = SearchHit(rank=card.rank, score=card.score, document_id=card.document_id, run_id=card.run_id,
-                    source_sha256=card.source_sha256, root_alias=card.root_alias,
-                    relative_path=card.relative_path, chunk_id=card.chunk_id,
-                    source_spans=card.chunk_spans or [card.evidence_span],
-                    raw_text=card.chunk_text or "")
-    return FusedHit(rank=card.rank, rrf_score=card.score, channels=["cards"], hit=hit)
 
 
 class AnswerRetriever(Protocol):
     def search(self, query: str) -> list[FusedHit]: ...
-    def search_cards(self, query: str) -> list[CardHit]: ...
-    def find(self, reference: FusedHit | CardHit, query: str) -> list[FusedHit]: ...
-    def read(self, reference: FusedHit | CardHit, span_index: int, *, offset: int = 0) -> SourcePassage: ...
+    def find(self, reference: FusedHit, query: str) -> list[FusedHit]: ...
+    def read(self, reference: FusedHit, span_index: int, *, offset: int = 0) -> SourcePassage: ...
 
 
 def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelClient,
                     model: ModelSpec, limits: AnswerLimits | None = None,
                     reasoning_effort: str | None = None,
-                    allow_legacy_actions: bool = False, use_cards: bool = True) -> AnswerResult:
+                    allow_legacy_actions: bool = False) -> AnswerResult:
     """All mutable budgets, references, and evidence belong to this invocation."""
     if not question.strip():
         raise ValueError("question must not be empty")
@@ -68,21 +48,16 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
         set_deadline(started + limits.max_seconds)
     candidates: dict[str, FusedHit] = {}
     best_rank: dict[str, int] = {}
-    facts: dict[str, list[str]] = {}
     read_refs: set[str] = set()
     host_search: dict | None = None
     inspected: dict[str, SourcePassage] = {}
     needs: dict[str, dict] = {"N1": {"description": question, "status": "open", "evidence_ids": [], "rationale": None}}
     actions: list[dict] = []
-    calls = searches = card_searches = finds = reads = 0
+    calls = searches = finds = reads = 0
     discoveries_since_read = 0
     finish_correction_used = False
     reads_at_coverage_check: int | None = None
-    # Withholding cards removes both the card facts and the card-search action.
-    base_schema = ACTION_SCHEMA_V2
-    if not use_cards:
-        base_schema = copy.deepcopy(ACTION_SCHEMA_V2)
-        base_schema["properties"]["action"]["enum"] = ["search", "find", "read", "finish"]
+    base_schema = ACTION_SCHEMA_V3
     coverage_checks = 0
     queries_run: dict[tuple[str, str], list[str]] = {}
     finalization_reason: str | None = None
@@ -94,23 +69,16 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                             host_search=host_search, termination=termination,
                             elapsed_seconds=time.monotonic() - started)
     def register(found: list[FusedHit]) -> list[str]:
-        """One candidate per chunk, keeping its best rank and its card facts."""
-        refs, fresh = [], []
+        """One candidate per chunk, keeping its best rank."""
+        refs = []
         for item in found:
             ref = next((key for key, old in candidates.items() if old.hit.run_id == item.hit.run_id
                         and old.hit.chunk_id == item.hit.chunk_id), None)
             if ref is None:
                 ref = f"E{len(candidates) + 1}"
                 candidates[ref] = item
-                fresh.append(ref)
             best_rank[ref] = min(best_rank.get(ref, item.rank), item.rank)
             refs.append(ref)
-        chunk_cards = getattr(retriever, "chunk_cards", None)
-        if fresh and use_cards and callable(chunk_cards):
-            cards = chunk_cards([candidates[ref] for ref in fresh])
-            for ref in fresh:
-                hit = candidates[ref].hit
-                facts[ref] = [card_fact(card) for card in cards.get((hit.run_id, hit.chunk_id), [])]
         return refs
 
     def unread() -> list[str]:
@@ -150,8 +118,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                 "Read promising chunks, or search with a short specific query.")
     while calls < limits.max_model_calls and time.monotonic() - started < limits.max_seconds:
         available = [{"id": ref, "path": candidates[ref].hit.relative_path, "rank": best_rank[ref],
-                      "preview": candidates[ref].hit.raw_text[:200],
-                      "facts": facts.get(ref, [])[:MAX_FACTS_SHOWN]}
+                      "preview": candidates[ref].hit.raw_text[:200]}
                      for ref in shown()]
         read_evidence = [{"chunk": ref, "path": candidates[ref].hit.relative_path,
                           "passages": [[key, item.text] for key, item in inspected.items()
@@ -160,7 +127,6 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
         input_text = json.dumps({"question": question, "candidates": available,
                                  "inspected": read_evidence, "needs": needs, "feedback": feedback,
                                  "remaining": {"searches": limits.max_searches - searches,
-                                               "card_searches": limits.max_card_searches - card_searches,
                                                "finds": limits.max_finds - finds,
                                                "reads": limits.max_reads - reads,
                                                "model_calls": limits.max_model_calls - calls}}, ensure_ascii=False, separators=(",", ":"))
@@ -198,7 +164,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
         try:
             calls += 1
             result = client.generate_json(model=model, system_prompt=PROMPT,
-                                          input_text=input_text, schema_name="answer_action_v2",
+                                          input_text=input_text, schema_name="answer_action_v3",
                                           json_schema=schema,
                                           max_output_tokens=limits.max_output_tokens,
                                           reasoning_effort=reasoning_effort)
@@ -207,7 +173,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
             payload = result.data
             ignored_draft_fields = []
             if isinstance(payload, dict) and payload.get("action") in (
-                    "search", "search_cards", "find", "read"):
+                    "search", "find", "read"):
                 draft_defaults = {"answer": None, "citation_ids": [],
                                   "completeness": None, "gaps": [], "sufficient": None}
                 ignored_draft_fields = [key for key, default in draft_defaults.items()
@@ -223,8 +189,8 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                 if isinstance(payload.get("reference_id"), str):
                     payload["reference_id"] = payload["reference_id"].split(".")[0].split("@")[0]
             action = AgentAction.model_validate(payload)
-            if action.version != 2 and not allow_legacy_actions:
-                raise ValueError("new answer runs require action schema version 2")
+            if action.version != 3 and not allow_legacy_actions:
+                raise ValueError("new answer runs require action schema version 3")
             if force_finish and action.action != "finish":
                 raise ValueError("final allowance permits only finish")
             if must_read and action.action != "read":
@@ -254,7 +220,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                                       "type": error["type"], "message": error["msg"]}
                                      for error in exc.errors(include_input=False)]
                 detail = "; ".join(f"{item['path'] or 'action'}: {item['message']}" for item in invalid["fields"])
-            feedback = (f"Invalid action: {detail[:600]}. Use search, search_cards, or find with a query; "
+            feedback = (f"Invalid action: {detail[:600]}. Use search or find with a query; "
                         "read with a listed candidate reference_id; or finish with the answer and citations. "
                         "Produce a valid bounded action.")
             actions.append(invalid)
@@ -267,7 +233,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
         if force_finish:
             actions[-1]["budget_finalization"] = True
             actions[-1]["finalization_reason"] = finalization_reason
-        if action.version == 2:
+        if action.version == 3:
             update_ids = [update.id for update in action.need_updates]
             if len(update_ids) != len(set(update_ids)) or any(
                     update.id == "N1" and update.status == "excluded" for update in action.need_updates):
@@ -282,11 +248,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                 continue
             for update in action.need_updates:
                 needs[update.id] = update.model_dump()
-        if action.action == "search_cards" and not use_cards:
-            actions[-1]["rejected"] = "Card search is not available"
-            feedback = "Card search is not available in this run. Use search, find, read, or finish."
-            continue
-        if action.action in ("search", "search_cards"):
+        if action.action == "search":
             query_key = (action.action, " ".join((action.query or "").lower().split()))
             if query_key in queries_run:
                 actions[-1]["rejected"] = "Repeated query"
@@ -313,32 +275,6 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
             queries_run[query_key] = refs
             feedback = (f"Found {len(found)} chunks; best unread matches: {leads(refs)}. "
                         "Read originals before citing.")
-        elif action.action == "search_cards":
-            if card_searches >= limits.max_card_searches:
-                actions[-1]["rejected"] = "Card-search budget exhausted"
-                feedback = "Card-search budget exhausted; inspect existing candidates or finish with gaps."
-                continue
-            card_searches += 1
-            discoveries_since_read += 1
-            try:
-                found = retriever.search_cards(action.query or "")
-                refs = register([card_chunk(item) for item in found])
-            except (StorageError, ModelClientError, psycopg.Error) as exc:
-                actions[-1]["error_type"] = type(exc).__name__
-                return stopped("Card retrieval failed.", "tool_failed")
-            actions[-1]["results"] = [item.model_dump(exclude={"statement", "chunk_spans", "chunk_text"})
-                                      for item in found]
-            for ref, item in zip(refs, found):
-                fact = card_fact({"card_type": "matched card", **item.model_dump()})
-                facts[ref] = [fact, *[old for old in facts.get(ref, []) if old != fact]]
-            mode = (found[0].query_mode if found else
-                    ("or_fallback_empty" if len(set(re.findall(r"\w+", action.query or "", re.UNICODE))) > 1
-                     else "all_terms_empty"))
-            actions[-1]["query_mode"] = mode
-            queries_run[query_key] = refs
-            feedback = (f"Found {len(found)} card hints ({mode}) in chunks {leads(refs)}. "
-                        "Cards are discovery leads, not citation evidence; "
-                        "read originals. If empty, shorten or vary the query using distinctive source concepts.")
         elif action.action == "find":
             ref = action.reference_id or ""
             if ref not in candidates or finds >= limits.max_finds:
@@ -416,7 +352,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                         "Cite the specific passage ID that states each claim.")
         else:
             unresolved = [key for key, value in needs.items() if value["status"] == "open"]
-            if (action.version == 2 and unresolved and not force_finish and not finish_correction_used
+            if (action.version == 3 and unresolved and not force_finish and not finish_correction_used
                     and calls < limits.max_model_calls):
                 finish_correction_used = True
                 actions[-1]["rejected"] = "Material investigation needs remain open"
@@ -434,7 +370,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                 reads_at_coverage_check = reads
                 coverage_checks += 1
                 actions[-1]["rejected"] = "Unread chunks remain in sources already used"
-                unread_leads = [(ref, (facts.get(ref) or [candidates[ref].hit.raw_text[:120]])[0][:160])
+                unread_leads = [(ref, candidates[ref].hit.raw_text[:120])
                                 for ref in same_source[:8]]
                 feedback = (f"Before finishing, check these unread chunks from sources you already used: {unread_leads}. "
                             "Read each one that covers a material point your answer lacks, then finish. "
@@ -457,7 +393,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                 continue
             private_gaps = list(action.gaps)
             completeness = action.completeness or "partial"
-            if action.version == 2 and unresolved:
+            if action.version == 3 and unresolved:
                 private_gaps.extend(f"Unresolved need {key}: {needs[key]['description']}" for key in unresolved)
                 if completeness == "complete":
                     completeness = "partial"

@@ -12,7 +12,7 @@ from pathlib import Path
 import psycopg
 
 from app.agent.harness import answer_question, PROMPT, PROMPT_PATH, PROMPT_VERSION
-from app.agent.actions import ACTION_SCHEMA_V2
+from app.agent.actions import ACTION_SCHEMA_V3
 from app.agent.records import AnswerLimits
 from app.models.client import ModelClientError, ModelSpec
 from app.models.openrouter import OpenRouterClient
@@ -60,8 +60,6 @@ def main(argv: list[str] | None = None) -> int:
                         help="conservative input allowance: request UTF-8 bytes plus 512 tokens per request")
     parser.add_argument("--model", default="openai/gpt-5-mini")
     parser.add_argument("--reasoning-effort", choices=("none", "minimal", "low", "medium", "high"), default="medium")
-    parser.add_argument("--no-cards", action="store_true",
-                        help="withhold card facts and card search, for measuring what cards add")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--report", type=Path, help="explicit private report under .local/")
     args = parser.parse_args(argv)
@@ -121,9 +119,9 @@ def main(argv: list[str] | None = None) -> int:
                         "embedding_spec_id": sid, "source_revisions": hashes,
                         "prompt_version": PROMPT_VERSION, "prompt_sha256": hashlib.sha256(PROMPT.encode("utf-8")).hexdigest(),
                         "prompt_file_sha256": hashlib.sha256(PROMPT_PATH.read_bytes()).hexdigest(),
-                        "action_schema_version": 2,
-                        "action_schema_sha256": hashlib.sha256(json.dumps(ACTION_SCHEMA_V2, sort_keys=True).encode()).hexdigest(),
-                        "budget_profile": args.budget_profile, "cards": not args.no_cards,
+                        "action_schema_version": 3,
+                        "action_schema_sha256": hashlib.sha256(json.dumps(ACTION_SCHEMA_V3, sort_keys=True).encode()).hexdigest(),
+                        "budget_profile": args.budget_profile,
                         "limits": limits.model_dump(), "request_budget": args.request_budget,
                         "input_byte_budget": args.input_byte_budget, "input_budget_mode": "utf8_bytes_plus_512_per_request",
                         "max_usd": str(args.max_usd),
@@ -136,8 +134,7 @@ def main(argv: list[str] | None = None) -> int:
                 result = answer_question(args.question, retriever=retriever, client=client,
                                          model=ModelSpec(provider="openrouter", model_id=args.model,
                                                          model_version="current"),
-                                         limits=limits, reasoning_effort=None if args.reasoning_effort == "none" else args.reasoning_effort,
-                                         use_cards=not args.no_cards)
+                                         limits=limits, reasoning_effort=None if args.reasoning_effort == "none" else args.reasoning_effort)
                 prices = {args.model: (prompt_price, completion_price),
                           spec.model: (Decimal(str(embedding_endpoint["pricing"]["prompt"])), Decimal(0))}
                 known_usage = len(client.request_timings) == len(client.billable_requests) and all(usage.input_tokens is not None and (
