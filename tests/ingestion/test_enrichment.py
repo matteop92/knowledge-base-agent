@@ -317,6 +317,70 @@ class EnrichmentTests(unittest.TestCase):
         self.assertIn("Observed or reported outcome", client.calls[0]["json_schema"]
                       ["properties"]["cards"]["items"]["properties"]["result"]["description"])
 
+    def test_v9_check_drops_unsupported_cards_and_clears_unsupported_fields(self) -> None:
+        text = ("**Host:** I used to skip the pre-launch checklist, and twice we shipped a broken build. "
+                "Now I run it before every release, and I ask the team to do the same.\n")
+        capture, document, chunks, manifest = self.setup_source("Transcripts/checked.md", text)
+        proposed = {"cards": [
+            {"card_type": "example", "statement": "Running the checklist led to broken builds.",
+             "situation": None, "action": "The speaker ran the checklist",
+             "result": "Twice shipped a broken build", "principle": None, "evidence_group_index": 0},
+            {"card_type": "tactic", "statement": "The speaker now runs the checklist before every release.",
+             "situation": "Earlier releases skipped the checklist",
+             "action": "The speaker now runs the checklist before every release",
+             "result": "Builds stopped breaking", "principle": "Checklists prevent failures",
+             "evidence_group_index": 0}]}
+        checks = {"checks": [
+            {"card_index": 0, "statement": "unsupported", "situation": "empty", "action": "unsupported",
+             "result": "unsupported", "principle": "empty", "reason": "reverses skipped"},
+            {"card_index": 1, "statement": "supported", "situation": "supported", "action": "supported",
+             "result": "unsupported", "principle": "unsupported", "reason": "no outcome reported"}]}
+
+        class TwoPass(FakeClient):
+            def generate_json(self, **kwargs):
+                self.data = checks if kwargs["schema_name"] == "evidence_card_check" else proposed
+                return super().generate_json(**kwargs)
+
+        client = TwoPass()
+        artifact = extract_evidence_cards(document, chunks, chunks.chunks[0], client,
+                                          self.model, manifest, capture.run_dir,
+                                          prompt_version="evidence_cards_v9")
+        self.assertEqual(len(client.calls), 2)
+        self.assertIn("Evidence group (evidence_group_index is 0):", client.calls[0]["input_text"])
+        self.assertIn("Proposed cards:", client.calls[1]["input_text"])
+        self.assertTrue(client.calls[1]["input_text"].startswith("Source passage:\n"))
+        self.assertIn("skip the pre-launch checklist", client.calls[1]["input_text"])
+        self.assertNotIn("Valid evidence_group_index", client.calls[1]["input_text"])
+        self.assertEqual(len(artifact.cards), 1)
+        card = artifact.cards[0]
+        self.assertEqual(card.situation, "Earlier releases skipped the checklist")
+        self.assertIsNone(card.result)
+        self.assertIsNone(card.principle)
+        self.assertFalse(card.principle_is_derived)
+        self.assertEqual(artifact.check["dropped_cards"], 1)
+        self.assertEqual(artifact.check["cleared_fields"]["result"], 1)
+        self.assertEqual(artifact.usage.input_tokens, 80)
+        card.validate_against(document, chunks.chunks[0])
+
+    def test_v9_check_must_cover_each_card_before_artifact_is_ready(self) -> None:
+        text = ("**Host:** I used to skip the pre-launch checklist, and twice we shipped a broken build. "
+                "Now I run it before every release, and I ask the team to do the same.\n")
+        capture, document, chunks, manifest = self.setup_source("Transcripts/unchecked.md", text)
+        proposed = {"cards": [{"card_type": "tactic", "statement": "The speaker runs the checklist.",
+                               "situation": None, "action": None, "result": None,
+                               "principle": None, "evidence_group_index": 0}]}
+
+        class MissingCheck(FakeClient):
+            def generate_json(self, **kwargs):
+                self.data = {"checks": []} if kwargs["schema_name"] == "evidence_card_check" else proposed
+                return super().generate_json(**kwargs)
+
+        with self.assertRaises(ValueError):
+            extract_evidence_cards(document, chunks, chunks.chunks[0], MissingCheck(),
+                                   self.model, manifest, capture.run_dir,
+                                   prompt_version="evidence_cards_v9")
+        self.assertFalse([record for record in manifest.artifacts.values() if record.status == "ready"])
+
     def test_personal_annotation_is_not_attributed_to_book_author(self) -> None:
         capture, document, chunks, manifest = self.setup_source(
             "Book Highlights/book.md",
