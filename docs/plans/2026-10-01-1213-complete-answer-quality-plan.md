@@ -10,6 +10,8 @@ execution: code
 
 # Complete Answer Quality - Sequential Plan
 
+> **Closed on 2026-10-02. Do not execute from this file.** It is superseded by `docs/plans/2026-10-02-001-refactor-remove-cards-finish-answer-gate-plan.md`, which carries the decision to remove evidence cards and all remaining work. This file is kept as the record of the earlier card experiments and answer checks.
+
 ## Goal Capsule
 
 - **Objective:** The repaired agent answers the pilot questions usefully, completely, and with source-backed examples and citations.
@@ -75,7 +77,7 @@ Each card has one short `statement` and at most one coherent value per structure
 **Answer quality and evaluation**
 
 - R10. Before card generation, run representative repaired-agent Q1/Q2/Q8 checks on the selected `v5` cards, with Q4 if affordable. Record exact prompt, model, limits, source and card identities, inspected passages, answer quality, and spending; material failures must be repaired or recorded before this becomes a comparison baseline.
-- R11. Preserve the 21 submitted human judgments and frozen rubric v3. Verify rubric-v4 source alternatives and individual checks, retain the Q3 scope decision, and freeze v4 only after the selected card set is known; do not relabel historical judgments as v4 truth.
+- R11. Preserve the 21 submitted human judgments and frozen rubric v3. Verify rubric-v4 source alternatives and individual checks, retain the Q3 scope decision, give each source-bound check every passage that supports it rather than a single one, and freeze v4 only after cards are removed (U11) and the user has reviewed the criteria; do not relabel historical judgments as v4 truth.
 - R12. Calibrate the evidence-backed grader against human judgments, then validate frozen grader behavior on question-grouped held-out cases. Invalid, unreviewed, or ambiguous grades cannot count as passes.
 - R13. Apply the original Stage 5 acceptance rule to the selected profile: the full local answer path and hard provenance/budget gates work, the user judges answerable pilot answers useful, and no known material grounding or essential-facet coverage failure remains. Automatic grades support this judgment but cannot make it alone.
 - R14. Keep original source reads as citation authority. Card content is discovery context, and answers/grades must distinguish inspected evidence from gold alternatives or unreviewed sources.
@@ -117,7 +119,7 @@ The plan completes the local Stage 5 answer-quality work and may change the loca
 - KTD3. **Promote on useful evidence, not field density.** Keep the existing 18-chunk useful-fact screen and source-span gate. Add applicable-field recall, unsupported-field and attribution review, card-query lead quality, and matched answer inspection; set a minimum applicable-field gain after the baseline audit but before candidate generation. This implements R5-R7.
 - KTD4. **Hold comparison inputs stable.** Regenerate on the same checked source hashes and chunk boundaries with GPT-5 mini on a pinned eligible route. Change only the card prompt/artifact selection for the card comparison. This implements R4, R7, R9, and R10.
 - KTD5. **Finish the repaired-answer check before card comparison.** Use the existing local harness, published six-file profile, and source-linked answer receipts. A representative live result is the comparison baseline only after material failures are repaired or explicitly classified; it is not final acceptance. This implements R10, R13, and R14.
-- KTD6. **Freeze criteria after selecting cards.** Preserve rubric v3 and the 21 submitted reviews. Complete source-bound v4 alternatives and individual checks, then freeze criteria before final configuration comparison or grader validation. This implements R11 and R12.
+- KTD6. **Freeze criteria after the card-free baseline exists.** Preserve rubric v3 and the 21 submitted reviews. Complete source-bound v4 alternatives and individual checks, then freeze criteria before final configuration comparison or grader validation. This implements R11 and R12.
 - KTD7. **Keep grading evidence-backed and separate from acceptance.** The grader receives frozen checks, generated answers, inspected evidence, and separately labelled gold alternatives; code validates excerpts, citations, applicability, and denominators. Human review and the original Stage 5 gate still decide acceptance. This implements R12-R14.
 - KTD8. **Give extraction one versioned meaning.** U2 writes and source-tests a concise field guide with positive, negative, and multi-card examples. U3 puts the operational rules and examples in the versioned card prompt and clear field descriptions in its structured-output schema; code validates structure and source identity, while held-out source review checks semantic support. Keep these surfaces aligned without treating schema validity as proof that a field is true. This implements R1-R6.
 
@@ -266,11 +268,11 @@ Current order (KD3): U11 removes cards and re-establishes the answer baseline, t
 
 **Requirements:** R11, R13, R14; KTD6.
 
-**Dependencies:** U4's rejection or U5's card-selection decision; the representative U1 answers and preserved human review receipts.
+**Dependencies:** U11's card-free baseline answers and the preserved human review receipts.
 
 **Files:** `evals/answer_questions_v3.yaml`, `evals/answer_questions_v4.yaml`, `evals/answer_rubric.py`, `evals/answer_trial.py`, `evals/README.md`, `tests/evals/test_answer_rubric.py`, `tests/evals/test_answer_trial.py`; private review receipts under `.local/`.
 
-**Approach:** Reconcile the 21 recovered submitted judgments with their exact question/configuration/answer identities; leave blank or ambiguous entries unreviewed. Complete v4's individual checks, source-revision-bound evidence alternatives, required versus conditional applicability, and rules for qualifications and relevant gaps. Preserve the user's Q3 decision that in-person wording tests are one acceptable option, not a mandatory method. Review the changed criteria and source support, then freeze v4 before any graded comparison.
+**Approach:** Reconcile the 21 recovered submitted judgments with their exact question/configuration/answer identities; leave blank or ambiguous entries unreviewed. Complete v4's individual checks, source-revision-bound evidence alternatives, required versus conditional applicability, and rules for qualifications and relevant gaps. Preserve the user's Q3 decision that in-person wording tests are one acceptable option, not a mandatory method. Widen the evidence alternatives: the U9 test showed that a check naming one passage marks an answer down when it cites another passage that supports the same point, so list every supporting passage found in the six sources. Review the changed criteria and source support with the user, then freeze v4 before any graded comparison.
 
 **Test scenarios:**
 
@@ -279,7 +281,7 @@ Current order (KD3): U11 removes cards and re-establishes the answer baseline, t
 - A supported explanatory example can satisfy a check through alternate wording, while a product name alone cannot satisfy that check.
 - The Q3 check accepts another source-supported way to test wording without requiring an in-person conversation or presentation.
 
-**Verification:** Historical review entries remain intact, the selected card identity is attached to new answer receipts, and every frozen v4 check has inspectable applicability and source alternatives.
+**Verification:** Historical review entries remain intact, new answer receipts record that no card artifacts were used, and every frozen v4 check has inspectable applicability and all of its known source alternatives.
 
 ### U7. Calibrate and validate the grader
 
