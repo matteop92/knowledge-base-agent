@@ -36,7 +36,7 @@ flowchart TB
     class CLIENT,CONTEXT,CARDS,SUMMARIES,EMBEDDINGS,CHECK model
 ```
 
-**Green** runs locally, including both chunk variants, label mapping, and the private storage/search path. **Amber** has code and prompts tested with fake model responses; raw and contextual embeddings plus 83 chunk contexts have run live on six checked vault files, while evidence cards and summaries have no live-vault trial. `ModelClient` sends generation and embedding requests; it does not choose what to search.
+**Green** runs locally, including both chunk variants, label mapping, and the private storage/search path. **Amber** uses live model calls: raw and contextual embeddings, 83 chunk contexts, evidence cards, and summaries have all run on six checked vault files. Only raw embeddings and evidence cards are in the published local profile; summaries failed factuality, and evidence cards are due to be removed. `ModelClient` sends generation and embedding requests; it does not choose what to search.
 
 ## B. Answer a question from the index
 
@@ -66,7 +66,7 @@ flowchart TB
     class ANSWER output
 ```
 
-The question-answer path as a whole is **planned**. Independent vector and full-text candidate queries work locally; rank fusion, the agent harness, and answer citations have not been built. Purple boxes are the agent harness, teal boxes are retrieval tools, and amber is the shared ModelClient. If inspected passages leave a gap, the harness repeats step 2 before answering. The checked questions now measure first-pass candidate recall; answer quality remains unevaluated.
+The question-answer path works locally through a command-line tool: vector and full-text search, rank fusion, the agent harness, whole-chunk reads, and citation checks are built. The host runs the first search itself, and the evidence-card search in step 3b is due to be removed. No external API or interface exists yet. Purple boxes are the agent harness, teal boxes are retrieval tools, and amber is the shared ModelClient. If inspected passages leave a gap, the harness repeats step 2 before answering. The checked questions measure first-pass candidate recall; pilot answers have been reviewed informally, and the formal answer gate is still open.
 
 The local preview writes a source snapshot, parsed document, chunk sets, and run manifest under ignored `.local/ingestion-runs/<run_id>/`. It makes no model calls. Model enrichment is required for the intended product, but is not part of that preview command.
 
