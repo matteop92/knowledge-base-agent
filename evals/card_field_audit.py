@@ -109,8 +109,9 @@ def selected_chunk_sample(conn) -> list[dict]:
     return sample
 
 
-def candidate_cards(runtime_dir: Path, sample: list[dict]) -> tuple[list[dict], dict]:
-    """Read one ready v8 card artifact for each screened captured chunk."""
+def candidate_cards(runtime_dir: Path, sample: list[dict],
+                    prompt_version: str = "evidence_cards_v8") -> tuple[list[dict], dict]:
+    """Read one ready candidate card artifact for each screened captured chunk."""
     manifests = {}
     cards = []
     first_response = 0
@@ -128,7 +129,7 @@ def candidate_cards(runtime_dir: Path, sample: list[dict]) -> tuple[list[dict], 
         run_dir, manifest = candidates[0]
         records = [record for record in manifest.artifacts.values()
                    if record.kind == "cards" and record.version_inputs.get("chunk_id") == chunk_id
-                   and record.version_inputs.get("prompt_version") == "evidence_cards_v8"]
+                   and record.version_inputs.get("prompt_version") == prompt_version]
         if len(records) != 1 or records[0].status != "ready" or not records[0].path:
             raise ValueError("candidate screen has missing or non-ready card artifact")
         record = records[0]
@@ -136,7 +137,7 @@ def candidate_cards(runtime_dir: Path, sample: list[dict]) -> tuple[list[dict], 
             (run_dir / record.path).read_text(encoding="utf-8"))
         if (artifact.document_id, artifact.run_id, artifact.source_sha256, artifact.chunk_id,
                 artifact.prompt_version) != (document_id, manifest.run_id,
-                                             manifest.source_sha256, chunk_id, "evidence_cards_v8"):
+                                             manifest.source_sha256, chunk_id, prompt_version):
             raise ValueError("candidate artifact has stale source identity")
         cards.extend(card.model_dump(mode="json") for card in artifact.cards)
         first_response += record.attempts == 1
@@ -214,6 +215,7 @@ def main() -> int:
     parser.add_argument("--private-output", type=Path, required=True)
     parser.add_argument("--labels", type=Path)
     parser.add_argument("--candidate-runs", type=Path)
+    parser.add_argument("--candidate-prompt-version", default="evidence_cards_v8")
     args = parser.parse_args()
     root = Path(".local").resolve()
     target = args.private_output.resolve()
@@ -234,7 +236,7 @@ def main() -> int:
         if not args.labels:
             parser.error("candidate scoring requires source-bound field labels")
         candidate_sample = sample
-        candidate, readiness = candidate_cards(args.candidate_runs, candidate_sample)
+        candidate, readiness = candidate_cards(args.candidate_runs, candidate_sample, args.candidate_prompt_version)
         candidate_recall = field_recall(groups, labels, candidate)
         report["candidate"] = {**readiness, "occupancy": occupancy(candidate),
                                "field_recall": candidate_recall,

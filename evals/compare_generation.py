@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 from app.ingestion.contracts import ChunkSet, ParsedDocument
-from app.ingestion.enrichment import EnrichmentError, EvidenceCardsArtifact, _block_card_input, _group_card_input, _input, _prompt, extract_evidence_cards
+from app.ingestion.enrichment import EnrichmentError, EvidenceCardsArtifact, _block_card_input, _card_groups, _group_card_input, _input, _prompt, extract_evidence_cards
 from app.ingestion.run_manifest import RunManifest
 from app.ingestion.summary import summarize_document
 from app.models.client import ModelClientError, ModelSpec
@@ -103,16 +103,29 @@ def estimate(cards: list[tuple[Prepared, object]], summaries: list[Prepared],
              card_prompt_version: str = "evidence_cards_v1",
              summary_prompt_family: str = "v1") -> dict:
     cards_prompt, _ = _prompt(card_prompt_version)
-    cards_input_bound = sum(len(cards_prompt.encode()) + len(
-        (_group_card_input(item.parsed, chunk, 1800,
-                           explicit_indices=card_prompt_version in ("evidence_cards_v7", "evidence_cards_v8"),
-                           split_highlights=card_prompt_version == "evidence_cards_v8")
-         if card_prompt_version in ("evidence_cards_v5", "evidence_cards_v6", "evidence_cards_v7", "evidence_cards_v8") else
-         _block_card_input(item.parsed, chunk, 1800,
-                           strict_blocks=card_prompt_version == "evidence_cards_v4")
-         if card_prompt_version in ("evidence_cards_v3", "evidence_cards_v4")
-         else _input(item.parsed, chunk)).encode())
-                            for item, chunk in cards)
+    extraction_calls, check_calls = len(cards), 0
+    if card_prompt_version == "evidence_cards_v9":
+        # v9 sends each evidence group alone, twice: once to extract and once
+        # to check the proposed cards against that same group.
+        check_prompt, _ = _prompt("evidence_card_check_v1")
+        groups = [document_group for item, chunk in cards
+                  for document_group in ((item.parsed, start, end) for start, end in
+                                         _card_groups(item.parsed, chunk, split_highlights=True))]
+        extraction_calls = check_calls = len(groups)
+        cards_input_bound = sum(len(cards_prompt.encode()) + len(check_prompt.encode()) + 1024
+                                + 2 * len(parsed.source_text[start:end].encode()) + 1000 * 4
+                                for parsed, start, end in groups)
+    else:
+        cards_input_bound = sum(len(cards_prompt.encode()) + len(
+            (_group_card_input(item.parsed, chunk, 1800,
+                               explicit_indices=card_prompt_version in ("evidence_cards_v7", "evidence_cards_v8"),
+                               split_highlights=card_prompt_version == "evidence_cards_v8")
+             if card_prompt_version in ("evidence_cards_v5", "evidence_cards_v6", "evidence_cards_v7", "evidence_cards_v8") else
+             _block_card_input(item.parsed, chunk, 1800,
+                               strict_blocks=card_prompt_version == "evidence_cards_v4")
+             if card_prompt_version in ("evidence_cards_v3", "evidence_cards_v4")
+             else _input(item.parsed, chunk)).encode())
+                                for item, chunk in cards)
     section_count = sum(len(item.sets["structural_raw"].chunks) for item in summaries)
     if summary_prompt_family in ("v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17"):
         # v3 writes one bounded section summary per chunk and combines them
@@ -133,14 +146,15 @@ def estimate(cards: list[tuple[Prepared, object]], summaries: list[Prepared],
                                 900 if summary_prompt_family in ("v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17") else
                                 700 if summary_prompt_family in ("v2", "v3", "v4", "v5") else 400)
         summary_multiplier = 8 if model == "deepseek/deepseek-v4.1-flash" else 4
-        card_output_bound = 1400 if card_prompt_version in ("evidence_cards_v6", "evidence_cards_v7", "evidence_cards_v8") else 700
+        card_output_bound = (1000 if card_prompt_version == "evidence_cards_v9" else
+                             1400 if card_prompt_version in ("evidence_cards_v6", "evidence_cards_v7", "evidence_cards_v8") else 700)
         cost = ((cards_input_bound + summary_input_bound) * input_price
-                + (len(cards) * card_output_bound * 4
+                + (extraction_calls * card_output_bound * 4 + check_calls * 1200 * 4
                    + summary_calls_bound * summary_output_bound * summary_multiplier) * output_price) / 1_000_000
         per_model[model] = round(cost, 6)
     return {"card_chunks": len(cards), "summary_documents": len(summaries),
             "summary_section_count": section_count,
-            "request_bound_per_model": 3 * (len(cards) + summary_calls_bound),
+            "request_bound_per_model": 3 * (extraction_calls + check_calls + summary_calls_bound),
             "estimated_input_token_bound_per_model": 3 * (cards_input_bound + summary_input_bound),
             "conservative_usd_by_model": per_model,
             "conservative_total_usd": round(sum(per_model.values()), 6)}
@@ -267,7 +281,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=Path(".local/stage4-generation/report.json"))
     parser.add_argument("--max-usd", type=float, required=True)
     parser.add_argument("--models", nargs="+", choices=tuple(CONTEXT_PRICES), default=list(MODELS))
-    parser.add_argument("--card-prompt-version", choices=("evidence_cards_v1", "evidence_cards_v2", "evidence_cards_v3", "evidence_cards_v4", "evidence_cards_v5", "evidence_cards_v6", "evidence_cards_v7", "evidence_cards_v8"),
+    parser.add_argument("--card-prompt-version", choices=("evidence_cards_v1", "evidence_cards_v2", "evidence_cards_v3", "evidence_cards_v4", "evidence_cards_v5", "evidence_cards_v6", "evidence_cards_v7", "evidence_cards_v8", "evidence_cards_v9"),
                         default="evidence_cards_v1")
     parser.add_argument("--summary-prompt-family", choices=("v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17"), default="v1")
     parser.add_argument("--all-cards", action="store_true")

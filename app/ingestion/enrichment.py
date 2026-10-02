@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,8 @@ CONTEXT_PROMPT_VERSION = "chunk_context_v1"
 CARDS_PROMPT_VERSION = "evidence_cards_v1"
 CONTEXT_RECIPE_VERSION = "chunk-neighbors-v1"
 CARDS_RECIPE_VERSION = "source-offset-cards-v1"
+CARD_CHECK_PROMPT_VERSION = "evidence_card_check_v1"
+CARD_CHECK_FIELDS = ("statement", "situation", "action", "result", "principle")
 TOKEN = re.compile(r"\w+|[^\w\s]", re.UNICODE)
 CARD_TYPES = [
     "example", "principle", "claim", "counterexample", "framework",
@@ -56,6 +59,7 @@ class EvidenceCardsArtifact(StrictRecord):
     prompt_version: str
     extraction_version: str
     usage: ModelUsage
+    check: dict[str, Any] | None = None
 
 
 def _prompt(version: str) -> tuple[str, str]:
@@ -388,6 +392,12 @@ def _group_card_input(document: ParsedDocument, chunk: Chunk, max_input_tokens: 
     return text
 
 
+def _single_group_input(document: ParsedDocument, chunk: Chunk, start: int, end: int) -> str:
+    return (f"Title: {document.metadata.title}\n"
+            f"Section: {' > '.join(chunk.heading_path or [])}\n"
+            f"Evidence group (evidence_group_index is 0):\n[0] {document.source_text[start:end]}")
+
+
 def _validated_group_card(
     item: dict[str, Any], index: int, document: ParsedDocument, chunk: Chunk,
     *, split_highlights: bool = False,
@@ -403,6 +413,72 @@ def _validated_group_card(
                            index, document, chunk)
 
 
+def _usage_sum(first: ModelUsage, second: ModelUsage) -> ModelUsage:
+    def add(a: int | None, b: int | None) -> int | None:
+        return None if a is None and b is None else (a or 0) + (b or 0)
+    return ModelUsage(input_tokens=add(first.input_tokens, second.input_tokens),
+                      output_tokens=add(first.output_tokens, second.output_tokens),
+                      total_tokens=add(first.total_tokens, second.total_tokens))
+
+
+def _checked_cards(
+    cards: list[EvidenceCard], client: ModelClient, model: ModelSpec,
+) -> tuple[list[EvidenceCard], dict[str, Any], ModelUsage]:
+    """Second model pass: drop cards and clear fields their own passage does not support.
+
+    Each request shows one evidence passage and only its cards, so a detail
+    borrowed from a neighbouring passage cannot look supported.
+    """
+    summary = {"prompt_version": CARD_CHECK_PROMPT_VERSION, "proposed_cards": len(cards),
+               "dropped_cards": 0, "cleared_fields": dict.fromkeys(CARD_CHECK_FIELDS[1:], 0)}
+    prompt, _ = _prompt(CARD_CHECK_PROMPT_VERSION)
+    verdict = {"type": "string", "enum": ["supported", "unsupported", "empty"]}
+    schema = {"type": "object", "properties": {"checks": {"type": "array", "items": {
+        "type": "object",
+        "properties": {"card_index": {"type": "integer"},
+                       **dict.fromkeys(CARD_CHECK_FIELDS, verdict),
+                       "reason": {"type": ["string", "null"]}},
+        "required": ["card_index", *CARD_CHECK_FIELDS, "reason"],
+        "additionalProperties": False}}},
+        "required": ["checks"], "additionalProperties": False}
+    passages: dict[tuple[int, int], list[int]] = {}
+    for index, card in enumerate(cards):
+        passages.setdefault((card.evidence_span.start_char, card.evidence_span.end_char), []).append(index)
+    usage = ModelUsage()
+    verdicts: dict[int, dict[str, Any]] = {}
+    for indices in passages.values():
+        listing = [{"card_index": local, **{field: getattr(cards[index], field) for field in CARD_CHECK_FIELDS}}
+                   for local, index in enumerate(indices)]
+        result = client.generate_json(
+            model=model, system_prompt=prompt,
+            input_text=(f"Source passage:\n{cards[indices[0]].evidence_text}\n\n"
+                        f"Proposed cards:\n{json.dumps(listing, ensure_ascii=False)}"),
+            schema_name="evidence_card_check", json_schema=schema, max_output_tokens=1200,
+        )
+        usage = _usage_sum(usage, result.usage)
+        checks = result.data.get("checks")
+        if (not isinstance(checks, list) or any(not isinstance(item, dict) for item in checks)
+                or sorted(item.get("card_index", -1) for item in checks) != list(range(len(indices)))):
+            raise EnrichmentError("card check did not cover each proposed card exactly once")
+        for item in checks:
+            verdicts[indices[item["card_index"]]] = item
+    kept = []
+    for index, card in enumerate(cards):
+        check = verdicts[index]
+        if check.get("statement") != "supported":
+            summary["dropped_cards"] += 1
+            continue
+        cleared = [field for field in CARD_CHECK_FIELDS[1:]
+                   if getattr(card, field) is not None and check.get(field) != "supported"]
+        for field in cleared:
+            summary["cleared_fields"][field] += 1
+        updates: dict[str, Any] = dict.fromkeys(cleared)
+        if "principle" in cleared:
+            updates["principle_is_derived"] = False
+        kept.append(card.model_copy(update=updates))
+    return kept, summary, usage
+
+
 def extract_evidence_cards(
     document: ParsedDocument, chunks: ChunkSet, chunk: Chunk,
     client: ModelClient, model: ModelSpec, manifest: RunManifest, run_dir: Path,
@@ -412,18 +488,20 @@ def extract_evidence_cards(
     _check_source(document, chunks, manifest, client)
     if chunk.chunk_id not in {item.chunk_id for item in chunks.chunks}:
         raise EnrichmentError("chunk is not in its declared variant")
-    if prompt_version not in ("evidence_cards_v1", "evidence_cards_v2", "evidence_cards_v3", "evidence_cards_v4", "evidence_cards_v5", "evidence_cards_v6", "evidence_cards_v7", "evidence_cards_v8"):
+    if prompt_version not in ("evidence_cards_v1", "evidence_cards_v2", "evidence_cards_v3", "evidence_cards_v4", "evidence_cards_v5", "evidence_cards_v6", "evidence_cards_v7", "evidence_cards_v8", "evidence_cards_v9"):
         raise EnrichmentError("unsupported evidence-card prompt version")
     quote_location = prompt_version == "evidence_cards_v2"
     block_location = prompt_version in ("evidence_cards_v3", "evidence_cards_v4")
     strict_blocks = prompt_version == "evidence_cards_v4"
-    group_location = prompt_version in ("evidence_cards_v5", "evidence_cards_v6", "evidence_cards_v7", "evidence_cards_v8")
-    split_highlights = prompt_version == "evidence_cards_v8"
+    group_location = prompt_version in ("evidence_cards_v5", "evidence_cards_v6", "evidence_cards_v7", "evidence_cards_v8", "evidence_cards_v9")
+    split_highlights = prompt_version in ("evidence_cards_v8", "evidence_cards_v9")
+    checked = prompt_version == "evidence_cards_v9"
     extraction_version = ("same-speaker-group-v5" if group_location else
                           "complete-block-v4" if strict_blocks else
                           "block-locate-v3" if block_location else
                           "quote-locate-v2" if quote_location else "cards-v1")
-    recipe_version = ("separate-highlights-speaker-groups-v8" if split_highlights else
+    recipe_version = ("isolated-checked-speaker-groups-v9" if checked else
+                      "separate-highlights-speaker-groups-v8" if split_highlights else
                       "explicit-zero-based-speaker-groups-v7" if prompt_version == "evidence_cards_v7" else
                       "contiguous-speaker-groups-v5" if group_location else
                       "self-contained-block-cards-v4" if strict_blocks else
@@ -438,29 +516,49 @@ def extract_evidence_cards(
         "input_recipe_version": recipe_version,
         "extraction_version": extraction_version,
     }
+    if checked:
+        version_inputs["check_prompt_version"] = CARD_CHECK_PROMPT_VERSION
+        version_inputs["check_prompt_sha256"] = _prompt(CARD_CHECK_PROMPT_VERSION)[1]
     record = manifest.begin("cards", version_inputs, model)
     existing = _load_ready(run_dir, record, EvidenceCardsArtifact)
     if existing:
         return existing
     manifest.save(run_dir)
     try:
-        result = client.generate_json(
-            model=model, system_prompt=prompt,
-            input_text=(_group_card_input(document, chunk, max(max_input_tokens, 1800),
-                                         explicit_indices=prompt_version in ("evidence_cards_v7", "evidence_cards_v8"),
-                                         split_highlights=split_highlights)
-                        if group_location else
-                        _block_card_input(document, chunk, max(max_input_tokens, 1800),
-                                          strict_blocks=strict_blocks) if block_location
-                        else _input(document, chunk, max_input_tokens=max_input_tokens)),
-            schema_name="evidence_cards", json_schema=_card_schema(
-                quote_location=quote_location, block_location=block_location,
-                group_location=group_location, rich_descriptions=split_highlights),
-            max_output_tokens=1400 if prompt_version in ("evidence_cards_v6", "evidence_cards_v7", "evidence_cards_v8") else 700,
-        )
-        proposed = result.data.get("cards")
-        if not isinstance(proposed, list) or any(not isinstance(item, dict) for item in proposed):
-            raise EnrichmentError("model returned malformed cards")
+        schema = _card_schema(quote_location=quote_location, block_location=block_location,
+                              group_location=group_location, rich_descriptions=split_highlights)
+        if checked:
+            # One request per evidence group: the model never sees a neighbouring
+            # passage, so a card cannot borrow details from one.
+            proposed, usage = [], ModelUsage()
+            for group_index, (start, end) in enumerate(
+                    _card_groups(document, chunk, split_highlights=split_highlights)):
+                result = client.generate_json(
+                    model=model, system_prompt=prompt,
+                    input_text=_single_group_input(document, chunk, start, end),
+                    schema_name="evidence_cards", json_schema=schema, max_output_tokens=1000,
+                )
+                items = result.data.get("cards")
+                if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+                    raise EnrichmentError("model returned malformed cards")
+                proposed.extend({**item, "evidence_group_index": group_index} for item in items)
+                usage = _usage_sum(usage, result.usage)
+        else:
+            result = client.generate_json(
+                model=model, system_prompt=prompt,
+                input_text=(_group_card_input(document, chunk, max(max_input_tokens, 1800),
+                                              explicit_indices=prompt_version in ("evidence_cards_v7", "evidence_cards_v8"),
+                                              split_highlights=split_highlights)
+                            if group_location else
+                            _block_card_input(document, chunk, max(max_input_tokens, 1800),
+                                              strict_blocks=strict_blocks) if block_location
+                            else _input(document, chunk, max_input_tokens=max_input_tokens)),
+                schema_name="evidence_cards", json_schema=schema,
+                max_output_tokens=1400 if prompt_version in ("evidence_cards_v6", "evidence_cards_v7", "evidence_cards_v8") else 700,
+            )
+            proposed, usage = result.data.get("cards"), result.usage
+            if not isinstance(proposed, list) or any(not isinstance(item, dict) for item in proposed):
+                raise EnrichmentError("model returned malformed cards")
         cards = [(_validated_group_card(item, index, document, chunk,
                                         split_highlights=split_highlights) if group_location else
                   _validated_block_card(item, index, document, chunk,
@@ -468,16 +566,20 @@ def extract_evidence_cards(
                   _validated_quoted_card(item, index, document, chunk) if quote_location else
                   _validated_card(item, index, document, chunk))
                  for index, item in enumerate(proposed)]
+        check = None
+        if checked:
+            cards, check, check_usage = _checked_cards(cards, client, model)
+            usage = _usage_sum(usage, check_usage)
         artifact = EvidenceCardsArtifact(
             document_id=document.document_id, run_id=document.run_id,
             source_sha256=document.source_sha256, chunk_id=chunk.chunk_id,
             cards=cards, model=model, prompt_version=prompt_version,
-            extraction_version=extraction_version, usage=result.usage,
+            extraction_version=extraction_version, usage=usage, check=check,
         )
         path = write_artifact_json(
             run_dir, "cards", record.artifact_id, artifact.model_dump(mode="json")
         )
-        manifest.succeed(record.artifact_id, path, result.usage)
+        manifest.succeed(record.artifact_id, path, usage)
         manifest.save(run_dir)
         return artifact
     except (ModelClientError, EnrichmentError, ValueError, KeyError, TypeError, OSError) as exc:
