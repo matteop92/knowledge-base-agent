@@ -13,7 +13,7 @@ execution: code
 ## Goal Capsule
 
 - **Objective:** The repaired agent answers the pilot questions usefully, completely, and with source-backed examples and citations.
-- **Means:** Verify repaired answers on current cards, audit and trial richer cards, select a card set, freeze the revised rubric, calibrate the grader, and decide the final Stage 5 answer gate in that order.
+- **Means:** Remove evidence cards from the system, re-establish the answer baseline on chunk retrieval alone, freeze the revised rubric, calibrate the grader, and decide the final Stage 5 answer gate in that order. (Revised 2026-10-02; see KD2 and KD3.)
 - **Authority:** This is the sole execution plan for remaining answer-quality work. `docs/plans/2026-09-29-1832-fix-retrieval-answer-quality-plan.md` records completed repairs and original requirements; `FOUNDATION.md` owns project progress; captured source revisions own factual truth.
 - **Execution profile:** The six checked local source revisions, structural/raw chunks and embeddings, and the selected GPT-5 mini card route remain the comparison controls.
 - **Stop conditions:** Do not promote cards with unsupported details, changed attribution or source links, lost useful facts, or an unaccounted live cost. Do not accept an answer baseline while a known material grounding or essential-coverage failure remains.
@@ -38,6 +38,9 @@ The repaired harness has local proof but no representative live-answer quality r
 ### Key Decisions
 
 - KD1. **Use one sequential plan for all remaining work.** This plan owns the current-card answer check, card experiment, rubric, grader, and final acceptance decision. The earlier plan is a status record; card artifacts remain independently versioned so answer changes can be attributed. (session-settled: user-directed — replace the two-plan execution handoff with one ordered plan.) Governs R5, R7, R9-R15.
+
+- KD2. **Decide card work by what cards do for answers.** Cards are never cited; the agent reads the original before using anything. Their only jobs are to find passages chunk search misses, to tell the agent what a chunk contains, and to surface concrete examples. A wrong detail costs a wasted read, while a missing or vague card can hide a passage. U2-U4 optimized field occupancy and zero detail errors before anyone measured whether cards change answers; `v9` doubled card volume and still failed. From 2026-10-02 the order is: measure card value first (U9), then redesign cards against those jobs only if the measurement shows a benefit (U10). R16-R18 replace R2, R3, R5, and the factuality part of R6 for any new candidate; the Field and Card Boundaries table and U2-U4 remain as the record of the superseded approach. (session-settled: user-directed — "boosting volume while reducing quality isn't a good compromise"; go back to the purpose of cards.) Governs R16-R18, U9, U10.
+- KD3. **Remove evidence cards and finish this plan on chunk retrieval alone.** A card restates a sentence that is already in an embedded chunk. Three card designs were tried; two failed source review, and the selected one gave only a modest gain on broad questions for about 70% more cost per question (U9). Published evidence points the same way: sentence-level indexes add little when a modern embedding model already retrieves the chunks, and LLM-written layers add errors (`docs/research/2026-10-02-retrieval-complement-research.md`). The user decided on 2026-10-02 to stop creating, storing, searching, and showing cards, to remove the related code including ingestion, and to complete the remaining rubric, grader, and gate work now. What should complement chunk retrieval later (memory across turns, connections across sources, questions about the whole vault) is recorded in `FOUNDATION.md` as later work and is not part of this plan. KD3 supersedes KD2's conditional redesign: U10 and U5 are cancelled. (session-settled: user-directed.) Governs R19-R21, U11.
 
 ### Requirements
 
@@ -77,6 +80,17 @@ Each card has one short `statement` and at most one coherent value per structure
 - R13. Apply the original Stage 5 acceptance rule to the selected profile: the full local answer path and hard provenance/budget gates work, the user judges answerable pilot answers useful, and no known material grounding or essential-facet coverage failure remains. Automatic grades support this judgment but cannot make it alone.
 - R14. Keep original source reads as citation authority. Card content is discovery context, and answers/grades must distinguish inspected evidence from gold alternatives or unreviewed sources.
 - R15. Keep the original source snapshots, structural/raw chunks and embeddings, historical card artifacts, receipts, and hosted data unchanged. Only the local card selection may change through U5; no summary or new retrieval architecture enters this sequence.
+
+**Card purpose and value (added 2026-10-02, KD2)**
+
+- R16. Before any further card generation, compare answers on the pilot questions with the selected cards available to the agent and with them withheld, holding the harness, prompt, model, limits, chunks, and embeddings fixed. Report what the agent read and cited against the rubric's source-bound evidence spans, essential-facet coverage, and cost. One run per arm is a signal, not proof; state run-to-run variation where it is known.
+- R17. A new card candidate is defined by its jobs, not by field occupancy. Each card is one self-contained sentence that names who and what, states its speaker, and says what the passage establishes; it may carry one flag marking a concrete example. A card is written only when someone could plausibly ask a question the passage answers; greetings, logistics, and cut-off fragments get none. The model may see surrounding text to resolve references, but every claim must come from the card's own passage. Situation, action, result, principle fields and the eight-type list are not required.
+- R18. A new card candidate is judged by retrieval and answers: required evidence found and read, rubric coverage on matched questions, and card volume no higher than the selected set unless the gain justifies it. The factuality gate is that no reviewed card reverses, misattributes, or invents the substance of its passage; lost hedging and small wording drift are counted and reported, not disqualifying, because cards are leads and never citation authority.
+**Card removal (added 2026-10-02, KD3)**
+
+- R19. Ingestion no longer generates evidence cards, the loader and publication no longer require or load them, retrieval has no card search or card lookup, and the answer agent has no card action, card facts, or card switch. Card prompts, card evaluation code, and their tests are deleted. Summaries, chunk context, chunks, embeddings, and source snapshots are untouched.
+- R20. The selected local profile is republished without a card requirement, and its search and read proof still passes. Existing private card artifacts and receipts under `.local/` are kept as history. The hosted schema is not changed by this plan: the user chose on 2026-10-02 to leave the `knowledge.cards` table in place, empty and unused.
+- R21. After removal, the pilot questions are rerun on chunk retrieval alone and reviewed. The Q8 failure seen without cards (repeated searches until the allowance ran out) is repaired in the harness or recorded as a known limitation before the baseline is used for U6-U8.
 
 ### Scope Boundaries
 
@@ -120,7 +134,7 @@ The plan completes the local Stage 5 answer-quality work and may change the loca
 | Rubric and grader | Selected card identity, historical judgments, checked sources | Frozen v4 criteria and a grader calibrated and validated on held-out cases |
 | Final Stage 5 gate | Selected profile and frozen evaluation identities | Human-reviewed acceptance or explicit unresolved answer-quality failures |
 
-Run U1 through U8 in order. A failed U4 card screen skips U5 and keeps `v5`; the sequence resumes at U6. A passing card screen permits U5, whose matched answer comparison chooses the card artifacts for U6-U8. Card qualification never accepts overall answer quality; U8 applies the original Stage 5 gate after rubric and grader work.
+Current order (KD3): U11 removes cards and re-establishes the answer baseline, then U6, U7, and U8. U10 and U5 are cancelled. The KD2 order before that was U1, then U9, then U10 and U5 only if U9 showed a benefit. The original order was U1 through U8: a failed U4 card screen skips U5 and keeps `v5`; the sequence resumes at U6. A passing card screen permits U5, whose matched answer comparison chooses the card artifacts for U6-U8. Card qualification never accepts overall answer quality; U8 applies the original Stage 5 gate after rubric and grader work.
 
 ### Risks and Dependencies
 
@@ -309,6 +323,66 @@ Run U1 through U8 in order. A failed U4 card screen skips U5 and keeps `v5`; the
 
 **Verification:** The final report records what passed, failed, or was not run and why; the user can inspect actual answers and traces. The Stage 5 baseline is accepted only under the original plan's hard provenance/budget checks and human usefulness judgment, with no known material grounding or essential-facet failure on the answerable pilot questions.
 
+### U9. Measure whether cards change answers
+
+**Goal:** Know whether the selected cards improve what the agent reads and answers before spending more on card generation.
+
+**Requirements:** R9, R14-R16; KD2.
+
+**Dependencies:** U1's repaired harness and the selected six-file profile.
+
+**Files:** `app/agent/harness.py`, `app/agent/cli.py`, `evals/answer_trial.py`, `evals/card_value.py`, their tests; ignored `.local/` receipts.
+
+**Approach:** Add a switch that withholds card facts and the card-search action while leaving every other input unchanged. Run the eight pilot questions once in each arm at the U1 configuration. For each run, compute from the receipts which rubric-v4 source-bound evidence spans the agent inspected and which it cited, the chunks read, model calls, and cost. Review essential-facet coverage of both arms against rubric v3. Record the arms' identities and the known run-to-run variation.
+
+**Test scenarios:**
+
+- With cards withheld, candidates carry no card facts and a card-search action is rejected without spending a card search.
+- The two arms differ only in the card switch; a prompt, model, limit, or source-revision mismatch invalidates the comparison.
+- An evidence span counts as inspected only when an inspected passage of the same document revision overlaps it.
+
+**Verification:** A private report gives per-question and total evidence inspected and cited, coverage, and cost for both arms, with an explicit statement of whether the difference is larger than the variation already seen between repeated runs.
+
+### U11. Remove evidence cards and re-establish the baseline
+
+**Goal:** One retrieval path, chunk search and whole-chunk reads, with no card code left to maintain.
+
+**Requirements:** R14, R15 as amended by R20, R19-R21; KD3.
+
+**Dependencies:** U9's result and the user's decision.
+
+**Files:** `app/ingestion/enrichment.py`, `app/ingestion/contracts.py`, `app/ingestion/live_run.py`, `app/storage/loader.py`, `app/storage/records.py`, `app/storage/retrieval.py`, `app/storage/publication.py`, `app/storage/local_viewer.py`, `app/agent/harness.py`, `app/agent/actions.py`, `app/agent/cli.py`, `app/agent/records.py`, `evals/answer_trial.py`, `evals/compare_generation.py`, `evals/retrieval_trial.py`; delete `evals/card_field_audit.py`, `evals/card_value.py`, `evals/card_field_guidelines_v1.md`, `prompts/evidence_cards_v*.md`, `prompts/evidence_card_check_v1.md`, and their tests; a new answer prompt version without card wording; `SYSTEM.md`, `FOUNDATION.md`, `INGESTION.md`, `RETRIEVAL.md`, `DATA.md`, `README.md`, `AGENTS.md`, `evals/README.md`.
+
+**Approach:** Remove in dependency order: the agent (card action, facts, switch, prompt wording), then retrieval (card search, card lookup, card-span read allowance), then storage (loading, publication requirement, viewer), then ingestion (extraction, check pass, live-run step, contract), then evaluation code and prompts. Republish the six-file local profile without the card requirement and rerun the storage and search proof. Rerun the eight pilot questions, review them against rubric v3, and repair or record the Q8 search-loop failure. Keep summaries and chunk context code as they are.
+
+**Test scenarios:**
+
+- No module imports or references a card type, card prompt, or card table; the suites pass.
+- A profile that names no card artifacts publishes and answers; a search action named `search_cards` is rejected as unknown.
+- The pilot questions complete without cards, and Q8 completes in repeated runs or its failure is recorded with its cause.
+
+**Verification:** The suites pass, the local profile proof passes without cards, and a private report holds the card-free pilot answers with costs and the review against rubric v3.
+
+### U10. Redesign cards against their jobs (cancelled by KD3)
+
+**Goal:** Produce fewer, clearer cards that find passages, describe chunks, and surface examples.
+
+**Requirements:** R1, R4, R8, R9, R17, R18; KD2.
+
+**Dependencies:** U9 shows a card benefit. Otherwise skip this unit and U5 and keep `v5`.
+
+**Files:** a new versioned card prompt, `app/ingestion/enrichment.py`, `app/storage/retrieval.py` if cards are searched by embedding, their tests; ignored `.local/` candidate reports.
+
+**Approach:** Write the card prompt from R17. Screen the same 18 chunks. Review every card for reversed, misattributed, or invented substance and count lesser drift separately. Compare volume with `v5`. If the screen passes R18's factuality gate, expand to the six files and run U5's matched answer comparison.
+
+**Test scenarios:**
+
+- A greeting, a logistics remark, or a cut-off fragment yields no card.
+- A card names its subject and speaker rather than "he" or "the company".
+- A card that reverses its passage or attributes it to the wrong person fails the screen; a card that drops "I think" is counted, not failed.
+
+**Verification:** The screen reports card count against `v5`, the substance-error count, the drift count, and accounted spend, with an explicit pass or fail under R18.
+
 ---
 
 ## Verification Contract
@@ -325,28 +399,32 @@ Use the repository's unittest discovery for `tests/ingestion`, `tests/evals`, `t
 - U4 either rejects the candidate with evidence or passes the preregistered field, fact, provenance, reliability, and factuality gates before expansion.
 - If U4 rejects the candidate, the card experiment ends with `v5` selected and U5 is skipped. If U4 passes, U5 records a matched retrieval and answer comparison, a justified card-selection decision, and a verified rollback path; no card becomes citation authority on its own.
 - U6 preserves historical judgments and freezes source-backed rubric v4 after the card decision. U7 calibrates and validates the grader on held-out cases, with critical false passes resolved.
+- U9 records whether cards change what the agent reads, cites, and answers. U11 removes cards from ingestion, storage, retrieval, the agent, and evaluation, and records a card-free answer baseline. U10 and U5 are cancelled.
 - U8 records human-reviewed Stage 5 acceptance only if the selected profile satisfies the original answer-quality gate; otherwise it records the specific unmet gate and does not claim a passed baseline. Current progress is reconciled and abandoned experimental code is removed while private historical receipts remain retained.
 
 ---
 
 ## Execution outcomes
 
-**Overall status: incomplete.** The selected local profile does not yet answer the pilot questions well enough to pass Stage 5. Running later experiments did not close U1's failed answer-quality check. The card rejection is a result for this candidate, not a resolution of the card-quality problem. This plan remains the owner of the unfinished work; no replacement plan was created.
+**Overall status: incomplete.** A harness repair on 2026-10-02 (prompt v11) removed the demonstrated investigation failures: the four pilot questions now complete from whole-chunk reads with span-level citations. One known coverage defect in Q1 and the absence of human review keep U1 open. A second card candidate (`v9`) also failed the factuality gate. This plan remains the owner of the unfinished work; no replacement plan was created.
 
 | Unit | Work completed | Outcome and remaining issue |
 | --- | --- | --- |
-| U1 — Current-card answers | Ran live Q1, Q2, Q8, and Q4 on the selected `v5` cards; retained prompt, route, source/card identities, reads, answers, and spending in private receipts. Repaired action handling and tried Q1 again with a larger investigation allowance. | **Not complete as an acceptable baseline.** Q1 still omitted essential principles and overstated support after six reads; Q2 exhausted its allowance without a substantive answer; Q8 invented a hiring sequence; Q4 gave generic advice after one read. In Q1, early relevant search leads disappeared from the later candidate view while the agent focused on narrower results. That issue was identified but no subsequent live repair was accepted. |
+| U1 — Current-card answers | Ran live Q1, Q2, Q8, and Q4 on the selected `v5` cards under prompts v9/v10, then repaired the harness and reran them under prompt v11 at medium reasoning: host search with the question, one candidate per chunk ranked by best rank with that chunk's cards shown, whole-chunk reads with span-level citations, ignored stray action fields, specific rejection feedback, repeated-query rejection, and a finish check against unread chunks of sources already used. | **Improved, not yet an accepted baseline.** Before the repair the agent never searched cards, read 32-430 characters per read, saw only the last 16 candidates, and lost up to half its calls to invalid actions. In the final v11 run all four questions completed; Q1 read ten chunks, Q2 five, Q8 five across both authors, Q4 one. By agent review against rubric v3, Q2, Q4, and Q8 cover their essential facets; Q1 omits centralized talent decisions and the no-variable-pay practice, and Q1 and Q8 close with a gaps paragraph or an offer of help. Human usefulness review has not happened. |
 | U2 — Source field labels | Audited the 510 selected cards and labeled 27 source groups across six checked files before viewing candidate output. Wrote the field guide and audit code. | **Audit complete.** The sampled originals support 56 structured fields; the selected cards populate one. Labels and source excerpts remain under ignored `.local/`. This measurement does not improve answers by itself. |
-| U3 — Richer card candidate | Added versioned `evidence_cards_v8` extraction and separate-highlight grouping; generated a bounded 18-chunk candidate without changing `v5`. | **Trial artifact complete, card improvement unfinished.** The prompt and trial outputs are available for diagnosis, but the candidate did not qualify for use. |
-| U4 — Candidate screen | Screened all 18 chunks and reviewed held-out cards against their original passages. All 18 generation responses were ready; 47 of 56 applicable fields were provisionally populated. | **Failed factuality gate.** One card reversed the source's action-result relationship. The field count cannot override that error. The useful-fact gate and six-file expansion were not run after this failure. |
-| U5 — Matched card comparison and selection | No matched answer comparison was run after U4 failed. | **Skipped under the plan's dependency rule.** `v5` remains selected; there was no publication switch. The rejected `v8` result does not prove that richer cards cannot work. |
+| U3 — Richer card candidate | Added versioned `evidence_cards_v8` extraction and separate-highlight grouping, then `evidence_cards_v9`: one evidence group per extraction request, plus `evidence_card_check_v1`, a second pass that checks each card against its own group and drops unsupported cards or clears unsupported fields. Generated bounded 18-chunk candidates without changing `v5`. | **Trial artifacts complete, card improvement unfinished.** Prompts and trial outputs are available for diagnosis, but neither candidate qualified for use. |
+| U4 — Candidate screen | Screened `v8` on 18 chunks and reviewed held-out cards. Screened `v9` three ways (shared-context extraction and check; shared extraction with per-group check; per-group extraction and check) and read every card of the last two against its source group. The gate was restated with the user as zero errors after the check pass on a full review of the screen sample. | **Failed factuality gate twice.** `v8`: 47/56 fields, one reversed action-result claim. `v9` final variant: 18/18 ready, 44/56 fields, 203 cards, and 10 cards with an unsupported or misread detail (3 material: an old outcome paired with a new habit, a description attached to the wrong person, a misread remark). The check removes cross-group borrowing but does not reach zero errors with GPT-5 mini on both passes. The useful-fact gate and six-file expansion were not run. |
+| U9 — Card value test (added 2026-10-02) | Added a switch that withholds card facts and card search, and `evals/card_value.py`. Ran Q1-Q8 once per arm, then Q1, Q3, and Q8 twice more per arm, at the U1 configuration. | **Complete: a modest benefit.** The five narrow questions were the same in both arms. On the three broad ones, with cards the agent read more chunks (means 7.7/5.7/7.0 against 5.3/3.3/4.0) and, by agent review against rubric v3, covered somewhat more essential facets (Q1 5.3 against 4.3 of 8; Q3 3.2 against 2.8 of 4; Q8 2.3 against 1.2 of 3). Q8 exhausted its allowance twice without cards and never with them. Cards raised measured cost per run by roughly 60-70%. Three runs per arm and agent scoring make this a signal, not proof. Both arms keep missing the same points (Q1 centralized talent and variable pay; Q3 in-person wording tests). The rubric-v4 named-passage count proved too strict as a coverage measure: each check names one passage, and answers often cite another valid one. |
+| U10 — Job-defined card redesign (added 2026-10-02) | Not started. | **Cancelled by KD3.** |
+| U11 — Remove cards and re-establish the baseline (added 2026-10-02) | Not started. | **Next.** |
+| U5 — Matched card comparison and selection | Never run. | **Cancelled by KD3.** There is no card candidate to compare. |
 | U6 — Revised answer rubric | Preserved rubric v3 and the 21 submitted human judgments. Drafted 91 individually assessable v4 checks and verified 59 source-block alternatives against six captured source hashes; kept in-person wording tests optional for Q3. | **Not complete.** V4 is still a draft pending user review and has not been frozen. Historical v3 ratings were not transferred to v4. |
 | U7 — Grader calibration | Added local checks that inspected passages match the checked originals and that positive grounding excerpts include their cited passage ID. | **Not complete.** No human calibration, fault-control run, or question-grouped held-out validation was performed. The grader cannot establish an answer-quality pass. |
 | U8 — Final Stage 5 gate | Recorded a private failure decision, retained receipts, reconciled spending, and updated current project documentation. | **Acceptance did not pass; formal final evaluation is unfinished.** Known coverage and grounding failures already rule out acceptance. New human usefulness judgments, frozen-v4 grading, and a passing repaired-answer run are absent. |
 
-The accounted upper bounds are **$1.462607 Stage 4**, **$5.661205 Stage 5**, and **$7.123812 cumulative** against their $3.50, $8, and $10 ceilings. Ingestion, evaluation, agent, model, and storage unit suites passed; the storage suite skipped six integration tests without a disposable database. The 59 rubric spans passed a separate check against the six captured source hashes. Private receipts and the failure decision are retained under `.local/`; no vault content or model output is committed.
+The accounted upper bounds are **$1.664654 Stage 4**, **$7.664189 Stage 5**, and **$9.328843 cumulative**. The user stated on 2026-10-02 that budget is not a constraint; the Stage 5 and cumulative reservation ceilings were raised from $8 and $10 to $9 and $11 for U9, and Stage 4's remains $3.50. Ingestion, evaluation, agent, model, and storage unit suites passed; the storage suite skipped six integration tests without a disposable database. The 59 rubric spans passed a separate check against the six captured source hashes. Private receipts and the failure decision are retained under `.local/`; no vault content or model output is committed.
 
-The immediate unresolved work is to make the current-card answers pass U1, then repair and re-screen the card candidate before any card comparison or final acceptance. U6 and U7 remain unfinished as stated above.
+The remaining work, in order, is U11 (remove cards and re-establish the baseline), U6 (widen rubric v4's evidence alternatives, then the user's review and freeze), U7 (grader calibration and held-out validation), and U8 (the final gate with the user's recorded usefulness review). The user reviewed the v11 answers informally on 2026-10-02 and judged their quality very good; the recorded per-question usefulness review for U8 is still to be done. The card gate question is settled by KD2 and R18: cards are judged by retrieval and answers, and only a reversed, misattributed, or invented card fails factuality. U6 and U7 remain unfinished as stated above.
 
 ---
 

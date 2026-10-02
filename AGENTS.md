@@ -1,6 +1,6 @@
 # Project guide
 
-**Status:** The repository captures, parses, and chunks mixed Markdown from an external vault, with source-linked eval labels and local previews. The selected structural/raw embeddings and GPT-5 mini `v5` evidence cards passed a six-file local load/search proof, but repaired live answers still have material quality failures; a richer card candidate failed source review, summaries remain unqualified, and a private hosted vault load remains pending.
+**Status:** The repository captures, parses, and chunks mixed Markdown from an external vault, with source-linked eval labels and local previews. The selected structural/raw embeddings and GPT-5 mini `v5` evidence cards passed a six-file local load/search proof. The repaired answer agent completes the pilot questions from whole-chunk reads with span-level citations, and the user judged the answers very good informally. Evidence cards gave only a modest gain at about 70% more cost and are due to be removed; the rubric freeze, grader validation, final answer gate, and a private hosted vault load remain pending.
 
 Read [SYSTEM.md](SYSTEM.md) for the one-page map. [FOUNDATION.md#current-progress](FOUNDATION.md#current-progress) is the single progress tracker; [INGESTION.md](INGESTION.md), [RETRIEVAL.md](RETRIEVAL.md), and [DATA.md](DATA.md) explain individual parts. Update current facts in place rather than adding a history section.
 
