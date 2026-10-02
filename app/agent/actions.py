@@ -57,8 +57,8 @@ class AgentAction(StrictRecord):
             raise ValueError("find does not select a span")
         if self.action == "read" and not self.reference_id:
             raise ValueError("read action needs a reference ID")
-        if self.action == "read" and (self.span_index is None or self.span_index < 0):
-            raise ValueError("read action needs a nonnegative span index")
+        if self.action == "read" and self.span_index is not None and self.span_index < 0:
+            raise ValueError("read span index must be nonnegative")
         if self.action == "read" and self.query is not None:
             raise ValueError("read cannot search with query; select a span or use search")
         if self.action == "read" and self.offset is not None and self.offset < 0:

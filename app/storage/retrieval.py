@@ -139,7 +139,8 @@ def search_cards(conn: psycopg.Connection, query: str, *, k: int = 10) -> list[C
                      websearch_to_tsquery('simple'::regconfig,%s)) as score,
                 r.document_id,x.run_id,r.source_sha256,d.root_alias,d.relative_path,
                 x.card_id,x.chunk_id,x.payload->>'statement',x.payload->'evidence_span',
-                x.payload->>'situation',x.payload->>'action',x.payload->>'result',x.payload->>'principle'
+                x.payload->>'situation',x.payload->>'action',x.payload->>'result',x.payload->>'principle',
+                c.source_spans,c.raw_text
             from knowledge.cards x
             join knowledge.artifacts a on a.run_id=x.run_id and a.artifact_id=x.artifact_id
             join knowledge.runs r on r.run_id=x.run_id
@@ -180,7 +181,38 @@ def search_cards(conn: psycopg.Connection, query: str, *, k: int = 10) -> list[C
                               root_alias=row[4], relative_path=row[5], card_id=row[6],
                               chunk_id=row[7], statement=row[8], evidence_span=span,
                               situation=row[10], action=row[11], result=row[12],
-                              principle=row[13], query_mode=query_mode))
+                              principle=row[13], query_mode=query_mode,
+                              chunk_spans=row[14], chunk_text=row[15]))
+    return result
+
+
+def chunk_cards(conn: psycopg.Connection, hits: list[FusedHit]) -> dict[tuple[str, str], list[dict]]:
+    """Selected published cards for each discovered chunk, in source order."""
+    keys = list(dict.fromkeys((item.hit.run_id, item.hit.chunk_id) for item in hits))
+    if not keys:
+        return {}
+    with conn.cursor() as cur:
+        profile = _profile(cur, None, None)
+        cur.execute("""select x.run_id,x.chunk_id,x.payload->>'card_type',x.payload->>'statement',
+                x.payload->>'situation',x.payload->>'action',x.payload->>'result',x.payload->>'principle'
+            from knowledge.cards x
+            join knowledge.artifacts a on a.run_id=x.run_id and a.artifact_id=x.artifact_id
+            join knowledge.active_runs ar on ar.run_id=x.run_id
+            cross join knowledge.corpus_state state
+            where state.profile_id=ar.profile_id and ar.profile_id=%s
+              and a.status='ready' and a.kind='cards'
+              and (ar.selection->'required_artifact_ids') ? x.artifact_id
+              and x.run_id=any(%s) and x.chunk_id=any(%s)
+            order by (x.payload->'evidence_span'->>'start_char')::integer,x.card_id""",
+                    (profile[0], [key[0] for key in keys], [key[1] for key in keys]))
+        rows = cur.fetchall()
+    result: dict[tuple[str, str], list[dict]] = {}
+    wanted = set(keys)
+    for row in rows:
+        if (row[0], row[1]) in wanted:
+            result.setdefault((row[0], row[1]), []).append({
+                "card_type": row[2], "statement": row[3], "situation": row[4],
+                "action": row[5], "result": row[6], "principle": row[7]})
     return result
 
 
@@ -298,6 +330,9 @@ class DatabaseRetriever:
 
     def search_cards(self, query: str) -> list[CardHit]:
         return search_cards(self.conn, query)
+
+    def chunk_cards(self, hits: list[FusedHit]) -> dict[tuple[str, str], list[dict]]:
+        return chunk_cards(self.conn, hits)
 
     def find(self, reference: FusedHit | CardHit, query: str) -> list[FusedHit]:
         return find_in_document(self.conn, reference, query)
