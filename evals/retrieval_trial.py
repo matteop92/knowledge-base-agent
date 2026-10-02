@@ -13,7 +13,7 @@ import yaml
 from app.models.openrouter import OpenRouterClient
 from app.storage import StorageError
 from app.storage.loader import connect_runtime
-from app.storage.retrieval import embed_queries, fuse_hits, read_passage, search_cards, selected_embedding_spec
+from app.storage.retrieval import embed_queries, fuse_hits, selected_embedding_spec
 from app.storage.search import search_text, search_vector
 
 K_VALUES = (5, 10, 20)
@@ -112,19 +112,7 @@ def run(conn, client, *, provider_tag: str, price_ceiling: Decimal, max_usd: Dec
             report["metrics"][name][str(k)] = {"covered": covered, "required": required,
                 "recall": covered / required if required else None,
                 "complete_questions": sum(r["complete"] is True for r in rows)}
-    probes = []
-    for query in ("customer", "hiring", "anger"):
-        started = time.perf_counter()
-        cards = search_cards(conn, query, k=20)
-        seconds = time.perf_counter() - started
-        for card in cards:
-            span = card.evidence_span
-            read_passage(conn, document_id=card.document_id, run_id=card.run_id,
-                         source_sha256=card.source_sha256, chunk_id=card.chunk_id,
-                         start_char=span["start_char"], end_char=min(span["end_char"], span["start_char"] + 2400))
-        probes.append({"query": query, "distinct_cards": len(cards), "seconds": seconds,
-                       "verified_original_reads": len(cards)})
-    report.update(status="complete", card_probes=probes)
+    report.update(status="complete")
 
 
 def main() -> int:

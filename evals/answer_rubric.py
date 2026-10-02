@@ -127,3 +127,20 @@ def rubric_fingerprint(rubric: AnswerRubric) -> str:
         for question in data["questions"]:
             question.pop("checks", None)
     return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+
+
+def evidence_hits(rubric: AnswerRubric, question_id: str, passages: list[dict]) -> tuple[int, int]:
+    """Count source-bound checks whose evidence span overlaps a passage of the same revision."""
+    question = next(item for item in rubric.questions if item.id == question_id)
+    bound = found = 0
+    for check in question.checks:
+        spans = [(rubric.source_revisions[alt.source], alt.start_char, alt.end_char)
+                 for alt in check.evidence_alternatives if alt.start_char is not None]
+        if not spans:
+            continue
+        bound += 1
+        found += any(passage["document_id"] == source.document_id
+                     and passage["source_sha256"] == source.source_sha256
+                     and passage["start_char"] < end and start < passage["end_char"]
+                     for source, start, end in spans for passage in passages)
+    return found, bound

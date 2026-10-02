@@ -141,8 +141,6 @@ def run_configuration(rubric: AnswerRubric, config: dict, directory: Path, ledge
                 "--report", str(report_path)]
         if "input_byte_budget" in config:
             args.extend(["--input-byte-budget", str(config["input_byte_budget"])])
-        if config.get("cards") is False:
-            args.append("--no-cards")
         if "budget_profile" in config:
             args.extend(["--budget-profile", config["budget_profile"]])
         if "request_budget" in config:

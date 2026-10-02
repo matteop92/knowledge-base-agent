@@ -1,6 +1,6 @@
 # Project guide
 
-**Status:** The repository captures, parses, and chunks mixed Markdown from an external vault, with source-linked eval labels and local previews. The selected structural/raw embeddings and GPT-5 mini `v5` evidence cards passed a six-file local load/search proof. The repaired answer agent completes the pilot questions from whole-chunk reads with span-level citations, and the user judged the answers very good informally. Evidence cards gave only a modest gain at about 70% more cost and are due to be removed; the rubric freeze, grader validation, final answer gate, and a private hosted vault load remain pending.
+**Status:** The repository captures, parses, and chunks mixed Markdown from an external vault, with source-linked eval labels and local previews. A card-free six-file structural/raw profile with 83 vectors is selected and passed the 41/44/47 of 51 live vector recall proof; source-aware search, the card-free answer baseline, rubric freeze, grader validation, final answer gate, and a private hosted vault load remain pending.
 
 Read [SYSTEM.md](SYSTEM.md) for the one-page map. [FOUNDATION.md#current-progress](FOUNDATION.md#current-progress) is the single progress tracker; [INGESTION.md](INGESTION.md), [RETRIEVAL.md](RETRIEVAL.md), and [DATA.md](DATA.md) explain individual parts. Update current facts in place rather than adding a history section.
 
@@ -8,7 +8,7 @@ Read [SYSTEM.md](SYSTEM.md) for the one-page map. [FOUNDATION.md#current-progres
 
 - `app/ingestion/`: source capture, parsing, chunking, eval mapping, enrichment, summaries, embeddings, and preview CLI.
 - `app/models/`: model interface and opt-in OpenRouter adapter.
-- `prompts/`: versioned prompts for chunk context, evidence cards, section summaries, and document summaries.
+- `prompts/`: versioned prompts for chunk context, section summaries, document summaries, and the answer agent.
 - `evals/`: checked source-span questions for real vault files and synthetic fixture labels; see [evals/README.md](evals/README.md).
 - `tests/`: ingestion and model tests. Run `python -m unittest discover -s tests/ingestion -p 'test_*.py'` and the same command with `tests/models`.
 - `docs/plans/`: focused implementation plans. `knowledge-agent-architecture.md` is the original design brief; `FOUNDATION.md` holds enduring decisions and current progress.

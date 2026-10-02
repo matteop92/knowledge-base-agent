@@ -13,7 +13,6 @@ from app.storage.records import SourcePassage
 class AnswerLimits(StrictRecord):
     max_model_calls: int = Field(default=12, ge=1, le=40)
     max_searches: int = Field(default=5, ge=1, le=20)
-    max_card_searches: int = Field(default=2, ge=0, le=10)
     max_finds: int = Field(default=2, ge=0, le=10)
     max_reads: int = Field(default=8, ge=1, le=30)
     max_seconds: float = Field(default=120, gt=0, le=600)
@@ -21,7 +20,7 @@ class AnswerLimits(StrictRecord):
 
     @classmethod
     def broad(cls) -> AnswerLimits:
-        return cls(max_model_calls=20, max_searches=7, max_card_searches=3,
+        return cls(max_model_calls=20, max_searches=7,
                    max_finds=4, max_reads=10, max_seconds=420, max_output_tokens=2500)
 
 

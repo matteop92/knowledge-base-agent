@@ -1,6 +1,6 @@
 # Personal knowledge agent
 
-This repository captures Markdown from an external Knowledge folder and produces source-linked local artifacts. It supports bold-label and bracket-label transcripts, notes, articles, highlights, and book exports. The original files remain unchanged. Private Postgres storage, hybrid retrieval, and a bounded local answer CLI are available. Live answer quality remains unmeasured.
+This repository captures Markdown from an external Knowledge folder and produces source-linked local artifacts. It supports bold-label and bracket-label transcripts, notes, articles, highlights, and book exports. The original files remain unchanged. Private Postgres storage, hybrid retrieval, and a bounded local answer CLI are available. The card-free six-file profile is selected locally; formal answer quality remains unmeasured.
 
 Start with [SYSTEM.md](SYSTEM.md) for the whole flow and [FOUNDATION.md#current-progress](FOUNDATION.md#current-progress) for stage-by-stage progress; [INGESTION.md](INGESTION.md), [RETRIEVAL.md](RETRIEVAL.md), and [DATA.md](DATA.md) describe each part at its current stage.
 
@@ -17,11 +17,11 @@ python -m app.agent.cli 'What steps could I take to calm myself down when I real
   --max-usd 0.25 --report .local/answer-preflight.json
 ```
 
-Replace `--dry-run` with `--live` and choose a new report filename for an answer. Live mode sends questions/searches and relevant candidate snippets and inspected source passages through OpenRouter to the qualified pinned providers. The default generation configuration is GPT-5 mini at medium reasoning. Each request has fresh usage budgets and an evidence ledger; answering uses a read-only transaction. The compact profile allows 12 model actions, five hybrid searches, two card searches, two document finds, eight whole-chunk reads, and 120 seconds. Add `--budget-profile broad` for a finite 20-action, seven-search, three-card-search, four-find, ten-read, 420-second allowance and more answer output; its request/input budgets and worst-case cost are checked separately. `--input-byte-budget` conservatively counts serialized request bytes plus 512 tokens per request; ingestion retains its existing default budget behavior.
+Replace `--dry-run` with `--live` and choose a new report filename for an answer. Live mode sends questions/searches and relevant candidate snippets and inspected source passages through OpenRouter to the qualified pinned providers. The default generation configuration is GPT-5 mini at medium reasoning. Each request has fresh usage budgets and an evidence ledger; answering uses a read-only transaction. The compact profile allows 12 model actions, five hybrid searches, two document finds, eight whole-chunk reads, and 120 seconds. Add `--budget-profile broad` for a finite 20-action, seven-search, four-find, ten-read, 420-second allowance and more answer output; its request/input budgets and worst-case cost are checked separately. `--input-byte-budget` conservatively counts serialized request bytes plus 512 tokens per request; ingestion retains its existing default budget behavior.
 
 Human output includes the answer, cited locators, bounded excerpts, and evidence gaps. `--json` explicitly outputs the full result. Optional `--report` files must be new paths under ignored `.local/`; they contain private answers, inspected passages, action/rank traces, stop reasons, model configuration, usage, and estimated cost. Interrupted or failed attempts are retained when a report was requested; they are not quality passes. Runtime citation checks establish inspected-source provenance; the frozen pilot review establishes semantic support and usefulness.
 
-The approved Stage 5 ceiling is $8 and the cumulative ceiling is $10. A CLI call enforces its own conservative cost bound; the operator must account for previous reports before selecting a new per-call cap. No answer API or deployment is included.
+The current Stage 5 reservation ceiling is $9 and the cumulative ceiling is $11; measured calls are recorded in `.local/stage5-budget.json`. A CLI call enforces its own conservative cost bound; the operator must account for previous reports before selecting a new per-call cap. No answer API or deployment is included.
 
 ## Preview a source
 
@@ -43,7 +43,7 @@ The exact source bytes determine `source_sha256`; Unicode character offsets refe
 
 ## Model enrichment
 
-`app/ingestion/enrichment.py`, `summary.py`, and `embeddings.py` accept the project's `ModelClient` interface and a `RunManifest`. They write versioned context, evidence cards, summaries, and embedding batches under the run directory. Evidence cards require exact source text and attribution; partial summary and embedding work remains incomplete and can resume. `EmbeddingSpec` includes provider, model and version, dimensions, metric, input recipe, context prompt version, chunking version, and creation time. Changing a model or recipe creates a separate artifact version.
+`app/ingestion/enrichment.py`, `summary.py`, and `embeddings.py` accept the project's `ModelClient` interface and a `RunManifest`. They write versioned context, summaries, and embedding batches under the run directory. Partial summary and embedding work remains incomplete and can resume. `EmbeddingSpec` includes provider, model and version, dimensions, metric, input recipe, context prompt version, chunking version, and creation time. Changing a model or recipe creates a separate artifact version.
 
 The direct OpenRouter adapter is opt in. Construct `OpenRouterClient(allow_live=True, request_budget=..., estimated_input_token_budget=...)` only after choosing to send source text externally; it also requires `OPENROUTER_API_KEY`. Request and estimated input budgets are enforced before each call. The automated tests use fake clients and require no key. Model outputs and source snapshots stay in the ignored runtime directory; do not commit them. The token estimate uses a local lexical count, so it is a budget guard rather than provider billing data.
 
@@ -57,7 +57,7 @@ With local Supabase Postgres running, start the read-only viewer from the reposi
 python -m app.storage.local_viewer
 ```
 
-Open [http://127.0.0.1:8765/](http://127.0.0.1:8765/) in your browser. The evidence cards page has a source-document filter and card-text search; results show 25 cards per page and link to full evidence. The viewer reads `KNOWLEDGE_DATABASE_URL` from your environment or the repository's ignored `.env`, binds only to this computer, and stops when you close its terminal. Restart the same command after a reboot. It reads the selected profile's active cards; other tables remain available as raw views.
+Open [http://127.0.0.1:8765/](http://127.0.0.1:8765/) in your browser. The viewer reads `KNOWLEDGE_DATABASE_URL` from your environment or the repository's ignored `.env`, binds only to this computer, and shows the active profile and raw schema tables. Restart the same command after a reboot.
 
 Run a local Supabase Postgres instance with Docker and apply the versioned migration:
 

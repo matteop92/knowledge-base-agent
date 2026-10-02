@@ -9,7 +9,7 @@ import math
 from pathlib import Path
 
 from app.ingestion.embeddings import EmbeddingSpec, embed_chunks
-from app.ingestion.enrichment import _block_card_input, _group_card_input, _input, _prompt, extract_evidence_cards, generate_chunk_context
+from app.ingestion.enrichment import _input, _prompt, generate_chunk_context
 from app.ingestion.run_manifest import RunManifest
 from app.ingestion.summary import summarize_document
 from app.models.client import ModelSpec
@@ -46,25 +46,15 @@ def _record_spend(report: dict, client: OpenRouterClient) -> None:
         }
 
 
-def estimate(prepared: list[Prepared], context_id: str | None, cards_id: str,
+def estimate(prepared: list[Prepared], context_id: str | None,
              summary_id: str | None, contextual: bool,
-             card_prompt_version: str = "evidence_cards_v5",
              summary_prompt_family: str = "v1") -> dict:
     if contextual != (context_id is not None):
         raise ValueError("context model is required only for contextual embeddings")
     context_prompt = _prompt(CONTEXT_PROMPT)[0] if contextual else ""
-    card_prompt, _ = _prompt(card_prompt_version)
     chunks = [(item, chunk) for item in prepared for chunk in item.sets["structural_raw"].chunks]
     context_input = sum(len(context_prompt.encode()) + len(_input(item.parsed, chunk).encode())
                         for item, chunk in chunks) if contextual else 0
-    card_input = sum(len(card_prompt.encode()) + len(
-        (_group_card_input(item.parsed, chunk, 1800)
-         if card_prompt_version == "evidence_cards_v5" else
-         _block_card_input(item.parsed, chunk, 1800,
-                           strict_blocks=card_prompt_version == "evidence_cards_v4")
-         if card_prompt_version in ("evidence_cards_v3", "evidence_cards_v4", "evidence_cards_v5")
-         else _input(item.parsed, chunk)).encode())
-                     for item, chunk in chunks)
     if summary_id is None:
         summary_calls = 0
         summary_input = 0
@@ -78,42 +68,37 @@ def estimate(prepared: list[Prepared], context_id: str | None, cards_id: str,
         summary_input = summary_calls * {"v1": 14_000, "v2": 24_000}[summary_prompt_family]
     embed_input = sum(len(chunk.raw_text.encode()) + (360 * 16 if contextual else 0)
                       for _, chunk in chunks)
-    input_total = context_input + card_input + summary_input + embed_input
+    input_total = context_input + summary_input + embed_input
     output_context = len(chunks) * 360 * 4 if contextual else 0
-    output_cards = len(chunks) * 700 * 4
     output_summary = summary_calls * (1200 if summary_prompt_family == "v6" else
                                       900 if summary_prompt_family in ("v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17") else
                                       700 if summary_prompt_family in ("v2", "v3", "v4", "v5") else 400) * 4
     ci, co = CONTEXT_PRICES[context_id] if context_id else (0, 0)
-    ki, ko = CONTEXT_PRICES[cards_id]
     si, so = CONTEXT_PRICES[summary_id] if summary_id else (0, 0)
     cost = ((context_input * ci + output_context * co
-             + card_input * ki + output_cards * ko
              + summary_input * si + output_summary * so
              + embed_input * EMBEDDING_PRICE) / 1_000_000)
     return {
         "documents": len(prepared), "structural_chunks": len(chunks),
-        "request_bound": 1 + len(chunks) * (1 + int(contextual)) + summary_calls + sum(
+        "request_bound": 1 + len(chunks) * int(contextual) + summary_calls + sum(
             math.ceil(len(item.sets["structural_raw"].chunks) / 16) for item in prepared),
         "estimated_input_token_bound": input_total,
         "conservative_usd": round(cost, 6),
     }
 
 
-def complete(prepared: list[Prepared], context_id: str | None, cards_id: str,
+def complete(prepared: list[Prepared], context_id: str | None,
              summary_id: str | None, contextual: bool, cap: float, output: Path,
-             *, card_prompt_version: str = "evidence_cards_v5",
-             summary_prompt_family: str = "v1",
+             *, summary_prompt_family: str = "v1",
              request_limit: int | None = None) -> dict:
-    plan = estimate(prepared, context_id, cards_id, summary_id, contextual,
-                    card_prompt_version, summary_prompt_family)
+    plan = estimate(prepared, context_id, summary_id, contextual, summary_prompt_family)
     if cap <= 0 or plan["conservative_usd"] > cap:
         raise ValueError("conservative complete-run estimate exceeds spend cap")
     if request_limit is not None and request_limit < 1:
         raise ValueError("request limit must be positive")
     _load_key()
     _load_database_url()
-    models = sorted({model_id for model_id in (context_id, cards_id, summary_id, EMBEDDING_MODEL)
+    models = sorted({model_id for model_id in (context_id, summary_id, EMBEDDING_MODEL)
                      if model_id is not None})
     request_budget = min(plan["request_bound"], request_limit) if request_limit else plan["request_bound"]
     client = OpenRouterClient(
@@ -122,21 +107,18 @@ def complete(prepared: list[Prepared], context_id: str | None, cards_id: str,
         provider=PRIVACY, model_providers=provider_routes(models),
     )
     routes = verify_routes(client, models,
-                           structured_ids={model_id for model_id in (context_id, cards_id, summary_id)
+                           structured_ids={model_id for model_id in (context_id, summary_id)
                                            if model_id is not None})
     context_model = (ModelSpec(provider="openrouter", model_id=context_id,
                                model_version="accepted-2026-09-24")
                      if context_id else None)
-    cards_model = ModelSpec(provider="openrouter", model_id=cards_id,
-                            model_version="accepted-2026-09-24")
     summary_model = (ModelSpec(provider="openrouter", model_id=summary_id,
                                model_version="accepted-2026-09-24")
                      if summary_id else None)
     report = {"estimate": plan, "spend_cap_usd": cap, "privacy_route": PRIVACY,
               "eligible_zdr_routes": routes,
-              "models": {"context": context_id, "cards": cards_id,
+              "models": {"context": context_id,
                          "summary": summary_id, "embedding": EMBEDDING_MODEL},
-              "card_prompt_version": card_prompt_version,
               "summary_prompt_family": summary_prompt_family if summary_model else None,
               "request_budget": request_budget,
               "embedding_recipe": "contextualized-v1" if contextual else "raw-v1",
@@ -163,10 +145,6 @@ def complete(prepared: list[Prepared], context_id: str | None, cards_id: str,
                         item.parsed, chunks, chunk, client, context_model, manifest,
                         item.run_dir, prompt_version=CONTEXT_PROMPT,
                     )
-            for chunk in chunks.chunks:
-                extract_evidence_cards(item.parsed, chunks, chunk, client,
-                                       cards_model, manifest, item.run_dir,
-                                       prompt_version=card_prompt_version)
             if summary_model:
                 progress = summarize_document(item.parsed, chunks, client, summary_model,
                                               manifest, item.run_dir,
@@ -190,9 +168,6 @@ def complete(prepared: list[Prepared], context_id: str | None, cards_id: str,
             if not embeddings.ready:
                 raise ValueError("embedding batch did not complete")
             entry.update(status="ready", context_count=len(contexts),
-                         card_artifact_count=sum(record.kind == "cards" and record.status == "ready"
-                                                 and record.model == cards_model
-                                                 for record in manifest.artifacts.values()),
                          summary_count=sum(record.kind == "summary" and record.status == "ready"
                                            and record.model == summary_model
                                            for record in manifest.artifacts.values()) if summary_model else 0,
@@ -220,19 +195,19 @@ def complete(prepared: list[Prepared], context_id: str | None, cards_id: str,
             chunking_version=prepared[0].sets["structural_raw"].chunking_version,
         )
         profile_id = "stage4-" + hashlib.sha256(
-            (spec_id(selected_spec) + cards_id + (summary_id or "no-summary")
-             + card_prompt_version + (summary_prompt_family if summary_id else "")).encode()
+            (spec_id(selected_spec) + (summary_id or "no-summary")
+             + (summary_prompt_family if summary_id else "")).encode()
         ).hexdigest()[:12]
         create_profile(conn, SearchProfile(
             profile_id=profile_id, variant="structural_raw",
             chunking_version=selected_spec.chunking_version,
             embedding_spec_id=spec_id(selected_spec),
-            required_artifact_kinds=(["context"] if contextual else []) + ["cards"]
+            required_artifact_kinds=(["context"] if contextual else [])
                                     + (["summary"] if summary_model else []),
         ))
         for item in prepared:
             manifest = RunManifest.load(item.run_dir)
-            required_kinds = {"cards"} | ({"context"} if contextual else set())
+            required_kinds = {"context"} if contextual else set()
             if summary_model:
                 required_kinds.add("summary")
             required_ids = [record.artifact_id for record in manifest.artifacts.values()
@@ -297,11 +272,8 @@ def main() -> int:
     parser.add_argument("--runtime-dir", type=Path, default=Path(".local/stage4-complete/runs"))
     parser.add_argument("--output", type=Path, default=Path(".local/stage4-complete/report.json"))
     parser.add_argument("--context-model", choices=sorted(CONTEXT_PRICES))
-    parser.add_argument("--cards-model", choices=sorted(CONTEXT_PRICES), required=True)
     parser.add_argument("--summary-model", choices=sorted(CONTEXT_PRICES))
     parser.add_argument("--contextual-embeddings", action="store_true")
-    parser.add_argument("--card-prompt-version", choices=("evidence_cards_v1", "evidence_cards_v2", "evidence_cards_v3", "evidence_cards_v4", "evidence_cards_v5"),
-                        default="evidence_cards_v5")
     parser.add_argument("--summary-prompt-family", choices=("v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17"), default="v1")
     parser.add_argument("--request-limit", type=int)
     parser.add_argument("--max-usd", type=float, required=True)
@@ -312,16 +284,14 @@ def main() -> int:
         parser.error("--context-model is required only with --contextual-embeddings")
     prepared = prepare(args.source_root, args.eval_dir, args.runtime_dir, args.root_alias,
                        resume=args.resume)
-    plan = estimate(prepared, args.context_model, args.cards_model,
-                    args.summary_model, args.contextual_embeddings,
-                    args.card_prompt_version, args.summary_prompt_family)
+    plan = estimate(prepared, args.context_model,
+                    args.summary_model, args.contextual_embeddings, args.summary_prompt_family)
     if not args.live:
         print(json.dumps(plan, indent=2))
         return 0
-    report = complete(prepared, args.context_model, args.cards_model,
+    report = complete(prepared, args.context_model,
                       args.summary_model, args.contextual_embeddings,
                       args.max_usd, args.output,
-                      card_prompt_version=args.card_prompt_version,
                       summary_prompt_family=args.summary_prompt_family,
                       request_limit=args.request_limit)
     print(json.dumps({"report_path": str(args.output),

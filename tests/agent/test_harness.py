@@ -6,8 +6,8 @@ from app.agent.harness import answer_question as _answer_question
 from app.agent.records import AnswerLimits
 from app.models.client import GenerationResult, ModelSpec
 from app.storage import StorageError
-from app.storage.records import CardHit, FusedHit, SearchHit, SourcePassage
-from tests.agent.test_actions import action, action_v2
+from app.storage.records import FusedHit, SearchHit, SourcePassage
+from tests.agent.test_actions import action, action_v2, action_v3
 
 
 MODEL = ModelSpec(provider="fake", model_id="fake", model_version="1")
@@ -33,9 +33,6 @@ class FakeRetriever:
                          raw_text="actual source")
         return [FusedHit(rank=1, rrf_score=1 / 61, channels=["text"], hit=item)]
 
-    def search_cards(self, query):
-        return []
-
     def read(self, reference, span_index):
         if span_index != 0:
             raise IndexError
@@ -46,14 +43,14 @@ class FakeRetriever:
 
 class HarnessTest(unittest.TestCase):
     def test_nonfinish_draft_answer_does_not_discard_valid_source_read(self):
-        draft_read = action_v2("read", reference_id="E1", span_index=0,
+        draft_read = action_v3("read", reference_id="E1", span_index=0,
                                answer="Unverified draft", citation_ids=["E1.0"],
                                completeness="partial", sufficient=False,
                                gaps=["More to inspect"])
         resolved = [{"id": "N1", "description": "Explain", "status": "resolved",
                      "evidence_ids": ["E1.0"], "rationale": None}]
-        client = FakeClient([action_v2("search", query="source"), draft_read,
-                             action_v2("finish", answer="Grounded [E1.0]",
+        client = FakeClient([action_v3("search", query="source"), draft_read,
+                             action_v3("finish", answer="Grounded [E1.0]",
                                        citation_ids=["E1.0"], completeness="complete",
                                        sufficient=True, need_updates=resolved)])
         result = answer_question("Explain", retriever=FakeRetriever(), client=client, model=MODEL,
@@ -74,10 +71,10 @@ class HarnessTest(unittest.TestCase):
                 return super().generate_json(**kwargs)
 
         client = CapturingClient([
-            action_v2("search", query="first"),
-            action_v2("search", query="second"),
-            action_v2("read", reference_id="E1", span_index=0),
-            action_v2("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
+            action_v3("search", query="first"),
+            action_v3("search", query="second"),
+            action_v3("read", reference_id="E1", span_index=0),
+            action_v3("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
                       completeness="complete", sufficient=True,
                       need_updates=[{"id": "N1", "description": "Explain", "status": "resolved",
                                      "evidence_ids": ["E1.0"], "rationale": None}]),
@@ -87,8 +84,8 @@ class HarnessTest(unittest.TestCase):
         self.assertEqual(result.termination, "completed")
 
     def test_new_run_rejects_legacy_action_version(self):
-        client = FakeClient([action('search', query='source'),
-                             action_v2('finish', answer='No verified source.',
+        client = FakeClient([action_v2('search', query='source'),
+                             action_v3('finish', answer='No verified source.',
                                        completeness='unsupported', sufficient=False,
                                        gaps=['No source was inspected'])])
         result = _answer_question('Explain', retriever=FakeRetriever(), client=client,
@@ -114,10 +111,10 @@ class HarnessTest(unittest.TestCase):
         retriever = FindingRetriever()
         needs = [{"id": "N1", "description": "Explain the later source", "status": "resolved",
                   "evidence_ids": ["E2.0"], "rationale": None}]
-        client = FakeClient([action_v2("search", query="source"),
-            action_v2("find", reference_id="E1", query="later detail"),
-            action_v2("read", reference_id="E2", span_index=0),
-            *[action_v2("finish", answer="Later fact [E2.0]", citation_ids=["E2.0"],
+        client = FakeClient([action_v3("search", query="source"),
+            action_v3("find", reference_id="E1", query="later detail"),
+            action_v3("read", reference_id="E2", span_index=0),
+            *[action_v3("finish", answer="Later fact [E2.0]", citation_ids=["E2.0"],
                         completeness="complete", sufficient=True, need_updates=needs)] * 2])
         result = answer_question("Explain the later source", retriever=retriever, client=client, model=MODEL)
         self.assertEqual(retriever.find_query, "later detail")
@@ -132,11 +129,11 @@ class HarnessTest(unittest.TestCase):
 
         resolved = [{"id": "N1", "description": "Explain", "status": "resolved",
                      "evidence_ids": ["E1.0"], "rationale": None}]
-        client = CapturingClient([action_v2("search", query="source"),
-            action_v2("read", reference_id="E1", span_index=0),
-            action_v2("finish", answer="Too early [E1.0]", citation_ids=["E1.0"],
+        client = CapturingClient([action_v3("search", query="source"),
+            action_v3("read", reference_id="E1", span_index=0),
+            action_v3("finish", answer="Too early [E1.0]", citation_ids=["E1.0"],
                       completeness="complete", sufficient=True),
-            action_v2("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
+            action_v3("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
                       completeness="complete", sufficient=True, need_updates=resolved)])
         result = answer_question("Explain", retriever=FakeRetriever(), client=client, model=MODEL)
         self.assertEqual(result.completeness, "complete")
@@ -165,9 +162,9 @@ class HarnessTest(unittest.TestCase):
         retriever.offsets = []
         resolved = [{"id": "N1", "description": "Later detail", "status": "resolved",
                      "evidence_ids": ["E1.0@2400"], "rationale": None}]
-        client = FakeClient([action_v2("read", reference_id="E1"),
-            action_v2("read", reference_id="E1.1"),
-            action_v2("finish", answer="Later detail [E1.0@2400] and [E1.1]",
+        client = FakeClient([action_v3("read", reference_id="E1"),
+            action_v3("read", reference_id="E1.1"),
+            action_v3("finish", answer="Later detail [E1.0@2400] and [E1.1]",
                       citation_ids=["E1.0@2400", "E1.1"],
                       completeness="complete", sufficient=True, need_updates=resolved)])
         result = answer_question("Later detail", retriever=retriever, client=client, model=MODEL)
@@ -178,7 +175,7 @@ class HarnessTest(unittest.TestCase):
         self.assertEqual(result.citations["E1.0@2400"].start_char, 2400)
         self.assertEqual(result.host_search["query"], "Later detail")
 
-    def test_candidates_keep_best_rank_and_show_chunk_card_facts(self):
+    def test_candidates_keep_best_rank_without_facts(self):
         class Ranked(FakeRetriever):
             def search(self, query):
                 sample = super().search(query)[0]
@@ -187,24 +184,18 @@ class HarnessTest(unittest.TestCase):
                     "chunk_id": str(index), "raw_text": f"chunk {index} text"})})
                     for rank, index in enumerate(order, 1)]
 
-            def chunk_cards(self, hits):
-                return {(item.hit.run_id, item.hit.chunk_id): [
-                    {"card_type": "example", "statement": f"fact of {item.hit.chunk_id}",
-                     "situation": None, "action": "did a thing", "result": None, "principle": None}]
-                    for item in hits}
-
         class CapturingClient(FakeClient):
             def generate_json(self, **kwargs):
                 self.last_input = kwargs["input_text"]
                 return super().generate_json(**kwargs)
 
         import json
-        client = CapturingClient([action_v2("search", query="narrow"),
-            action_v2("finish", answer="Not yet verified.", completeness="unsupported",
+        client = CapturingClient([action_v3("search", query="narrow"),
+            action_v3("finish", answer="Not yet verified.", completeness="unsupported",
                       sufficient=False, gaps=["Need original reads"],
                       need_updates=[{"id": "N1", "description": "Explain", "status": "excluded",
                                      "evidence_ids": [], "rationale": "test"}]),
-            action_v2("finish", answer="Not yet verified.", completeness="unsupported",
+            action_v3("finish", answer="Not yet verified.", completeness="unsupported",
                       sufficient=False, gaps=["Need original reads"])])
         answer_question("Explain", retriever=Ranked(), client=client, model=MODEL,
                         limits=AnswerLimits(max_model_calls=3))
@@ -212,7 +203,7 @@ class HarnessTest(unittest.TestCase):
         # Top hits of both searches stay visible; the first search's leaders are not pushed out.
         self.assertEqual([item["id"] for item in shown[:3]], ["E1", "E20", "E2"])
         self.assertEqual(len(shown), 20)
-        self.assertEqual(shown[0]["facts"], ["example: fact of 0 | action: did a thing"])
+        self.assertNotIn("facts", shown[0])
 
     def test_stray_fields_are_ignored_and_invalid_feedback_names_the_rule(self):
         class CapturingClient(FakeClient):
@@ -226,10 +217,10 @@ class HarnessTest(unittest.TestCase):
 
         resolved = [{"id": "N1", "description": "Explain", "status": "resolved",
                      "evidence_ids": ["E1.0"], "rationale": None}]
-        client = CapturingClient([action_v2("read", reference_id="E1.0", query="stray"),
-            action_v2("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
+        client = CapturingClient([action_v3("read", reference_id="E1.0", query="stray"),
+            action_v3("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
                       completeness="complete", sufficient=False, need_updates=resolved),
-            action_v2("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
+            action_v3("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
                       completeness="complete", sufficient=True, need_updates=resolved)])
         result = answer_question("Explain", retriever=FakeRetriever(), client=client, model=MODEL)
         self.assertEqual(result.actions[0]["ignored_fields"], ["query"])
@@ -267,9 +258,9 @@ class HarnessTest(unittest.TestCase):
 
         resolved = [{"id": "N1", "description": "Explain", "status": "resolved",
                      "evidence_ids": ["E1.0"], "rationale": None}]
-        early = action_v2("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
+        early = action_v3("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
                           completeness="complete", sufficient=True, need_updates=resolved)
-        client = CapturingClient([action_v2("read", reference_id="E1"), early, early])
+        client = CapturingClient([action_v3("read", reference_id="E1"), early, early])
         result = answer_question("Explain", retriever=TwoChunks(), client=client, model=MODEL)
         self.assertEqual(result.actions[1]["rejected"], "Unread chunks remain in sources already used")
         self.assertIn("E2", client.inputs[2])
@@ -295,10 +286,10 @@ class HarnessTest(unittest.TestCase):
         import json
         retriever = TwoSources()
         retriever.calls = 0
-        done = action_v2("finish", answer="Not verified.", completeness="unsupported",
+        done = action_v3("finish", answer="Not verified.", completeness="unsupported",
                          sufficient=False, gaps=["Need original reads"])
-        client = CapturingClient([action_v2("search", query="Small  Source"),
-                                  action_v2("search", query="small source"), done, done])
+        client = CapturingClient([action_v3("search", query="Small  Source"),
+                                  action_v3("search", query="small source"), done, done])
         result = answer_question("Explain", retriever=retriever, client=client, model=MODEL,
                                  limits=AnswerLimits(max_model_calls=4))
         self.assertEqual(retriever.calls, 2)  # host search plus one model search
@@ -307,64 +298,20 @@ class HarnessTest(unittest.TestCase):
         self.assertEqual([item["path"] for item in shown].count("small.md"), 2)
         self.assertEqual(len(shown), 22)
 
-    def test_withheld_cards_remove_facts_and_card_search(self):
-        class WithCards(FakeRetriever):
-            card_searches = 0
-
-            def chunk_cards(self, hits):
-                return {(item.hit.run_id, item.hit.chunk_id): [
-                    {"card_type": "claim", "statement": "a fact", "situation": None,
-                     "action": None, "result": None, "principle": None}] for item in hits}
-
-            def search_cards(self, query):
-                self.card_searches += 1
-                return []
-
-        class CapturingClient(FakeClient):
-            def __init__(self, actions):
-                super().__init__(actions)
-                self.inputs, self.schemas = [], []
-
-            def generate_json(self, **kwargs):
-                self.inputs.append(kwargs["input_text"])
-                self.schemas.append(kwargs["json_schema"]["properties"]["action"]["enum"])
-                return super().generate_json(**kwargs)
-
-        done = action_v2("finish", answer="Not verified.", completeness="unsupported",
-                         sufficient=False, gaps=["Need original reads"])
-        for use_cards in (True, False):
-            retriever = WithCards()
-            client = CapturingClient([action_v2("search_cards", query="lead"), done, done])
-            result = _answer_question("Explain", retriever=retriever, client=client, model=MODEL,
-                                      limits=AnswerLimits(max_model_calls=3), use_cards=use_cards)
-            self.assertEqual("a fact" in client.inputs[0], use_cards)
-            self.assertEqual("search_cards" in client.schemas[0], use_cards)
-            self.assertEqual(retriever.card_searches, 1 if use_cards else 0)
-            self.assertEqual(result.actions[0].get("rejected"),
-                             None if use_cards else "Card search is not available")
-
-    def test_card_hit_becomes_a_readable_chunk_candidate(self):
-        class CardRetriever(FakeRetriever):
+    def test_unknown_card_action_does_not_call_retriever(self):
+        class TrackingRetriever(FakeRetriever):
+            calls = 0
             def search(self, query):
-                return []
-
-            def search_cards(self, query):
-                return [CardHit(rank=1, score=0.5, document_id="doc", run_id="run",
-                                source_sha256="a" * 64, root_alias="root", relative_path="note.md",
-                                card_id="card", chunk_id="chunk", statement="A grounded lead",
-                                evidence_span={"start_char": 4, "end_char": 9},
-                                chunk_spans=[{"start_char": 0, "end_char": 13}],
-                                chunk_text="actual source")]
-
-        resolved = [{"id": "N1", "description": "Explain", "status": "resolved",
-                     "evidence_ids": ["E1.0"], "rationale": None}]
-        client = FakeClient([action_v2("search_cards", query="lead"),
-            action_v2("read", reference_id="E1"),
-            action_v2("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
-                      completeness="complete", sufficient=True, need_updates=resolved)])
-        result = answer_question("Explain", retriever=CardRetriever(), client=client, model=MODEL)
-        self.assertEqual(result.citations["E1.0"].text, "actual source")
-        self.assertNotIn("chunk_text", result.actions[0]["results"][0])
+                self.calls += 1
+                return super().search(query)
+        retriever = TrackingRetriever()
+        client = FakeClient([action_v3("search_cards", query="lead"),
+            action_v3("finish", answer="Not verified.", completeness="unsupported",
+                      sufficient=False, gaps=["No inspected evidence"])])
+        result = _answer_question("Explain", retriever=retriever, client=client, model=MODEL,
+                                  limits=AnswerLimits(max_model_calls=2))
+        self.assertEqual(retriever.calls, 1)
+        self.assertEqual(result.actions[0]["action"], "invalid")
 
     def test_later_malformed_json_can_be_repaired_without_losing_reads(self):
         from app.models.client import ModelClientError
@@ -499,11 +446,13 @@ class HarnessTest(unittest.TestCase):
 
     def test_failed_tool_keeps_prior_reads_and_records_stop_reason(self):
         class FailingRetriever(FakeRetriever):
-            def search_cards(self, query):
-                raise StorageError("private passage must not enter error")
+            def search(self, query):
+                if query == "another angle":
+                    raise StorageError("private passage must not enter error")
+                return super().search(query)
         client = FakeClient([action("search", query="source"),
                              action("read", reference_id="E1", span_index=0),
-                             action("search_cards", query="another angle")])
+                             action("search", query="another angle")])
         result = answer_question("Explain", retriever=FailingRetriever(), client=client, model=MODEL)
         self.assertEqual(result.termination, "tool_failed")
         self.assertEqual(result.inspected["E1.0"].text, "actual source")
