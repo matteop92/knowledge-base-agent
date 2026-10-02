@@ -68,5 +68,5 @@ class CLITest(unittest.TestCase):
             config = json.loads(path.read_text())["configuration"]
             self.assertEqual(config["action_schema_version"], 2)
             self.assertEqual(config["limits"]["max_finds"], 4)
-            self.assertEqual(config["limits"]["max_reads"], 14)
+            self.assertEqual(config["limits"]["max_reads"], 10)
             self.assertEqual(config["request_budget"], 28)

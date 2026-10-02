@@ -76,11 +76,13 @@ class RetrievalTest(unittest.TestCase):
         cur.fetchall.side_effect = [[], [(0.3, "doc", "run", "a" * 64, "root", "note.md",
                                          "card", "chunk", "Relevant statement",
                                          {"start_char": 1, "end_char": 10},
-                                         "situation", "action", "result", "principle")]]
+                                         "situation", "action", "result", "principle",
+                                         [{"start_char": 0, "end_char": 20}], "chunk source text")]]
         with patch("app.storage.retrieval._profile", return_value=("profile",)):
             found = search_cards(conn, "long unusual principle query", k=3)
         self.assertEqual(found[0].query_mode, "or_fallback")
         self.assertEqual(found[0].situation, "situation")
+        self.assertEqual(found[0].chunk_spans, [{"start_char": 0, "end_char": 20}])
         self.assertEqual(cur.execute.call_count, 2)
         first_sql, first_args = cur.execute.call_args_list[0].args
         second_sql, second_args = cur.execute.call_args_list[1].args

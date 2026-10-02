@@ -59,7 +59,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--input-byte-budget", type=int,
                         help="conservative input allowance: request UTF-8 bytes plus 512 tokens per request")
     parser.add_argument("--model", default="openai/gpt-5-mini")
-    parser.add_argument("--reasoning-effort", choices=("none", "minimal", "low", "medium", "high"), default="minimal")
+    parser.add_argument("--reasoning-effort", choices=("none", "minimal", "low", "medium", "high"), default="medium")
+    parser.add_argument("--no-cards", action="store_true",
+                        help="withhold card facts and card search, for measuring what cards add")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--report", type=Path, help="explicit private report under .local/")
     args = parser.parse_args(argv)
@@ -67,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.request_budget is None:
         args.request_budget = 28 if args.budget_profile == "broad" else 18
     if args.input_byte_budget is None:
-        args.input_byte_budget = 700000 if args.budget_profile == "broad" else 400000
+        args.input_byte_budget = 1600000 if args.budget_profile == "broad" else 800000
     if not args.question.strip():
         parser.error("question must not be empty")
     if args.reasoning_effort != "none" and not args.model.startswith("openai/"):
@@ -121,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
                         "prompt_file_sha256": hashlib.sha256(PROMPT_PATH.read_bytes()).hexdigest(),
                         "action_schema_version": 2,
                         "action_schema_sha256": hashlib.sha256(json.dumps(ACTION_SCHEMA_V2, sort_keys=True).encode()).hexdigest(),
-                        "budget_profile": args.budget_profile,
+                        "budget_profile": args.budget_profile, "cards": not args.no_cards,
                         "limits": limits.model_dump(), "request_budget": args.request_budget,
                         "input_byte_budget": args.input_byte_budget, "input_budget_mode": "utf8_bytes_plus_512_per_request",
                         "max_usd": str(args.max_usd),
@@ -134,7 +136,8 @@ def main(argv: list[str] | None = None) -> int:
                 result = answer_question(args.question, retriever=retriever, client=client,
                                          model=ModelSpec(provider="openrouter", model_id=args.model,
                                                          model_version="current"),
-                                         limits=limits, reasoning_effort=None if args.reasoning_effort == "none" else args.reasoning_effort)
+                                         limits=limits, reasoning_effort=None if args.reasoning_effort == "none" else args.reasoning_effort,
+                                         use_cards=not args.no_cards)
                 prices = {args.model: (prompt_price, completion_price),
                           spec.model: (Decimal(str(embedding_endpoint["pricing"]["prompt"])), Decimal(0))}
                 known_usage = len(client.request_timings) == len(client.billable_requests) and all(usage.input_tokens is not None and (

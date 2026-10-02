@@ -21,8 +21,8 @@ class AnswerLimits(StrictRecord):
 
     @classmethod
     def broad(cls) -> AnswerLimits:
-        return cls(max_model_calls=18, max_searches=7, max_card_searches=3,
-                   max_finds=4, max_reads=14, max_seconds=180, max_output_tokens=1500)
+        return cls(max_model_calls=20, max_searches=7, max_card_searches=3,
+                   max_finds=4, max_reads=10, max_seconds=420, max_output_tokens=2500)
 
 
 class AnswerResult(StrictRecord):
@@ -35,5 +35,6 @@ class AnswerResult(StrictRecord):
     inspected: dict[str, SourcePassage] = Field(default_factory=dict)
     needs: dict[str, dict] = Field(default_factory=dict)
     finalization_reason: str | None = None
+    host_search: dict | None = None
     termination: Literal["completed", "exhausted", "model_failed", "tool_failed"] = "completed"
     elapsed_seconds: float = Field(default=0, ge=0)

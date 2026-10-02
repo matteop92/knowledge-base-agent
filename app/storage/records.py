@@ -81,6 +81,8 @@ class CardHit(StrictRecord):
     result: str | None = None
     principle: str | None = None
     query_mode: Literal["all_terms", "or_fallback"] = "all_terms"
+    chunk_spans: list[dict] | None = None
+    chunk_text: str | None = None
 
 
 class SourcePassage(StrictRecord):
