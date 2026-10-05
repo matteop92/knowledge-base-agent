@@ -42,6 +42,19 @@ class FakeRetriever:
 
 
 class HarnessTest(unittest.TestCase):
+    def test_complete_finish_with_declared_gap_is_recorded_partial(self):
+        resolved = [{"id": "N1", "description": "Explain", "status": "resolved",
+                     "evidence_ids": ["E1.0"], "rationale": None}]
+        result = answer_question("Explain", retriever=FakeRetriever(), client=FakeClient([
+            action_v3("read", reference_id="E1"),
+            action_v3("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
+                      completeness="complete", sufficient=True, gaps=["One detail is unavailable"],
+                      need_updates=resolved)]), model=MODEL)
+        self.assertEqual(result.termination, "completed")
+        self.assertEqual(result.completeness, "partial")
+        self.assertEqual(result.gaps, ["One detail is unavailable"])
+        self.assertNotIn("rejected", result.actions[-1])
+
     def test_candidate_shows_title_and_people_without_path(self):
         class LabeledRetriever(FakeRetriever):
             def search(self, query):
@@ -355,6 +368,45 @@ class HarnessTest(unittest.TestCase):
         self.assertEqual(result.actions[2], {'action':'invalid','reason':'malformed_output'})
         self.assertIn('no prose or Markdown fences', client.last_input)
         self.assertEqual(result.citations['E1.0'].text, 'actual source')
+
+    def test_first_malformed_json_gets_one_format_correction(self):
+        from app.models.client import ModelClientError
+
+        class RepairClient(FakeClient):
+            calls = 0
+            correction_input = None
+
+            def generate_json(self, **kwargs):
+                self.calls += 1
+                self.last_input = kwargs['input_text']
+                if self.calls == 1:
+                    raise ModelClientError('OpenRouter returned malformed structured output (finish=stop)')
+                if self.calls == 2:
+                    self.correction_input = kwargs['input_text']
+                return super().generate_json(**kwargs)
+
+        client = RepairClient([action('read', reference_id='E1', span_index=0),
+            action('finish', answer='Verified [E1.0]', citation_ids=['E1.0'],
+                   completeness='complete', sufficient=True)])
+        result = answer_question('Explain', retriever=FakeRetriever(), client=client,
+                                 model=MODEL, limits=AnswerLimits(max_model_calls=3))
+        self.assertEqual(result.termination, 'completed')
+        self.assertEqual(result.model_calls, 3)
+        self.assertEqual(result.actions[0], {'action': 'invalid', 'reason': 'malformed_output'})
+        self.assertIn('no prose or Markdown fences', client.correction_input)
+
+    def test_second_malformed_json_stops_after_one_correction(self):
+        from app.models.client import ModelClientError
+
+        class AlwaysMalformed(FakeClient):
+            def generate_json(self, **kwargs):
+                raise ModelClientError('OpenRouter returned malformed structured output (finish=stop)')
+
+        result = answer_question('Explain', retriever=FakeRetriever(), client=AlwaysMalformed([]),
+                                 model=MODEL, limits=AnswerLimits(max_model_calls=3))
+        self.assertEqual(result.termination, 'model_failed')
+        self.assertEqual(result.model_calls, 2)
+        self.assertEqual([a['action'] for a in result.actions], ['invalid', 'model_failed'])
 
     def test_input_allowance_reserves_finish_and_keeps_inspected_originals(self):
         class BudgetClient(FakeClient):

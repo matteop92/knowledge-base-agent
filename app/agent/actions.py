@@ -72,7 +72,7 @@ class AgentAction(StrictRecord):
                 raise ValueError("finish needs answer, completeness, and sufficiency decision")
             if self.completeness == "complete" and not self.sufficient:
                 raise ValueError("complete answer requires a positive sufficiency decision")
-            if self.completeness == "complete" and self.gaps:
+            if self.version != 3 and self.completeness == "complete" and self.gaps:
                 raise ValueError("complete answer cannot retain evidence gaps")
             if self.completeness != "complete" and not self.gaps:
                 raise ValueError("incomplete answer must name evidence gaps")

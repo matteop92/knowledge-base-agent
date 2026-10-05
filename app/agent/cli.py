@@ -145,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
                                for model_id, usage in client.billable_requests)
                 value = {"status": "completed" if result.termination == "completed" and known_usage else "failed", "configuration": metadata,
                          "result": result.model_dump(mode="json"), "usage_complete": known_usage,
+                         "refused_actions": sum("rejected" in action or action.get("action") == "invalid"
+                                                for action in result.actions),
                          "estimated_usd": str(measured) if known_usage else None,
                          "billable_requests": [{"model": model_id, "usage": usage.model_dump()}
                                                for model_id, usage in client.billable_requests],
