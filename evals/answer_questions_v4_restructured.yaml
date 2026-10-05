@@ -1,0 +1,1054 @@
+# Review proposal; not loaded by the current grader.
+# Applicable checks use pass/fail; unreviewed remains unreviewed.
+# Coverage tests inclusion. Incorrect attribution/support is judged under grounding.
+# Details are N/A when their primary is absent; they are not failed in that case.
+# Optional = useful extra content, not needed for a complete answer. Omission is
+# N/A; if included, assess pass/fail separately. Optional checks never enter the
+# scored numerator or denominator and earn no bonus. Their details also require
+# their parent to pass. Claims about optional content still undergo grounding.
+# Count one grounding error once, under its most specific check; do not also
+# penalize that same error under the general factual-support check.
+# Q1.C2 remains an independent primary: developing people is distinct from hiring criteria.
+# Q3.E1 accepts concrete source examples tied explicitly to the homepage advice.
+version: 4
+status: "draft"
+source_revisions:
+  bending_spoons:
+    document_id: "99bcc380-46a8-5083-8cc6-28cb901aa1ad"
+    source_sha256: "f54fc568fa48ab338c36662bda6574ddb7dd9c08839f1451127bd493ad2ee7be"
+  sivers:
+    document_id: "bd796d1a-c36b-57fb-b799-b3e10315959a"
+    source_sha256: "7404d484ec839bc654b8082942b0fa56867f966deea7b222b578bc8633071c12"
+  ferriss:
+    document_id: "25bb2079-575e-5072-82b9-f866068fd7aa"
+    source_sha256: "3a372b289b975c4baddc4443e18d462f922657bd0d886a1d8faa1cc38551d564"
+  anger:
+    document_id: "892bc053-92a4-5798-9843-5cc1cef59a30"
+    source_sha256: "c70219a4d148175b54519dac29a170dc11f07b04b2cfca2bb2d1bff58bfd1358"
+  decisions:
+    document_id: "8b05b784-fe85-5616-a0c7-4fe54dca5c9a"
+    source_sha256: "b67d63ea2e37918a9d9073e103d3ec505eaff776324f2c18c5cac941e4d75146"
+  movie_logic:
+    document_id: "163a6a66-968b-5be8-91b8-e4fbbc581cfa"
+    source_sha256: "0dabc26e32e620dba7abe5565ffacd8fe6f044107ead237f004374423e9c4553"
+questions:
+  - id: "Q1"
+    question: "What are the unusual principles Bending Spoons uses to grow and work on the different products?"
+    purpose: "Understand the company's distinctive operating system across products."
+    answerability: "full"
+    sources:
+      - "bending_spoons"
+    checks:
+      - id: "Q1.C1"
+        dimension: "coverage"
+        criterion: "Prioritize talent and drive over prior experience."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Prioritize talent and drive over prior experience."
+            start_char: 14093
+            end_char: 14633
+      - id: "Q1.C2"
+        dimension: "coverage"
+        criterion: "Explain that the company creates conditions for promising people to develop."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Create conditions for promising people to have autonomy and grow."
+            start_char: 14652
+            end_char: 15017
+      - id: "Q1.C3"
+        dimension: "coverage"
+        criterion: "Explain that strong teams are given autonomy rather than unnecessary rules and procedures."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Enable great people to do great work as they see fit, with as few rigid rules and processes as the work allows."
+            start_char: 15618
+            end_char: 16067
+      - id: "Q1.C4"
+        dimension: "coverage"
+        criterion: "Describe centralized hiring rather than delegating each urgent vacancy to its local manager."
+        type: "primary"
+        parent_id: null
+        applicability: "optional"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Centralize hiring to counter local pressure to fill an urgent seat."
+            start_char: 27480
+            end_char: 28903
+      - id: "Q1.C5"
+        dimension: "coverage"
+        criterion: "Describe the practice of avoiding variable pay tied to narrow KPIs."
+        type: "primary"
+        parent_id: null
+        applicability: "optional"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Avoid variable pay tied to narrow KPIs; trust intrinsically motivated managers to build strong teams instead."
+            start_char: 29855
+            end_char: 30188
+      - id: "Q1.C6"
+        dimension: "coverage"
+        criterion: "Give promising employees substantially more work than feels comfortable."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Give promising employees substantially more work than feels comfortable."
+            start_char: 50011
+            end_char: 50511
+      - id: "Q1.C22"
+        dimension: "coverage"
+        criterion: "Explain the principle of reducing unnecessary complexity."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Require proponents of added complexity to justify it."
+            start_char: 70714
+            end_char: 72721
+          - source: "bending_spoons"
+            description: "Actively remove existing complexity when it no longer serves the work."
+            start_char: 72740
+            end_char: 72922
+      - id: "Q1.C7"
+        dimension: "coverage"
+        criterion: "Require proponents of added complexity to justify it."
+        type: "detail"
+        parent_id: "Q1.C22"
+        applicability: "conditional"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Require proponents of added complexity to justify it."
+            start_char: 70714
+            end_char: 72721
+        condition: "Q1.C22 is pass (the simplification principle is present)."
+      - id: "Q1.C8"
+        dimension: "coverage"
+        criterion: "Actively remove existing complexity when it no longer serves the work."
+        type: "detail"
+        parent_id: "Q1.C22"
+        applicability: "conditional"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Actively remove existing complexity when it no longer serves the work."
+            start_char: 72740
+            end_char: 72922
+        condition: "Q1.C22 is pass (the simplification principle is present)."
+      - id: "Q1.C9"
+        dimension: "coverage"
+        criterion: "Treat acquired businesses as long-term operating products, not assets bought to resell."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Treat acquired businesses as long-term operating products, not assets bought to resell."
+            start_char: 90499
+            end_char: 90973
+      - id: "Q1.C11"
+        dimension: "coverage"
+        criterion: "Explain that small teams work across products."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Explain how small teams work across products."
+            start_char: 111303
+            end_char: 111875
+      - id: "Q1.C18"
+        dimension: "coverage"
+        criterion: "Explain how the centralized talent team learns across roles and candidates."
+        type: "detail"
+        parent_id: "Q1.C4"
+        applicability: "optional"
+        condition: "Q1.C4 is pass (the parent idea is present)."
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Explain how the centralized talent team learns across roles and candidates."
+            start_char: 32393
+            end_char: 33116
+      - id: "Q1.C19"
+        dimension: "coverage"
+        criterion: "Explain how capacity pressure teaches prioritization and growth."
+        type: "detail"
+        parent_id: "Q1.C6"
+        applicability: "conditional"
+        condition: "Q1.C6 is pass (the parent idea is present)."
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Explain how capacity pressure teaches prioritization and growth."
+            start_char: 53012
+            end_char: 54489
+      - id: "Q1.C20"
+        dimension: "coverage"
+        criterion: "Explain that centralized hiring counters local pressure to fill an urgent vacancy."
+        type: "detail"
+        parent_id: "Q1.C4"
+        applicability: "optional"
+        condition: "Q1.C4 is pass (the parent idea is present)."
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Centralize hiring to counter local pressure to fill an urgent seat."
+            start_char: 27480
+            end_char: 28903
+      - id: "Q1.C21"
+        dimension: "coverage"
+        criterion: "Explain that the no-variable-pay practice relies on managers' intrinsic motivation."
+        type: "detail"
+        parent_id: "Q1.C5"
+        applicability: "optional"
+        condition: "Q1.C5 is pass (the parent idea is present)."
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Avoid variable pay tied to narrow KPIs; trust intrinsically motivated managers to build strong teams instead."
+            start_char: 29855
+            end_char: 30188
+      - id: "Q1.G1"
+        dimension: "grounding"
+        criterion: "Material factual claims have support in the original passages the answer agent inspected and cites."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q1.G2"
+        dimension: "grounding"
+        criterion: "Clearly distinguish agent-introduced applications or recommendations from statements made in the original source."
+        applicability: "required"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Keep source speakers and the agent's adaptations distinct."
+            start_char: 14093
+            end_char: 14633
+      - id: "Q1.G3"
+        dimension: "grounding"
+        criterion: "Do not attribute the interviewer's statements or framing to Ferrari."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q1.G4"
+        dimension: "grounding"
+        criterion: "Do not claim every Bending Spoons product uses identical tactics unless the cited original supports that scope."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q1.E1"
+        dimension: "example"
+        criterion: "Include at least one relevant concrete example from an inspected original source; an invented scenario does not satisfy this check."
+        applicability: "required"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Include a relevant concrete example from an inspected original source; invented scenarios do not count."
+            start_char: 76139
+            end_char: 77361
+  - id: "Q2"
+    question: "I am starting a new business project and I need help from Derek Sivers. What ideas or prompts would he suggest considering to challenge or stretch my thinking about how to build the business?"
+    purpose: "Turn Sivers' highlighted ideas into questions for a new project."
+    answerability: "full"
+    sources:
+      - "sivers"
+    checks:
+      - id: "Q2.C1"
+        dimension: "coverage"
+        criterion: "Look for a strong public response to an idea."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "sivers"
+            description: "Look for a strong public response to an idea, including willingness to pay."
+            start_char: 1051
+            end_char: 1685
+      - id: "Q2.C2"
+        dimension: "coverage"
+        criterion: "When response is lukewarm, improve, invent, or move on rather than keep pushing unchanged."
+        type: "detail"
+        parent_id: "Q2.C1"
+        applicability: "conditional"
+        condition: "Q2.C1 is pass (the strong-public-response idea is present)."
+        evidence_alternatives:
+          - source: "sivers"
+            description: "When response is lukewarm, improve, invent, or move on rather than keep pushing unchanged."
+            start_char: 1051
+            end_char: 1685
+      - id: "Q2.C14"
+        dimension: "coverage"
+        criterion: "Identify willingness to pay as a signal of strong public response."
+        type: "detail"
+        parent_id: "Q2.C1"
+        applicability: "conditional"
+        condition: "Q2.C1 is pass (the strong-public-response idea is present)."
+        evidence_alternatives:
+          - source: "sivers"
+            description: "Look for a strong public response to an idea, including willingness to pay."
+            start_char: 1051
+            end_char: 1685
+      - id: "Q2.C3"
+        dimension: "coverage"
+        criterion: "Make customer benefit the basis for business decisions."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "sivers"
+            description: "Make decisions for the benefit of customers; when priorities are unclear, ask how you can best help them now and act on their requests."
+            start_char: 2076
+            end_char: 2462
+      - id: "Q2.C4"
+        dimension: "coverage"
+        criterion: "Question whether a supposedly necessary corporate formality serves the business."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "sivers"
+            description: "Question whether supposedly necessary corporate formalities actually serve the business; Sivers describes refusing employee review plans and other formalities at CD Baby, while pointing to businesses that work without them."
+            start_char: 3198
+            end_char: 3755
+      - id: "Q2.C5"
+        dimension: "coverage"
+        criterion: "Identify which customers the business is intended to serve."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "sivers"
+            description: "Choose whom the business is for, confidently exclude others, and clearly say what it is not."
+            start_char: 3816
+            end_char: 4112
+      - id: "Q2.C12"
+        dimension: "coverage"
+        criterion: "Explain asking what would help customers now and responding to their requests."
+        type: "detail"
+        parent_id: "Q2.C3"
+        applicability: "conditional"
+        condition: "Q2.C3 is pass (the parent idea is present)."
+        evidence_alternatives:
+          - source: "sivers"
+            description: "Make decisions for the benefit of customers; when priorities are unclear, ask how you can best help them now and act on their requests."
+            start_char: 2076
+            end_char: 2462
+      - id: "Q2.C13"
+        dimension: "coverage"
+        criterion: "Explain explicitly excluding customers outside the chosen audience."
+        type: "detail"
+        parent_id: "Q2.C5"
+        applicability: "conditional"
+        condition: "Q2.C5 is pass (the parent idea is present)."
+        evidence_alternatives:
+          - source: "sivers"
+            description: "Choose whom the business is for, confidently exclude others, and clearly say what it is not."
+            start_char: 3816
+            end_char: 4112
+      - id: "Q2.G1"
+        dimension: "grounding"
+        criterion: "Material factual claims have support in the original passages the answer agent inspected and cites."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q2.G2"
+        dimension: "grounding"
+        criterion: "Clearly distinguish agent-introduced applications or recommendations from statements made in the original source."
+        applicability: "required"
+        evidence_alternatives:
+          - source: "sivers"
+            description: "Keep source speakers and the agent's adaptations distinct."
+            start_char: 3198
+            end_char: 3755
+      - id: "Q2.G3"
+        dimension: "grounding"
+        criterion: "Do not attribute reader-added notes to Sivers."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q2.G4"
+        dimension: "grounding"
+        criterion: "Do not claim Sivers requires immediate abandonment of every idea with a lukewarm response."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q2.G5"
+        dimension: "grounding"
+        criterion: "Do not present Sivers' rejection of corporate formalities as permission to ignore legal obligations."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q2.E1"
+        dimension: "example"
+        criterion: "Include at least one relevant concrete example from an inspected original source; an invented scenario does not satisfy this check."
+        applicability: "required"
+        evidence_alternatives:
+          - source: "sivers"
+            description: "Include a relevant concrete example from an inspected original source; invented scenarios do not count."
+            start_char: 3198
+            end_char: 3755
+  - id: "Q3"
+    question: "What copy advice would Tim Ferriss give me to maximize impact of my company's homepage?"
+    purpose: "Improve homepage messaging and test it with an audience."
+    answerability: "full"
+    sources:
+      - "ferriss"
+    checks:
+      - id: "Q3.C1"
+        dimension: "coverage"
+        criterion: "Lead with a concrete audience benefit or relief."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "ferriss"
+            description: "Lead with a concrete audience benefit or relief."
+            start_char: 40907
+            end_char: 42155
+      - id: "Q3.C3"
+        dimension: "coverage"
+        criterion: "Put credible testimonials and proof prominently where visitors first look."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "ferriss"
+            description: "Put credible testimonials and proof prominently where visitors first look."
+            start_char: 71708
+            end_char: 72679
+      - id: "Q3.C4"
+        dimension: "coverage"
+        criterion: "Recommend a concrete next step that reduces friction in trying the product."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "ferriss"
+            description: "Make the next step concrete and easy to try, such as Ferriss's two-minute readiness quiz before sign-up."
+            start_char: 40190
+            end_char: 40499
+      - id: "Q3.C5"
+        dimension: "coverage"
+        criterion: "Recommend testing candidate wording with prospective buyers; no particular test method is required."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "ferriss"
+            description: "Test candidate wording with prospective buyers; conversations, presentations, and controlled website tests are acceptable methods."
+            start_char: 100900
+            end_char: 104975
+      - id: "Q3.C6"
+        dimension: "coverage"
+        criterion: "Explain evaluating candidate wording using observable purchase-intent signals."
+        type: "detail"
+        parent_id: "Q3.C5"
+        applicability: "conditional"
+        condition: "Q3.C5 is pass (the parent idea is present)."
+        evidence_alternatives:
+          - source: "ferriss"
+            description: "Test promising homepage wording using observable purchase-intent signals."
+            start_char: 100900
+            end_char: 104975
+      - id: "Q3.G1"
+        dimension: "grounding"
+        criterion: "Material factual claims have support in the original passages the answer agent inspected and cites."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q3.G2"
+        dimension: "grounding"
+        criterion: "Clearly distinguish agent-introduced applications or recommendations from statements made in the original source."
+        applicability: "required"
+        evidence_alternatives:
+          - source: "ferriss"
+            description: "Keep source speakers and the agent's adaptations distinct."
+            start_char: 70922
+            end_char: 71526
+      - id: "Q3.G3"
+        dimension: "grounding"
+        criterion: "Do not attribute Niels Hoven's product statements to Ferriss."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q3.G4"
+        dimension: "grounding"
+        criterion: "Do not present Mentava-specific facts as established facts about the user's company."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q3.E1"
+        dimension: "example"
+        criterion: "Include at least one concrete example from an inspected original source that illustrates communicating a customer benefit, providing customer proof, making the next step easier, or testing a message, and explain its connection to that homepage advice. Invented scenarios do not count."
+        applicability: "required"
+        evidence_alternatives:
+          - source: "ferriss"
+            description: "Mentava's parent-relief messaging illustrates communicating a concrete customer benefit."
+            start_char: 44187
+            end_char: 45703
+          - source: "ferriss"
+            description: "The two-minute readiness quiz illustrates making the next step concrete and easy to try."
+            start_char: 40190
+            end_char: 40499
+          - source: "ferriss"
+            description: "The source's concrete testimonial example illustrates customer proof."
+            start_char: 70922
+            end_char: 71526
+  - id: "Q4"
+    question: "What steps could I take to calm myself down when I realize I feel anger?"
+    purpose: "Get an immediately usable sequence from the short note."
+    answerability: "full"
+    sources:
+      - "anger"
+    checks:
+      - id: "Q4.C1"
+        dimension: "coverage"
+        criterion: "Identify at least one physical warning sign of anger listed in the note."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "anger"
+            description: "Notice the note's warning signs, including pointing your fist, raising your voice, heavy breathing, flaring nostrils, and head shaking."
+            start_char: 644
+            end_char: 841
+      - id: "Q4.C2"
+        dimension: "coverage"
+        criterion: "Describe interrupting the heavy breathing pattern by taking a deliberate breath."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "anger"
+            description: "Interrupt heavy breathing and take a deliberate breath."
+            start_char: 842
+            end_char: 965
+      - id: "Q4.C3"
+        dimension: "coverage"
+        criterion: "Describe detaching from the angry reaction."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "anger"
+            description: "Describe the note's tactic of labeling the reaction as weakness and detaching from it."
+            start_char: 966
+            end_char: 1108
+      - id: "Q4.C4"
+        dimension: "coverage"
+        criterion: "Describe nodding slowly before reacting."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "anger"
+            description: "Nod slowly to buy time before reacting."
+            start_char: 1219
+            end_char: 1395
+      - id: "Q4.C11"
+        dimension: "coverage"
+        criterion: "Explain using the pause while nodding to consider the next move."
+        type: "detail"
+        parent_id: "Q4.C4"
+        applicability: "conditional"
+        condition: "Q4.C4 is pass (the parent idea is present)."
+        evidence_alternatives:
+          - source: "anger"
+            description: "Pause to consider the next move rather than react emotionally."
+            start_char: 1396
+            end_char: 1532
+      - id: "Q4.C12"
+        dimension: "coverage"
+        criterion: "Describe counting down as a way to regain control."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "anger"
+            description: "Count down if needed to regain control."
+            start_char: 1533
+            end_char: 1702
+      - id: "Q4.C14"
+        dimension: "coverage"
+        criterion: "Describe the note's use of the label 'weakness' to distance oneself from the reaction."
+        type: "detail"
+        parent_id: "Q4.C3"
+        applicability: "conditional"
+        condition: "Q4.C3 is pass (the parent idea is present)."
+        evidence_alternatives:
+          - source: "anger"
+            description: "Describe the note's tactic of labeling the reaction as weakness and detaching from it."
+            start_char: 966
+            end_char: 1108
+      - id: "Q4.C15"
+        dimension: "coverage"
+        criterion: "Explain that slow nodding buys time before reacting."
+        type: "detail"
+        parent_id: "Q4.C4"
+        applicability: "conditional"
+        condition: "Q4.C4 is pass (the parent idea is present)."
+        evidence_alternatives:
+          - source: "anger"
+            description: "Nod slowly to buy time before reacting."
+            start_char: 1219
+            end_char: 1395
+      - id: "Q4.G1"
+        dimension: "grounding"
+        criterion: "Material factual claims have support in the original passages the answer agent inspected and cites."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q4.G2"
+        dimension: "grounding"
+        criterion: "Clearly distinguish agent-introduced applications or recommendations from statements made in the original source."
+        applicability: "required"
+        evidence_alternatives:
+          - source: "anger"
+            description: "Keep source speakers and the agent's adaptations distinct."
+            start_char: 212
+            end_char: 621
+      - id: "Q4.G3"
+        dimension: "grounding"
+        criterion: "Do not represent the note's tactics as an established clinical treatment."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q4.E1"
+        dimension: "example"
+        criterion: "Include at least one relevant concrete example from an inspected original source; an invented scenario does not satisfy this check."
+        applicability: "conditional"
+        condition: "A relevant original-source example exists and materially helps answer the question."
+        evidence_alternatives:
+          - source: "anger"
+            description: "Include a relevant concrete example from an inspected original source; invented scenarios do not count."
+            start_char: 1219
+            end_char: 1395
+  - id: "Q5"
+    question: "What two practical rules could help me make decisions when stuck looking for more information?"
+    purpose: "Escape analysis paralysis while limiting downside."
+    answerability: "full"
+    sources:
+      - "decisions"
+    checks:
+      - id: "Q5.C1"
+        dimension: "coverage"
+        criterion: "Set a decision deadline and make a go or no-go call then."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "decisions"
+            description: "Set a decision deadline and make a go or no-go call then."
+            start_char: 758
+            end_char: 1038
+      - id: "Q5.C2"
+        dimension: "coverage"
+        criterion: "Prefer small, short, low-risk go experiments when uncertainty remains."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "decisions"
+            description: "Prefer small, short, low-risk go experiments when uncertainty remains."
+            start_char: 758
+            end_char: 1038
+      - id: "Q5.C9"
+        dimension: "coverage"
+        criterion: "Explain that a deadline prevents waiting indefinitely for more information."
+        type: "detail"
+        parent_id: "Q5.C1"
+        applicability: "conditional"
+        condition: "Q5.C1 is pass (the parent idea is present)."
+        evidence_alternatives:
+          - source: "decisions"
+            description: "Decision deadlines interrupt overanalysis while information remains incomplete."
+            start_char: 186
+            end_char: 1038
+      - id: "Q5.C10"
+        dimension: "coverage"
+        criterion: "Explain that a small experiment lowers the perceived risk of acting under uncertainty."
+        type: "detail"
+        parent_id: "Q5.C2"
+        applicability: "conditional"
+        condition: "Q5.C2 is pass (the parent idea is present)."
+        evidence_alternatives:
+          - source: "decisions"
+            description: "Prefer small, short, low-risk go experiments when uncertainty remains."
+            start_char: 758
+            end_char: 1038
+      - id: "Q5.G1"
+        dimension: "grounding"
+        criterion: "Material factual claims have support in the original passages the answer agent inspected and cites."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q5.G2"
+        dimension: "grounding"
+        criterion: "Clearly distinguish agent-introduced applications or recommendations from statements made in the original source."
+        applicability: "required"
+        evidence_alternatives:
+          - source: "decisions"
+            description: "Keep source speakers and the agent's adaptations distinct."
+            start_char: 186
+            end_char: 333
+      - id: "Q5.G3"
+        dimension: "grounding"
+        criterion: "Do not claim the two rules eliminate uncertainty."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q5.E1"
+        dimension: "example"
+        criterion: "Include at least one relevant concrete example from an inspected original source; an invented scenario does not satisfy this check."
+        applicability: "conditional"
+        condition: "A relevant original-source example exists and materially helps answer the question."
+        evidence_alternatives:
+          - source: "decisions"
+            description: "Include a relevant concrete example from an inspected original source; invented scenarios do not count."
+            start_char: 758
+            end_char: 1038
+  - id: "Q6"
+    question: "What practical tips could I use to get better at having hard conversations?"
+    purpose: "Address awkwardness and feedback without waiting for a perfect script."
+    answerability: "full"
+    sources:
+      - "movie_logic"
+    checks:
+      - id: "Q6.C1"
+        dimension: "coverage"
+        criterion: "Name an awkward or difficult issue directly instead of waiting for events to resolve it."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "movie_logic"
+            description: "Name an awkward or difficult issue directly instead of waiting for events to resolve it."
+            start_char: 1604
+            end_char: 1956
+      - id: "Q6.C2"
+        dimension: "coverage"
+        criterion: "Recommend asking about the observed problem instead of assuming its cause."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "movie_logic"
+            description: "Say that something feels wrong, explain what you have noticed, and ask about it instead of assuming you already know why it is happening."
+            start_char: 8005
+            end_char: 8452
+      - id: "Q6.C3"
+        dimension: "coverage"
+        criterion: "Recommend allowing disagreement or correction instead of treating discomfort as a reason to stay silent."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "movie_logic"
+            description: "Make room for a possible argument or correction rather than treating discomfort as proof to stay silent."
+            start_char: 6715
+            end_char: 7185
+      - id: "Q6.C10"
+        dimension: "coverage"
+        criterion: "Describe stating what feels wrong or what has been observed when asking about the problem."
+        type: "detail"
+        parent_id: "Q6.C2"
+        applicability: "conditional"
+        condition: "Q6.C2 is pass (the parent idea is present)."
+        evidence_alternatives:
+          - source: "movie_logic"
+            description: "Say that something feels wrong, explain what you have noticed, and ask about it instead of assuming you already know why it is happening."
+            start_char: 8005
+            end_char: 8452
+      - id: "Q6.G1"
+        dimension: "grounding"
+        criterion: "Material factual claims have support in the original passages the answer agent inspected and cites."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q6.G2"
+        dimension: "grounding"
+        criterion: "Do not present the author's experiences as known facts about the user's relationship or workplace."
+        applicability: "required"
+        evidence_alternatives:
+          - source: "movie_logic"
+            description: "Keep source speakers and the agent's adaptations distinct."
+            start_char: 308
+            end_char: 770
+      - id: "Q6.G3"
+        dimension: "grounding"
+        criterion: "Clearly distinguish agent-adapted conversation wording from words quoted from the article."
+        applicability: "required"
+        evidence_alternatives:
+          - source: "movie_logic"
+            description: "Keep source speakers and the agent's adaptations distinct."
+            start_char: 308
+            end_char: 770
+      - id: "Q6.E1"
+        dimension: "example"
+        criterion: "Include at least one relevant concrete example from an inspected original source; an invented scenario does not satisfy this check."
+        applicability: "conditional"
+        condition: "A relevant original-source example exists and materially helps answer the question."
+        evidence_alternatives:
+          - source: "movie_logic"
+            description: "Include a relevant concrete example from an inspected original source; invented scenarios do not count."
+            start_char: 2561
+            end_char: 3465
+  - id: "Q7"
+    question: "I am starting a business from scratch with no investors. Give me three constraints that would help me find customers willing to pay in my first month."
+    purpose: "Choose three practical limits for early customer discovery."
+    answerability: "partial"
+    sources:
+      - "sivers"
+      - "ferriss"
+    checks:
+      - id: "Q7.C1"
+        dimension: "coverage"
+        criterion: "Use direct customer conversations or open-ended requests to identify a real need."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "sivers"
+            description: "Use direct customer conversations or open-ended requests to identify a real need."
+            start_char: null
+            end_char: null
+          - source: "ferriss"
+            description: "Use direct customer conversations or open-ended requests to identify a real need."
+            start_char: 100900
+            end_char: 104975
+      - id: "Q7.C2"
+        dimension: "coverage"
+        criterion: "Keep the offer and message narrow enough to test with likely buyers."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "sivers"
+            description: "Keep the offer and message narrow enough to test with likely buyers."
+            start_char: null
+            end_char: null
+          - source: "ferriss"
+            description: "Keep the offer and message narrow enough to test with likely buyers."
+            start_char: 82387
+            end_char: 83225
+      - id: "Q7.C3"
+        dimension: "coverage"
+        criterion: "Run a small, observable, low-cost test of purchase intent before broad expansion."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "sivers"
+            description: "Run a small, observable, low-cost test of purchase intent before broad expansion."
+            start_char: null
+            end_char: null
+          - source: "ferriss"
+            description: "Run a small, observable, low-cost test of purchase intent before broad expansion."
+            start_char: 100900
+            end_char: 104975
+      - id: "Q7.G1"
+        dimension: "grounding"
+        criterion: "Material factual claims have support in the original passages the answer agent inspected and cites."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q7.G2"
+        dimension: "grounding"
+        criterion: "Identify the proposed three constraints as the agent's synthesis rather than quotations from either source."
+        applicability: "required"
+        evidence_alternatives:
+          - source: "sivers"
+            description: "Keep source speakers and the agent's adaptations distinct."
+            start_char: null
+            end_char: null
+          - source: "ferriss"
+            description: "Keep source speakers and the agent's adaptations distinct."
+            start_char: 100900
+            end_char: 104975
+      - id: "Q7.G3"
+        dimension: "grounding"
+        criterion: "Do not claim the sources promise paying customers or revenue within the first month."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q7.G4"
+        dimension: "grounding"
+        criterion: "Do not introduce a quantified cold-outreach playbook absent from the inspected source material."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q7.E1"
+        dimension: "example"
+        criterion: "Include at least one relevant concrete example from an inspected original source; an invented scenario does not satisfy this check."
+        applicability: "required"
+        evidence_alternatives:
+          - source: "sivers"
+            description: "Include a relevant concrete example from an inspected original source; invented scenarios do not count."
+            start_char: null
+            end_char: null
+          - source: "ferriss"
+            description: "Include a relevant concrete example from an inspected original source; invented scenarios do not count."
+            start_char: 100900
+            end_char: 104975
+  - id: "Q8"
+    question: "I need to hire two people for my team and don't know how to do this. If Luca Ferrari and Derek Sivers were here in this room, how would they help me do so?"
+    purpose: "Compare two perspectives to plan two new hires."
+    answerability: "partial"
+    sources:
+      - "bending_spoons"
+      - "sivers"
+    checks:
+      - id: "Q8.C1"
+        dimension: "coverage"
+        criterion: "Include the hiring principle of prioritizing talent over experience."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Attribute talent over experience to Ferrari."
+            start_char: 14093
+            end_char: 14633
+          - source: "sivers"
+            description: "Attribute talent over experience to Ferrari."
+            start_char: null
+            end_char: null
+      - id: "Q8.C2"
+        dimension: "coverage"
+        criterion: "Describe using application signals such as academic records or personal projects to assess long-term potential."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Describe Ferrari's deliberate hiring signals."
+            start_char: 21598
+            end_char: 21889
+          - source: "sivers"
+            description: "Describe Ferrari's deliberate hiring signals."
+            start_char: null
+            end_char: null
+      - id: "Q8.C3"
+        dimension: "coverage"
+        criterion: "Explain avoiding hiring merely to fill an urgent vacancy."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Explain Ferrari's caution against hiring merely to fill an urgent seat."
+            start_char: 29030
+            end_char: 29214
+          - source: "sivers"
+            description: "Explain Ferrari's caution against hiring merely to fill an urgent seat."
+            start_char: null
+            end_char: null
+      - id: "Q8.C4"
+        dimension: "coverage"
+        criterion: "Describe asking employees about their reasoning instead of dictating changes."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Use Sivers' ownership and question-led management ideas only as an adaptation to leading hires."
+            start_char: null
+            end_char: null
+          - source: "sivers"
+            description: "Use Sivers' question-led management only as an adaptation to leading hires."
+            start_char: 10472
+            end_char: 10863
+      - id: "Q8.C11"
+        dimension: "coverage"
+        criterion: "Explain preserving employees' ownership of their work."
+        type: "primary"
+        parent_id: null
+        applicability: "required"
+        evidence_alternatives:
+          - source: "sivers"
+            description: "Keep Sivers' ownership advice distinct from Ferrari's hiring practices."
+            start_char: 9804
+            end_char: 10449
+      - id: "Q8.G1"
+        dimension: "grounding"
+        criterion: "Material factual claims have support in the original passages the answer agent inspected and cites."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q8.G2"
+        dimension: "grounding"
+        criterion: "Attribute the talent preference and hiring practices to Ferrari rather than Sivers."
+        applicability: "required"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Keep source speakers and the agent's adaptations distinct."
+            start_char: 14093
+            end_char: 14633
+          - source: "sivers"
+            description: "Keep source speakers and the agent's adaptations distinct."
+            start_char: null
+            end_char: null
+          - source: "bending_spoons"
+            description: "Attribute talent over experience to Ferrari."
+            start_char: 14093
+            end_char: 14633
+          - source: "sivers"
+            description: "Attribute talent over experience to Ferrari."
+            start_char: null
+            end_char: null
+          - source: "bending_spoons"
+            description: "Describe Ferrari's deliberate hiring signals."
+            start_char: 21598
+            end_char: 21889
+          - source: "sivers"
+            description: "Describe Ferrari's deliberate hiring signals."
+            start_char: null
+            end_char: null
+          - source: "bending_spoons"
+            description: "Explain Ferrari's caution against hiring merely to fill an urgent seat."
+            start_char: 29030
+            end_char: 29214
+          - source: "sivers"
+            description: "Explain Ferrari's caution against hiring merely to fill an urgent seat."
+            start_char: null
+            end_char: null
+      - id: "Q8.G3"
+        dimension: "grounding"
+        criterion: "Identify the question-led feedback suggestion as a reader-added note rather than Sivers' quoted words."
+        applicability: "required"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Use Sivers' ownership and question-led management ideas only as an adaptation to leading hires."
+            start_char: null
+            end_char: null
+          - source: "sivers"
+            description: "Use Sivers' question-led management only as an adaptation to leading hires."
+            start_char: 10472
+            end_char: 10863
+      - id: "Q8.G4"
+        dimension: "grounding"
+        criterion: "Clearly distinguish the agent's applications to hiring from the original source statements."
+        applicability: "required"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Keep source speakers and the agent's adaptations distinct."
+            start_char: 14093
+            end_char: 14633
+          - source: "sivers"
+            description: "Keep source speakers and the agent's adaptations distinct."
+            start_char: null
+            end_char: null
+      - id: "Q8.G5"
+        dimension: "grounding"
+        criterion: "Do not present the Sivers highlights as a source-provided two-person recruiting system."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q8.G6"
+        dimension: "grounding"
+        criterion: "Do not present an imagined dialogue between Ferrari and Sivers as something that occurred."
+        applicability: "required"
+        evidence_alternatives: []
+      - id: "Q8.E1"
+        dimension: "example"
+        criterion: "Include at least one relevant concrete example from an inspected original source; an invented scenario does not satisfy this check."
+        applicability: "required"
+        evidence_alternatives:
+          - source: "bending_spoons"
+            description: "Include a relevant concrete example from an inspected original source; invented scenarios do not count."
+            start_char: 21598
+            end_char: 21889
+          - source: "sivers"
+            description: "Include a relevant concrete example from an inspected original source; invented scenarios do not count."
+            start_char: null
+            end_char: null
+criteria_changes:
+  - "Only coverage, grounding, and example are scored dimensions; this proposal remains a draft."
+  - "Coverage checks measure inclusion; correctness and representation are evaluated under grounding."
+  - "A coverage detail is applicable only when its parent primary check is pass. An absent parent makes the detail not applicable."
+  - "Optional checks cover useful extra content: omission is N/A; included content is assessed pass/fail separately. They are excluded from the scored numerator and denominator, earn no bonus, and their details require a passing parent. Optional claims remain subject to grounding."
+  - "Applicable checks are assessed as pass or fail. Unreviewed remains unreviewed. No numeric weights or percentage formula are introduced."
