@@ -56,6 +56,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
     calls = searches = finds = reads = 0
     discoveries_since_read = 0
     finish_correction_used = False
+    malformed_correction_used = False
     reads_at_coverage_check: int | None = None
     base_schema = ACTION_SCHEMA_V3
     coverage_checks = 0
@@ -208,7 +209,9 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                 "OpenRouter structured output was incomplete (finish=content_filter)": "provider_content_filter",
             }
             reason = safe_reasons.get(str(exc), "model_or_route_failure")
-            if reason == "malformed_output" and calls > 1:
+            if (reason == "malformed_output" and not malformed_correction_used
+                    and calls < limits.max_model_calls):
+                malformed_correction_used = True
                 actions.append({"action": "invalid", "reason": reason})
                 feedback = "Your previous response was not valid JSON. Return exactly one JSON action object matching every required schema field. Put answer prose inside the answer string; no prose or Markdown fences outside the JSON object."
                 continue
@@ -388,17 +391,19 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                             "in the answer string, and list exactly those IDs in citation_ids. Revise the answer.")
                 continue
             if action.completeness != "unsupported" and not cited:
+                actions[-1]["rejected"] = "Supported or partial answer needs inspected inline citations"
                 feedback = "Supported or partial answer needs inspected inline citations."
                 continue
             if action.completeness == "complete" and not inspected:
+                actions[-1]["rejected"] = "Complete answer requires inspected evidence"
                 feedback = "Complete answer requires inspected evidence."
                 continue
             private_gaps = list(action.gaps)
             completeness = action.completeness or "partial"
             if action.version == 3 and unresolved:
                 private_gaps.extend(f"Unresolved need {key}: {needs[key]['description']}" for key in unresolved)
-                if completeness == "complete":
-                    completeness = "partial"
+            if completeness == "complete" and private_gaps:
+                completeness = "partial"
             return AnswerResult(answer=action.answer or "", completeness=completeness,
                                 citations={ref: inspected[ref] for ref in action.citation_ids},
                                 gaps=private_gaps, actions=actions, model_calls=calls,
