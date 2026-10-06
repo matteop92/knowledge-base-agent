@@ -16,7 +16,7 @@ from app.models.client import ModelClient, ModelClientError, ModelSpec
 from app.storage import StorageError
 from app.storage.records import FusedHit, SourcePassage
 
-PROMPT_VERSION = "answer_agent_v12"
+PROMPT_VERSION = "answer_agent_v13"
 PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / f"{PROMPT_VERSION}.md"
 PROMPT = PROMPT_PATH.read_text(encoding="utf-8")
 CITATION = re.compile(r"\[(E\d+\.\d+(?:@\d+)?)\]")
