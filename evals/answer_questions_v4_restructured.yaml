@@ -10,8 +10,21 @@
 # penalize that same error under the general factual-support check.
 # Q1.C2 remains an independent primary: developing people is distinct from hiring criteria.
 # Q3.E1 accepts concrete source examples tied explicitly to the homepage advice.
+# Decided by the user on 2026-10-05: Q1.C3, Q6.C2, and Q8.C4 stay independent primaries.
+# A concrete tactic described in the source counts as an example for Q4.E1 and Q5.E1.
+# Shared-platform integration (former Q1.C10) is not distinctive or unusual and is not a check.
+# Q1.C7 and Q1.C8 are optional details: useful follow-up content, never scored.
+# Q6.C10 (stating what was observed when asking) is removed as not needed.
+# Relevance: each question has a scope. Each main point of an answer that falls outside it
+# counts as one failed check. Points inside the scope add nothing, so depth is not penalised.
+# The in_scope lines were corrected by the user on 2026-10-06. The out_of_scope lines are
+# examples of what falls outside, a reading aid for the reviewer and the grader; the in_scope
+# line is the rule.
 version: 4
 status: "draft"
+# The loader refuses to freeze while this list is non-empty or any question is unapproved.
+open_decisions: []
+approved_questions: []
 source_revisions:
   bending_spoons:
     document_id: "99bcc380-46a8-5083-8cc6-28cb901aa1ad"
@@ -36,6 +49,8 @@ questions:
     question: "What are the unusual principles Bending Spoons uses to grow and work on the different products?"
     purpose: "Understand the company's distinctive operating system across products."
     answerability: "full"
+    in_scope: "Unusual principles and practices Bending Spoons uses to run its people, organization, and products, as Ferrari describes them."
+    out_of_scope: "Ferrari's biography, company history, fundraising or listing plans, and opinions that are not about how the company operates."
     sources:
       - "bending_spoons"
     checks:
@@ -125,25 +140,23 @@ questions:
         criterion: "Require proponents of added complexity to justify it."
         type: "detail"
         parent_id: "Q1.C22"
-        applicability: "conditional"
+        applicability: "optional"
         evidence_alternatives:
           - source: "bending_spoons"
             description: "Require proponents of added complexity to justify it."
             start_char: 70714
             end_char: 72721
-        condition: "Q1.C22 is pass (the simplification principle is present)."
       - id: "Q1.C8"
         dimension: "coverage"
         criterion: "Actively remove existing complexity when it no longer serves the work."
         type: "detail"
         parent_id: "Q1.C22"
-        applicability: "conditional"
+        applicability: "optional"
         evidence_alternatives:
           - source: "bending_spoons"
             description: "Actively remove existing complexity when it no longer serves the work."
             start_char: 72740
             end_char: 72922
-        condition: "Q1.C22 is pass (the simplification principle is present)."
       - id: "Q1.C9"
         dimension: "coverage"
         criterion: "Treat acquired businesses as long-term operating products, not assets bought to resell."
@@ -251,6 +264,8 @@ questions:
     question: "I am starting a new business project and I need help from Derek Sivers. What ideas or prompts would he suggest considering to challenge or stretch my thinking about how to build the business?"
     purpose: "Turn Sivers' highlighted ideas into questions for a new project."
     answerability: "full"
+    in_scope: "Sivers' ideas that would challenge or stretch the reader's thinking on how to shape, start, or run a business, turned into prompts the reader can apply."
+    out_of_scope: "Stories with no takeaway for the reader's business, and startup advice that does not come from Sivers."
     sources:
       - "sivers"
     checks:
@@ -388,6 +403,8 @@ questions:
     question: "What copy advice would Tim Ferriss give me to maximize impact of my company's homepage?"
     purpose: "Improve homepage messaging and test it with an audience."
     answerability: "full"
+    in_scope: "Specific copy tips from Tim Ferriss that are likely to improve resonance and conversion with the target customers."
+    out_of_scope: "Pricing, referral programs, marketing channels, and product changes, unless the point is about homepage copy."
     sources:
       - "ferriss"
     checks:
@@ -492,6 +509,8 @@ questions:
     question: "What steps could I take to calm myself down when I realize I feel anger?"
     purpose: "Get an immediately usable sequence from the short note."
     answerability: "full"
+    in_scope: "Things to do in the moment you notice you are angry, to calm down."
+    out_of_scope: "Long-term habits, dealing with someone else's anger, and general advice on conversations."
     sources:
       - "anger"
     checks:
@@ -607,7 +626,7 @@ questions:
         evidence_alternatives: []
       - id: "Q4.E1"
         dimension: "example"
-        criterion: "Include at least one relevant concrete example from an inspected original source; an invented scenario does not satisfy this check."
+        criterion: "Include at least one relevant concrete example from an inspected original source; a concrete tactic described in the source counts as an example; an invented scenario does not satisfy this check."
         applicability: "conditional"
         condition: "A relevant original-source example exists and materially helps answer the question."
         evidence_alternatives:
@@ -619,6 +638,8 @@ questions:
     question: "What two practical rules could help me make decisions when stuck looking for more information?"
     purpose: "Escape analysis paralysis while limiting downside."
     answerability: "full"
+    in_scope: "Rules for making a decision when information is incomplete, and the reason for each rule."
+    out_of_scope: "General productivity advice and material that is not about deciding with incomplete information."
     sources:
       - "decisions"
     checks:
@@ -689,7 +710,7 @@ questions:
         evidence_alternatives: []
       - id: "Q5.E1"
         dimension: "example"
-        criterion: "Include at least one relevant concrete example from an inspected original source; an invented scenario does not satisfy this check."
+        criterion: "Include at least one relevant concrete example from an inspected original source; a concrete tactic described in the source counts as an example; an invented scenario does not satisfy this check."
         applicability: "conditional"
         condition: "A relevant original-source example exists and materially helps answer the question."
         evidence_alternatives:
@@ -701,6 +722,8 @@ questions:
     question: "What practical tips could I use to get better at having hard conversations?"
     purpose: "Address awkwardness and feedback without waiting for a perfect script."
     answerability: "full"
+    in_scope: "What to say or do to raise and carry out a difficult conversation."
+    out_of_scope: "Commentary on films or on why people avoid such conversations, unless it leads to a tip."
     sources:
       - "movie_logic"
     checks:
@@ -737,18 +760,6 @@ questions:
             description: "Make room for a possible argument or correction rather than treating discomfort as proof to stay silent."
             start_char: 6715
             end_char: 7185
-      - id: "Q6.C10"
-        dimension: "coverage"
-        criterion: "Describe stating what feels wrong or what has been observed when asking about the problem."
-        type: "detail"
-        parent_id: "Q6.C2"
-        applicability: "conditional"
-        condition: "Q6.C2 is pass (the parent idea is present)."
-        evidence_alternatives:
-          - source: "movie_logic"
-            description: "Say that something feels wrong, explain what you have noticed, and ask about it instead of assuming you already know why it is happening."
-            start_char: 8005
-            end_char: 8452
       - id: "Q6.G1"
         dimension: "grounding"
         criterion: "Material factual claims have support in the original passages the answer agent inspected and cites."
@@ -786,6 +797,8 @@ questions:
     question: "I am starting a business from scratch with no investors. Give me three constraints that would help me find customers willing to pay in my first month."
     purpose: "Choose three practical limits for early customer discovery."
     answerability: "partial"
+    in_scope: "Constraints that help a founder with no investors find customers who will pay within the first month."
+    out_of_scope: "Advice for later stages: scaling, fundraising, hiring, or long-term brand building."
     sources:
       - "sivers"
       - "ferriss"
@@ -880,6 +893,8 @@ questions:
     question: "I need to hire two people for my team and don't know how to do this. If Luca Ferrari and Derek Sivers were here in this room, how would they help me do so?"
     purpose: "Compare two perspectives to plan two new hires."
     answerability: "partial"
+    in_scope: "Finding candidates, assessing them, and deciding whom to hire: anything done before the hire is made."
+    out_of_scope: "What to do with people after they join (onboarding, delegating, managing, team culture), unless the point is used to assess a candidate."
     sources:
       - "bending_spoons"
       - "sivers"
