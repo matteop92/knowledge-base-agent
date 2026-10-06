@@ -10,15 +10,18 @@ import json
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, ValidationError, model_validator
+from pydantic import Field, ValidationError
 
 from app.ingestion.contracts import StrictRecord
 from app.models.client import ModelClient, ModelClientError, ModelSpec
-from evals.answer_rubric import AnswerRubric, rubric_fingerprint
+from evals.answer_rubric import AnswerRubric, Checklist, rubric_fingerprint, score_checklist_ratings
 
 
-PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "answer_grader_v1.md"
-PROMPT = PROMPT_PATH.read_text(encoding="utf-8")
+PROMPT_ROOT = Path(__file__).resolve().parents[1] / "prompts"
+PROMPT = (PROMPT_ROOT / "answer_grader_v1.md").read_text(encoding="utf-8")
+# The three-dimension checklist is binary and has its own instructions.
+CHECKLIST_PROMPT = (PROMPT_ROOT / "answer_grader_v2.md").read_text(encoding="utf-8")
+CHECKLIST_LAYOUT = "three-dimension"
 
 
 class InspectedSupport(StrictRecord):
@@ -33,15 +36,9 @@ class CheckJudgment(StrictRecord):
     inspected_support: list[InspectedSupport]
     reason: str = Field(min_length=1)
 
-    @model_validator(mode="after")
-    def require_excerpts(self) -> CheckJudgment:
-        if self.rating in ("pass", "partial") and not self.answer_excerpt:
-            raise ValueError("positive judgment needs an exact answer excerpt")
-        return self
-
 
 class GraderResponse(StrictRecord):
-    version: Literal[1]
+    version: Literal[1, 2]
     judgments: list[CheckJudgment]
 
 
@@ -62,14 +59,19 @@ GRADE_SCHEMA = {
     "required": ["version", "judgments"], "additionalProperties": False}
 
 
+GRADE_SCHEMA_V2 = json.loads(json.dumps(GRADE_SCHEMA))
+GRADE_SCHEMA_V2["properties"]["version"]["enum"] = [2]
+GRADE_SCHEMA_V2["properties"]["judgments"]["items"]["properties"]["rating"]["enum"] = [
+    "pass", "fail", "not_applicable", "unreviewed"]
+
 SOURCE_DIMENSIONS = {"coverage", "example", "grounding", "attribution"}
 
 
-def _question(rubric: AnswerRubric, question_id: str):
+def _question(rubric: AnswerRubric | Checklist, question_id: str):
     return next((item for item in rubric.questions if item.id == question_id), None)
 
 
-def prepare_evidence(rubric: AnswerRubric, question_id: str, answer_receipt: dict,
+def prepare_evidence(rubric: AnswerRubric | Checklist, question_id: str, answer_receipt: dict,
                      gold_sources: dict[str, bytes]) -> dict:
     """Keep answer, inspected evidence, and revision-checked gold alternatives distinct."""
     if rubric.version != 4:
@@ -122,10 +124,15 @@ def prepare_evidence(rubric: AnswerRubric, question_id: str, answer_receipt: dic
                 "start_char": alternative.start_char, "end_char": alternative.end_char,
                 "text": text[alternative.start_char:alternative.end_char]})
         gold[check.id] = alternatives
-    return {"question_id": question.id, "question": question.question,
-            "checks": [{"id": check.id, "dimension": check.dimension,
-                        "criterion": check.criterion, "applicability": check.applicability,
-                        "condition": check.condition} for check in question.checks],
+    layout = getattr(rubric, "layout", "facet")
+    checks = [{"id": check.id, "dimension": check.dimension,
+               "criterion": check.criterion, "applicability": check.applicability,
+               "condition": check.condition} for check in question.checks]
+    if layout == CHECKLIST_LAYOUT:
+        for item, check in zip(checks, question.checks):
+            item.update(type=check.type, parent_id=check.parent_id)
+    return {"question_id": question.id, "question": question.question, "layout": layout,
+            "checks": checks,
             "answer": answer, "inspected": inspected, "citations": citations,
             "gold_alternatives": gold}
 
@@ -135,6 +142,8 @@ def validate_judgments(payload: dict, response: GraderResponse) -> dict:
     judgments = {item.id: item for item in response.judgments}
     if len(judgments) != len(response.judgments) or set(judgments) != set(checks):
         raise ValueError("grader omitted, duplicated, or invented check IDs")
+    if payload.get("layout") == CHECKLIST_LAYOUT:
+        return _validate_checklist_judgments(payload, checks, judgments)
     counts = {dimension: {rating: 0 for rating in
               ("pass", "partial", "fail", "not_applicable", "unreviewed")}
               for dimension in {check["dimension"] for check in checks.values()}}
@@ -142,6 +151,8 @@ def validate_judgments(payload: dict, response: GraderResponse) -> dict:
         check = checks[check_id]
         if item.rating == "not_applicable" and check["applicability"] != "conditional":
             raise ValueError("required check cannot be not applicable")
+        if item.rating in ("pass", "partial") and not item.answer_excerpt:
+            raise ValueError("positive judgment needs an exact answer excerpt")
         if item.answer_excerpt is not None and item.answer_excerpt not in payload["answer"]:
             raise ValueError("grader answer excerpt is not exact")
         for support in item.inspected_support:
@@ -162,22 +173,60 @@ def validate_judgments(payload: dict, response: GraderResponse) -> dict:
             "judgments": [item.model_dump(mode="json") for item in response.judgments]}
 
 
-def grade_answer(rubric: AnswerRubric, question_id: str, answer_receipt: dict,
+def _validate_checklist_judgments(payload: dict, checks: dict, judgments: dict) -> dict:
+    """Binary ratings, primary/detail dependencies, and one count per grounding error."""
+    grounding_failures: set[str] = set()
+    for check_id, item in judgments.items():
+        check = checks[check_id]
+        if item.rating == "partial":
+            raise ValueError("checklist ratings are binary")
+        if item.answer_excerpt is not None and item.answer_excerpt not in payload["answer"]:
+            raise ValueError("grader answer excerpt is not exact")
+        for support in item.inspected_support:
+            passage = payload["inspected"].get(support.id)
+            if passage is None or support.excerpt not in passage["text"]:
+                raise ValueError("grader support is not an exact inspected excerpt")
+            if check["dimension"] == "grounding" and support.id not in payload["citations"]:
+                raise ValueError("grounding support was not cited by the answer")
+        if check["dimension"] == "grounding":
+            # Many grounding checks are prohibitions, so a pass may have nothing to quote.
+            # A failure must point at the offending claim, and one claim fails one check.
+            if item.rating == "fail":
+                if not item.answer_excerpt:
+                    raise ValueError("grounding failure needs the exact offending excerpt")
+                if item.answer_excerpt in grounding_failures:
+                    raise ValueError("one grounding error is counted under one check only")
+                grounding_failures.add(item.answer_excerpt)
+        elif item.rating == "pass" and (not item.answer_excerpt or not item.inspected_support):
+            raise ValueError("passing coverage or example check needs an answer excerpt and inspected support")
+    scores = score_checklist_ratings(list(checks.values()),
+                                     {check_id: item.rating for check_id, item in judgments.items()})
+    return {"status": "graded", "scores": scores,
+            "judgments": [item.model_dump(mode="json") for item in judgments.values()]}
+
+
+def grade_answer(rubric: AnswerRubric | Checklist, question_id: str, answer_receipt: dict,
                  gold_sources: dict[str, bytes], *, client: ModelClient, model: ModelSpec,
                  max_output_tokens: int = 2800) -> dict:
     """One bounded grader call; all failures remain ungraded for review or retry."""
     payload = prepare_evidence(rubric, question_id, answer_receipt, gold_sources)
+    checklist = payload.get("layout") == CHECKLIST_LAYOUT
+    prompt, schema_name, schema, version = (
+        (CHECKLIST_PROMPT, "answer_grader_v2", GRADE_SCHEMA_V2, 2) if checklist
+        else (PROMPT, "answer_grader_v1", GRADE_SCHEMA, 1))
     identity = {"question_id": question_id, "rubric_sha256": rubric_fingerprint(rubric),
-                "grader_prompt_sha256": hashlib.sha256(PROMPT.encode()).hexdigest(),
+                "grader_prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
                 "model": model.model_id}
     try:
-        result = client.generate_json(model=model, system_prompt=PROMPT,
+        result = client.generate_json(model=model, system_prompt=prompt,
             input_text=json.dumps(payload, ensure_ascii=False),
-            schema_name="answer_grader_v1", json_schema=GRADE_SCHEMA,
+            schema_name=schema_name, json_schema=schema,
             max_output_tokens=max_output_tokens)
         if result.model != model:
             raise ValueError("grader model changed")
         response = GraderResponse.model_validate(result.data)
+        if response.version != version:
+            raise ValueError("grader answered with the wrong response version")
         return {**identity, **validate_judgments(payload, response)}
     except (ModelClientError, ValidationError, ValueError) as exc:
         return {**identity, "status": "ungraded", "reason": type(exc).__name__}

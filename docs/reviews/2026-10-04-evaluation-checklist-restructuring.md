@@ -57,6 +57,20 @@ Q1.C2 remains primary as approved: developing promising people can be included i
 - A factual/attribution/qualification error should be assigned to its most specific grounding check and counted once. General factual support should not count the same error again. This is a proposed review rule; the current grader does not enforce it.
 - The current freeze logic requires question-level review_status. Since the proposal removes it as requested, approval tracking must be integrated separately before activating or freezing this checklist.
 
+## Decisions recorded on 2026-10-05
+
+- Q1.C3, Q6.C2, and Q8.C4 stay independent primaries.
+- Q4/Q5 example boundary: a concrete tactic described in the source counts as an example. Q4.E1 and Q5.E1 say so.
+- Q1.C10 is not restored: a shared platform is neither distinctive nor unusual, which is what Q1 asks for.
+- Q1.C7 and Q1.C8 become optional details of Q1.C22: useful follow-up content, never scored.
+- Optional details may be rated as not included even when their primary passes.
+- Q6.C10 is removed as not needed. The checklist has 91 checks and no open design choice.
+- An example taken from a source that does not address the question's subject fails the example check (the user's Q4 judgment).
+- The loader, scoring, grader, and review page now support this checklist; the sections above that say otherwise describe the state on 2026-10-04.
+
+- Relevance is added as a scope per question, not as more checks: each main point of an answer outside the scope counts as one failed check. The user found that parts of the Q8 answer were about managing people rather than hiring, which the three dimensions could not flag.
+- Scoring: one total over all scored checks for all questions, one per dimension, one per answer. The 70% guideline applies to an answer's scored checks together. This supersedes the earlier statement that no percentages are reported.
+
 ## Verification
 
 Parsed the YAML and checked question wording, metadata, source mappings, unique IDs, allowed dimensions, parent existence and primary status, and conditional parent gates. Checked evidence bounds against all six captured source snapshots and verified their original byte hashes. No model calls were made. No executable scoring code changed; the current grader cannot load this proposal until its schema and dependency handling are updated.
