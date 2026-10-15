@@ -71,6 +71,10 @@ Q1.C2 remains primary as approved: developing promising people can be included i
 - Relevance is added as a scope per question, not as more checks: each main point of an answer outside the scope counts as one failed check. The user found that parts of the Q8 answer were about managing people rather than hiring, which the three dimensions could not flag.
 - Scoring: one total over all scored checks for all questions, one per dimension, one per answer. The 70% guideline applies to an answer's scored checks together. This supersedes the earlier statement that no percentages are reported.
 
+## Decisions recorded on 2026-10-15
+
+- Q8.C4 (asking about reasoning instead of dictating changes) and Q8.C11 (preserving ownership) are removed: they are about managing people after hiring, which Q8 does not ask. This reverses the 2026-10-05 decision to keep Q8.C4 as a primary. The checklist has 89 checks. Q8.G3 (the reader's "My note" is not Sivers' words) stays as a grounding check for answers that mention it.
+
 ## Verification
 
 Parsed the YAML and checked question wording, metadata, source mappings, unique IDs, allowed dimensions, parent existence and primary status, and conditional parent gates. Checked evidence bounds against all six captured source snapshots and verified their original byte hashes. No model calls were made. No executable scoring code changed; the current grader cannot load this proposal until its schema and dependency handling are updated.
