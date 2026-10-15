@@ -1,4 +1,4 @@
-# Review proposal; not loaded by the current grader.
+# Frozen on 2026-10-15 with every question approved by the user.
 # Applicable checks use pass/fail; unreviewed remains unreviewed.
 # Coverage tests inclusion. Incorrect attribution/support is judged under grounding.
 # Details are N/A when their primary is absent; they are not failed in that case.
@@ -17,16 +17,22 @@
 # Q6.C10 (stating what was observed when asking) is removed as not needed.
 # Q8.C4 (question-led feedback) and Q8.C11 (preserving ownership) were removed by the user on
 # 2026-10-15: they are about managing people after hiring, which the question does not ask.
+# Also on 2026-10-15: Q8 stays about Ferrari only (no check that Sivers lacks hiring advice);
+# Q2.C4 is reworded more loosely; Q4.C14 (the label 'weakness') is dropped as one word choice.
+# Evidence entries without a passage location were removed; the grader never used them.
+# Also on 2026-10-15, from the user's approval review: Q1.C11, Q2.C14 and Q4.C15 are removed;
+# Q6.C3 is reframed as not letting discomfort keep you silent; the mock-up tagline passage no longer
+# counts for Q7.C2; extra source passages were added where the user kept them, and Q4/Q5 stay lean.
 # Relevance: each question has a scope. Each main point of an answer that falls outside it
 # counts as one failed check. Points inside the scope add nothing, so depth is not penalised.
 # The in_scope lines were corrected by the user on 2026-10-06. The out_of_scope lines are
 # examples of what falls outside, a reading aid for the reviewer and the grader; the in_scope
 # line is the rule.
 version: 4
-status: "draft"
+status: "frozen"
 # The loader refuses to freeze while this list is non-empty or any question is unapproved.
 open_decisions: []
-approved_questions: []
+approved_questions: ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8"]
 source_revisions:
   bending_spoons:
     document_id: "99bcc380-46a8-5083-8cc6-28cb901aa1ad"
@@ -67,6 +73,18 @@ questions:
             description: "Prioritize talent and drive over prior experience."
             start_char: 14093
             end_char: 14633
+          - source: "bending_spoons"
+            description: "Says smart, caring people often deliver more value than more experienced people."
+            start_char: 9800
+            end_char: 9970
+          - source: "bending_spoons"
+            description: "Contrasts experience, which is not always valuable, with talent and drive, which always is."
+            start_char: 13837
+            end_char: 14064
+          - source: "bending_spoons"
+            description: "States the company deliberately finds people with little track record who are likely to excel."
+            start_char: 22541
+            end_char: 22689
       - id: "Q1.C2"
         dimension: "coverage"
         criterion: "Explain that the company creates conditions for promising people to develop."
@@ -78,6 +96,14 @@ questions:
             description: "Create conditions for promising people to have autonomy and grow."
             start_char: 14652
             end_char: 15017
+          - source: "bending_spoons"
+            description: "Describes giving talented people room so they learn faster and their careers accelerate."
+            start_char: 16086
+            end_char: 16366
+          - source: "bending_spoons"
+            description: "Explains rotation gives people new challenges so they keep growing."
+            start_char: 56296
+            end_char: 56435
       - id: "Q1.C3"
         dimension: "coverage"
         criterion: "Explain that strong teams are given autonomy rather than unnecessary rules and procedures."
@@ -89,6 +115,14 @@ questions:
             description: "Enable great people to do great work as they see fit, with as few rigid rules and processes as the work allows."
             start_char: 15618
             end_char: 16067
+          - source: "bending_spoons"
+            description: "Says strong people get wide leeway instead of rules."
+            start_char: 16086
+            end_char: 16271
+          - source: "bending_spoons"
+            description: "States the company beats complexity with talent rather than process and keeps rules to a minimum."
+            start_char: 113489
+            end_char: 113643
       - id: "Q1.C4"
         dimension: "coverage"
         criterion: "Describe centralized hiring rather than delegating each urgent vacancy to its local manager."
@@ -100,6 +134,10 @@ questions:
             description: "Centralize hiring to counter local pressure to fill an urgent seat."
             start_char: 27480
             end_char: 28903
+          - source: "bending_spoons"
+            description: "Gives a reason not to leave hiring decisions to the local team manager."
+            start_char: 29476
+            end_char: 29639
       - id: "Q1.C5"
         dimension: "coverage"
         criterion: "Describe the practice of avoiding variable pay tied to narrow KPIs."
@@ -111,6 +149,10 @@ questions:
             description: "Avoid variable pay tied to narrow KPIs; trust intrinsically motivated managers to build strong teams instead."
             start_char: 29855
             end_char: 30188
+          - source: "bending_spoons"
+            description: "Explains why pay tied to specific objectives leads people to game the incentive instead of serving the company."
+            start_char: 30510
+            end_char: 30801
       - id: "Q1.C6"
         dimension: "coverage"
         criterion: "Give promising employees substantially more work than feels comfortable."
@@ -122,6 +164,10 @@ questions:
             description: "Give promising employees substantially more work than feels comfortable."
             start_char: 50011
             end_char: 50511
+          - source: "bending_spoons"
+            description: "States the principle of giving people more work than they can do."
+            start_char: 51167
+            end_char: 51253
       - id: "Q1.C22"
         dimension: "coverage"
         criterion: "Explain the principle of reducing unnecessary complexity."
@@ -137,6 +183,14 @@ questions:
             description: "Actively remove existing complexity when it no longer serves the work."
             start_char: 72740
             end_char: 72922
+          - source: "bending_spoons"
+            description: "States the simplification principle favors removing things entirely."
+            start_char: 75700
+            end_char: 75782
+          - source: "bending_spoons"
+            description: "Explains the value of cutting complexity completely."
+            start_char: 79483
+            end_char: 79707
       - id: "Q1.C7"
         dimension: "coverage"
         criterion: "Require proponents of added complexity to justify it."
@@ -159,6 +213,14 @@ questions:
             description: "Actively remove existing complexity when it no longer serves the work."
             start_char: 72740
             end_char: 72922
+          - source: "bending_spoons"
+            description: "Shows the company removed an existing structure, job titles."
+            start_char: 77623
+            end_char: 77703
+          - source: "bending_spoons"
+            description: "Recommends removing existing product parts that add complexity."
+            start_char: 79880
+            end_char: 79993
       - id: "Q1.C9"
         dimension: "coverage"
         criterion: "Treat acquired businesses as long-term operating products, not assets bought to resell."
@@ -170,17 +232,6 @@ questions:
             description: "Treat acquired businesses as long-term operating products, not assets bought to resell."
             start_char: 90499
             end_char: 90973
-      - id: "Q1.C11"
-        dimension: "coverage"
-        criterion: "Explain that small teams work across products."
-        type: "primary"
-        parent_id: null
-        applicability: "required"
-        evidence_alternatives:
-          - source: "bending_spoons"
-            description: "Explain how small teams work across products."
-            start_char: 111303
-            end_char: 111875
       - id: "Q1.C18"
         dimension: "coverage"
         criterion: "Explain how the centralized talent team learns across roles and candidates."
@@ -193,6 +244,14 @@ questions:
             description: "Explain how the centralized talent team learns across roles and candidates."
             start_char: 32393
             end_char: 33116
+          - source: "bending_spoons"
+            description: "Contrasts the small sample a local manager learns from with the central team's view."
+            start_char: 31975
+            end_char: 32210
+          - source: "bending_spoons"
+            description: "Shows the central talent team uses its view across roles to place candidates."
+            start_char: 33388
+            end_char: 33615
       - id: "Q1.C19"
         dimension: "coverage"
         criterion: "Explain how capacity pressure teaches prioritization and growth."
@@ -205,6 +264,14 @@ questions:
             description: "Explain how capacity pressure teaches prioritization and growth."
             start_char: 53012
             end_char: 54489
+          - source: "bending_spoons"
+            description: "Explains that a larger workload improves prioritization and returns."
+            start_char: 50530
+            end_char: 50677
+          - source: "bending_spoons"
+            description: "Says a light workload fails to train people in a key skill, so pressure builds growth."
+            start_char: 52690
+            end_char: 52991
       - id: "Q1.C20"
         dimension: "coverage"
         criterion: "Explain that centralized hiring counters local pressure to fill an urgent vacancy."
@@ -217,6 +284,10 @@ questions:
             description: "Centralize hiring to counter local pressure to fill an urgent seat."
             start_char: 27480
             end_char: 28903
+          - source: "bending_spoons"
+            description: "Rejects the urgency to fill an empty seat."
+            start_char: 35613
+            end_char: 35723
       - id: "Q1.C21"
         dimension: "coverage"
         criterion: "Explain that the no-variable-pay practice relies on managers' intrinsic motivation."
@@ -229,6 +300,10 @@ questions:
             description: "Avoid variable pay tied to narrow KPIs; trust intrinsically motivated managers to build strong teams instead."
             start_char: 29855
             end_char: 30188
+          - source: "bending_spoons"
+            description: "Says the no-bonus approach relies on ownership and caring rather than pay incentives."
+            start_char: 31565
+            end_char: 31787
       - id: "Q1.G1"
         dimension: "grounding"
         criterion: "Material factual claims have support in the original passages the answer agent inspected and cites."
@@ -262,6 +337,26 @@ questions:
             description: "Include a relevant concrete example from an inspected original source; invented scenarios do not count."
             start_char: 76139
             end_char: 77361
+          - source: "bending_spoons"
+            description: "Concrete example of an unusual hiring signal."
+            start_char: 25126
+            end_char: 25512
+          - source: "bending_spoons"
+            description: "Concrete example of a small core team transforming an acquired product."
+            start_char: 84954
+            end_char: 85292
+          - source: "bending_spoons"
+            description: "Concrete example of a small team running an acquired product."
+            start_char: 100949
+            end_char: 101013
+          - source: "bending_spoons"
+            description: "Concrete example of the internal AI tool letting a small team run Evernote."
+            start_char: 107168
+            end_char: 107306
+          - source: "bending_spoons"
+            description: "Concrete example of how the company tested a pay decision."
+            start_char: 137330
+            end_char: 137601
   - id: "Q2"
     question: "I am starting a new business project and I need help from Derek Sivers. What ideas or prompts would he suggest considering to challenge or stretch my thinking about how to build the business?"
     purpose: "Turn Sivers' highlighted ideas into questions for a new project."
@@ -294,18 +389,6 @@ questions:
             description: "When response is lukewarm, improve, invent, or move on rather than keep pushing unchanged."
             start_char: 1051
             end_char: 1685
-      - id: "Q2.C14"
-        dimension: "coverage"
-        criterion: "Identify willingness to pay as a signal of strong public response."
-        type: "detail"
-        parent_id: "Q2.C1"
-        applicability: "conditional"
-        condition: "Q2.C1 is pass (the strong-public-response idea is present)."
-        evidence_alternatives:
-          - source: "sivers"
-            description: "Look for a strong public response to an idea, including willingness to pay."
-            start_char: 1051
-            end_char: 1685
       - id: "Q2.C3"
         dimension: "coverage"
         criterion: "Make customer benefit the basis for business decisions."
@@ -317,9 +400,21 @@ questions:
             description: "Make decisions for the benefit of customers; when priorities are unclear, ask how you can best help them now and act on their requests."
             start_char: 2076
             end_char: 2462
+          - source: "sivers"
+            description: "Sivers designed CD Baby's terms from the customer's (musician's) point of view, making customer benefit the basis of the business model."
+            start_char: 476
+            end_char: 694
+          - source: "sivers"
+            description: "Sivers says growth decisions should center entirely on thrilling existing customers."
+            start_char: 2498
+            end_char: 2648
+          - source: "sivers"
+            description: "Sivers made staffing and structure decisions around what makes customers happy."
+            start_char: 5546
+            end_char: 5747
       - id: "Q2.C4"
         dimension: "coverage"
-        criterion: "Question whether a supposedly necessary corporate formality serves the business."
+        criterion: "Challenge the assumption that a growing business needs the formal processes or overheads others say it needs."
         type: "primary"
         parent_id: null
         applicability: "required"
@@ -328,6 +423,14 @@ questions:
             description: "Question whether supposedly necessary corporate formalities actually serve the business; Sivers describes refusing employee review plans and other formalities at CD Baby, while pointing to businesses that work without them."
             start_char: 3198
             end_char: 3755
+          - source: "sivers"
+            description: "Sivers says growing does not require adopting big-company behavior."
+            start_char: 8863
+            end_char: 8961
+          - source: "sivers"
+            description: "Sivers rejects formality adopted to satisfy conventional business expectations."
+            start_char: 9662
+            end_char: 9741
       - id: "Q2.C5"
         dimension: "coverage"
         criterion: "Identify which customers the business is intended to serve."
@@ -339,6 +442,10 @@ questions:
             description: "Choose whom the business is for, confidently exclude others, and clearly say what it is not."
             start_char: 3816
             end_char: 4112
+          - source: "sivers"
+            description: "Sivers tells the reader to pick a target 1% audience to serve."
+            start_char: 4148
+            end_char: 4320
       - id: "Q2.C12"
         dimension: "coverage"
         criterion: "Explain asking what would help customers now and responding to their requests."
@@ -363,6 +470,10 @@ questions:
             description: "Choose whom the business is for, confidently exclude others, and clearly say what it is not."
             start_char: 3816
             end_char: 4112
+          - source: "sivers"
+            description: "Sivers explains excluding the other 99% outside the chosen audience and why it wins the target group."
+            start_char: 4148
+            end_char: 4320
       - id: "Q2.G1"
         dimension: "grounding"
         criterion: "Material factual claims have support in the original passages the answer agent inspected and cites."
@@ -401,6 +512,30 @@ questions:
             description: "Include a relevant concrete example from an inspected original source; invented scenarios do not count."
             start_char: 3198
             end_char: 3755
+          - source: "sivers"
+            description: "Concrete CD Baby example of designing a business from the customer's point of view."
+            start_char: 476
+            end_char: 694
+          - source: "sivers"
+            description: "Concrete CD Baby example of excluding record labels to serve independent musicians."
+            start_char: 3952
+            end_char: 4112
+          - source: "sivers"
+            description: "Concrete CD Baby staffing example showing customer service as a priority."
+            start_char: 5546
+            end_char: 5656
+          - source: "sivers"
+            description: "Concrete CD Baby example of turning complainers into evangelists."
+            start_char: 6494
+            end_char: 6714
+          - source: "sivers"
+            description: "Concrete CD Baby policy example of small touches that win customers."
+            start_char: 8379
+            end_char: 8603
+          - source: "sivers"
+            description: "Concrete example of how Sivers delegated decisions to make himself unnecessary."
+            start_char: 9114
+            end_char: 9318
   - id: "Q3"
     question: "What copy advice would Tim Ferriss give me to maximize impact of my company's homepage?"
     purpose: "Improve homepage messaging and test it with an audience."
@@ -421,6 +556,26 @@ questions:
             description: "Lead with a concrete audience benefit or relief."
             start_char: 40907
             end_char: 42155
+          - source: "ferriss"
+            description: "He repeats that the copy should sell parents relief, not only the child's speed."
+            start_char: 44633
+            end_char: 44775
+          - source: "ferriss"
+            description: "Ferriss reframes the pitch around the relief parents get from not having to nag or police."
+            start_char: 50927
+            end_char: 51160
+          - source: "ferriss"
+            description: "He says the copy should name benefits that are an easy yes for the buying parent."
+            start_char: 51528
+            end_char: 51649
+          - source: "ferriss"
+            description: "His proposed tagline leads with a concrete benefit for kids and relief for parents."
+            start_char: 59084
+            end_char: 59171
+          - source: "ferriss"
+            description: "His suggested headline copy states concrete benefits and the relief of nobody having to be the teacher."
+            start_char: 80535
+            end_char: 80730
       - id: "Q3.C3"
         dimension: "coverage"
         criterion: "Put credible testimonials and proof prominently where visitors first look."
@@ -432,6 +587,26 @@ questions:
             description: "Put credible testimonials and proof prominently where visitors first look."
             start_char: 71708
             end_char: 72679
+          - source: "ferriss"
+            description: "Ferriss says the first thing prospects should see is a customer testimonial."
+            start_char: 71094
+            end_char: 71125
+          - source: "ferriss"
+            description: "He points out the strongest proof sits below the fold where first-time visitors miss it."
+            start_char: 78576
+            end_char: 78756
+          - source: "ferriss"
+            description: "He prefers the mock-up that leads the homepage with testimonials."
+            start_char: 82272
+            end_char: 82333
+          - source: "ferriss"
+            description: "He recommends placing a big testimonial at the top of the homepage."
+            start_char: 82706
+            end_char: 82891
+          - source: "ferriss"
+            description: "He explicitly recommends making testimonials very prominent on the homepage."
+            start_char: 84162
+            end_char: 84240
       - id: "Q3.C4"
         dimension: "coverage"
         criterion: "Recommend a concrete next step that reduces friction in trying the product."
@@ -443,6 +618,22 @@ questions:
             description: "Make the next step concrete and easy to try, such as Ferriss's two-minute readiness quiz before sign-up."
             start_char: 40190
             end_char: 40499
+          - source: "ferriss"
+            description: "He proposes a two-minute quiz as an easy first step that still captures leads."
+            start_char: 40659
+            end_char: 40864
+          - source: "ferriss"
+            description: "He recommends putting the quick readiness quiz up front as a low-effort step for busy parents."
+            start_char: 44187
+            end_char: 44481
+          - source: "ferriss"
+            description: "He suggests a prominent homepage prompt for the two-minute quiz as the next step."
+            start_char: 72788
+            end_char: 72912
+          - source: "ferriss"
+            description: "He suggests replacing the generic Get started button with a concrete readiness-check call to action."
+            start_char: 78957
+            end_char: 79180
       - id: "Q3.C5"
         dimension: "coverage"
         criterion: "Recommend testing candidate wording with prospective buyers; no particular test method is required."
@@ -454,6 +645,18 @@ questions:
             description: "Test candidate wording with prospective buyers; conversations, presentations, and controlled website tests are acceptable methods."
             start_char: 100900
             end_char: 104975
+          - source: "ferriss"
+            description: "He recommends writing several wording options and split testing them."
+            start_char: 54267
+            end_char: 54360
+          - source: "ferriss"
+            description: "He recommends trying messaging on real people in person to get feedback."
+            start_char: 98889
+            end_char: 98975
+          - source: "ferriss"
+            description: "He recommends presenting to target customers as a way to test messaging."
+            start_char: 115391
+            end_char: 115602
       - id: "Q3.C6"
         dimension: "coverage"
         criterion: "Explain evaluating candidate wording using observable purchase-intent signals."
@@ -466,6 +669,18 @@ questions:
             description: "Test promising homepage wording using observable purchase-intent signals."
             start_char: 100900
             end_char: 104975
+          - source: "ferriss"
+            description: "He judges messaging by observable reactions such as leaning in and asking follow-up questions."
+            start_char: 99375
+            end_char: 99570
+          - source: "ferriss"
+            description: "He uses which point listeners spontaneously ask about as the signal for what wording to promote."
+            start_char: 100072
+            end_char: 100410
+          - source: "ferriss"
+            description: "He says to watch what audience members ask and mention after a talk as the signal of interest."
+            start_char: 115797
+            end_char: 115914
       - id: "Q3.G1"
         dimension: "grounding"
         criterion: "Material factual claims have support in the original passages the answer agent inspected and cites."
@@ -507,6 +722,26 @@ questions:
             description: "The source's concrete testimonial example illustrates customer proof."
             start_char: 70922
             end_char: 71526
+          - source: "ferriss"
+            description: "A concrete tagline example that communicates a customer benefit."
+            start_char: 59084
+            end_char: 59171
+          - source: "ferriss"
+            description: "A concrete example of choosing a testimonial that proves value against tutors."
+            start_char: 83063
+            end_char: 83223
+          - source: "ferriss"
+            description: "A real customer testimonial example used as proof."
+            start_char: 83547
+            end_char: 83650
+          - source: "ferriss"
+            description: "Ferriss's party example shows how to test a message by watching for follow-up questions."
+            start_char: 99571
+            end_char: 99747
+          - source: "ferriss"
+            description: "His 4-Hour Workweek workshop example shows dropping messages that fail with live audiences."
+            start_char: 101944
+            end_char: 102072
   - id: "Q4"
     question: "What steps could I take to calm myself down when I realize I feel anger?"
     purpose: "Get an immediately usable sequence from the short note."
@@ -538,6 +773,10 @@ questions:
             description: "Interrupt heavy breathing and take a deliberate breath."
             start_char: 842
             end_char: 965
+          - source: "anger"
+            description: "Item 4 directly tells the reader to take a deliberate breath to regain control."
+            start_char: 1112
+            end_char: 1170
       - id: "Q4.C3"
         dimension: "coverage"
         criterion: "Describe detaching from the angry reaction."
@@ -583,30 +822,6 @@ questions:
             description: "Count down if needed to regain control."
             start_char: 1533
             end_char: 1702
-      - id: "Q4.C14"
-        dimension: "coverage"
-        criterion: "Describe the note's use of the label 'weakness' to distance oneself from the reaction."
-        type: "detail"
-        parent_id: "Q4.C3"
-        applicability: "conditional"
-        condition: "Q4.C3 is pass (the parent idea is present)."
-        evidence_alternatives:
-          - source: "anger"
-            description: "Describe the note's tactic of labeling the reaction as weakness and detaching from it."
-            start_char: 966
-            end_char: 1108
-      - id: "Q4.C15"
-        dimension: "coverage"
-        criterion: "Explain that slow nodding buys time before reacting."
-        type: "detail"
-        parent_id: "Q4.C4"
-        applicability: "conditional"
-        condition: "Q4.C4 is pass (the parent idea is present)."
-        evidence_alternatives:
-          - source: "anger"
-            description: "Nod slowly to buy time before reacting."
-            start_char: 1219
-            end_char: 1395
       - id: "Q4.G1"
         dimension: "grounding"
         criterion: "Material factual claims have support in the original passages the answer agent inspected and cites."
@@ -636,6 +851,18 @@ questions:
             description: "Include a relevant concrete example from an inspected original source; invented scenarios do not count."
             start_char: 1219
             end_char: 1395
+          - source: "anger"
+            description: "A concrete physical tactic to use the moment anger starts."
+            start_char: 845
+            end_char: 917
+          - source: "anger"
+            description: "A concrete in-the-moment calming tactic from the source."
+            start_char: 1112
+            end_char: 1170
+          - source: "anger"
+            description: "A concrete counting tactic with specific numbers."
+            start_char: 1536
+            end_char: 1655
   - id: "Q5"
     question: "What two practical rules could help me make decisions when stuck looking for more information?"
     purpose: "Escape analysis paralysis while limiting downside."
@@ -720,6 +947,10 @@ questions:
             description: "Include a relevant concrete example from an inspected original source; invented scenarios do not count."
             start_char: 758
             end_char: 1038
+          - source: "decisions"
+            description: "A concrete military example of the cost of waiting for more certainty."
+            start_char: 545
+            end_char: 715
   - id: "Q6"
     question: "What practical tips could I use to get better at having hard conversations?"
     purpose: "Address awkwardness and feedback without waiting for a perfect script."
@@ -740,6 +971,18 @@ questions:
             description: "Name an awkward or difficult issue directly instead of waiting for events to resolve it."
             start_char: 1604
             end_char: 1956
+          - source: "movie_logic"
+            description: "Contrasts waiting with naming a problem early."
+            start_char: 2228
+            end_char: 2344
+          - source: "movie_logic"
+            description: "Argues for naming an issue directly so you can deal with it."
+            start_char: 5193
+            end_char: 5319
+          - source: "movie_logic"
+            description: "Rejects silence and recommends naming issues."
+            start_char: 5621
+            end_char: 5737
       - id: "Q6.C2"
         dimension: "coverage"
         criterion: "Recommend asking about the observed problem instead of assuming its cause."
@@ -751,17 +994,41 @@ questions:
             description: "Say that something feels wrong, explain what you have noticed, and ask about it instead of assuming you already know why it is happening."
             start_char: 8005
             end_char: 8452
+          - source: "movie_logic"
+            description: "States an observed pattern and asks about it instead of assuming the reason."
+            start_char: 3911
+            end_char: 4045
+          - source: "movie_logic"
+            description: "Names what is sensed and asks whether the other person sees it too."
+            start_char: 4192
+            end_char: 4334
+          - source: "movie_logic"
+            description: "Warns that our assumed explanations are often wrong, so we should raise the observation with others."
+            start_char: 8793
+            end_char: 9095
+          - source: "movie_logic"
+            description: "Shares an observation and asks rather than asserting a cause."
+            start_char: 9292
+            end_char: 9441
       - id: "Q6.C3"
         dimension: "coverage"
-        criterion: "Recommend allowing disagreement or correction instead of treating discomfort as a reason to stay silent."
+        criterion: "Recommend not letting discomfort keep you silent, for example by naming the discomfort itself."
         type: "primary"
         parent_id: null
         applicability: "required"
         evidence_alternatives:
           - source: "movie_logic"
-            description: "Make room for a possible argument or correction rather than treating discomfort as proof to stay silent."
+            description: "Say out loud that a topic might start an argument rather than letting that worry keep you silent."
             start_char: 6715
             end_char: 7185
+          - source: "movie_logic"
+            description: "Says the thing making the conversation uncomfortable can itself be named rather than used as a reason to stay quiet."
+            start_char: 7186
+            end_char: 7344
+          - source: "movie_logic"
+            description: "Warns against treating discomfort as a reason to avoid the conversation."
+            start_char: 7723
+            end_char: 7943
       - id: "Q6.G1"
         dimension: "grounding"
         criterion: "Material factual claims have support in the original passages the answer agent inspected and cites."
@@ -795,6 +1062,18 @@ questions:
             description: "Include a relevant concrete example from an inspected original source; invented scenarios do not count."
             start_char: 2561
             end_char: 3465
+          - source: "movie_logic"
+            description: "A concrete example line for raising a difficult issue."
+            start_char: 3911
+            end_char: 4045
+          - source: "movie_logic"
+            description: "A concrete line from a real advice conversation for raising a hard topic."
+            start_char: 7557
+            end_char: 7674
+          - source: "movie_logic"
+            description: "The author's own concrete example of naming an unclear concern."
+            start_char: 9292
+            end_char: 9441
   - id: "Q7"
     question: "I am starting a business from scratch with no investors. Give me three constraints that would help me find customers willing to pay in my first month."
     purpose: "Choose three practical limits for early customer discovery."
@@ -812,14 +1091,22 @@ questions:
         parent_id: null
         applicability: "required"
         evidence_alternatives:
-          - source: "sivers"
-            description: "Use direct customer conversations or open-ended requests to identify a real need."
-            start_char: null
-            end_char: null
           - source: "ferriss"
             description: "Use direct customer conversations or open-ended requests to identify a real need."
             start_char: 100900
             end_char: 104975
+          - source: "ferriss"
+            description: "Ferriss says in-person conversations reveal whether people are genuinely interested."
+            start_char: 99375
+            end_char: 99570
+          - source: "ferriss"
+            description: "Hoven concludes he should use direct customer calls to learn the pain points that made people buy."
+            start_char: 100566
+            end_char: 100747
+          - source: "sivers"
+            description: "Sivers tells founders to ask customers an open-ended question to learn what they actually need."
+            start_char: 2300
+            end_char: 2462
       - id: "Q7.C2"
         dimension: "coverage"
         criterion: "Keep the offer and message narrow enough to test with likely buyers."
@@ -827,14 +1114,30 @@ questions:
         parent_id: null
         applicability: "required"
         evidence_alternatives:
-          - source: "sivers"
-            description: "Keep the offer and message narrow enough to test with likely buyers."
-            start_char: null
-            end_char: null
           - source: "ferriss"
-            description: "Keep the offer and message narrow enough to test with likely buyers."
-            start_char: 82387
-            end_char: 83225
+            description: "Ferriss says being explicit about who the offer is for, and not for, makes launching easier."
+            start_char: 87497
+            end_char: 87751
+          - source: "ferriss"
+            description: "Ferriss describes starting with a very narrow target audience for his launch."
+            start_char: 94123
+            end_char: 94351
+          - source: "ferriss"
+            description: "Ferriss says the initial target should be specific even if the eventual market is large."
+            start_char: 121655
+            end_char: 121850
+          - source: "ferriss"
+            description: "Ferriss says concentrating the message on a very focused group is underrated."
+            start_char: 123558
+            end_char: 123668
+          - source: "sivers"
+            description: "Sivers says narrowing who you serve wins over the buyers you want."
+            start_char: 3818
+            end_char: 3951
+          - source: "sivers"
+            description: "Sivers argues a narrow target audience is drawn in by the exclusion of everyone else."
+            start_char: 4148
+            end_char: 4320
       - id: "Q7.C3"
         dimension: "coverage"
         criterion: "Run a small, observable, low-cost test of purchase intent before broad expansion."
@@ -842,14 +1145,14 @@ questions:
         parent_id: null
         applicability: "required"
         evidence_alternatives:
-          - source: "sivers"
-            description: "Run a small, observable, low-cost test of purchase intent before broad expansion."
-            start_char: null
-            end_char: null
           - source: "ferriss"
             description: "Run a small, observable, low-cost test of purchase intent before broad expansion."
             start_char: 100900
             end_char: 104975
+          - source: "sivers"
+            description: "Sivers says to proceed only when several people show clear willingness to pay."
+            start_char: 1391
+            end_char: 1569
       - id: "Q7.G1"
         dimension: "grounding"
         criterion: "Material factual claims have support in the original passages the answer agent inspected and cites."
@@ -860,10 +1163,6 @@ questions:
         criterion: "Identify the proposed three constraints as the agent's synthesis rather than quotations from either source."
         applicability: "required"
         evidence_alternatives:
-          - source: "sivers"
-            description: "Keep source speakers and the agent's adaptations distinct."
-            start_char: null
-            end_char: null
           - source: "ferriss"
             description: "Keep source speakers and the agent's adaptations distinct."
             start_char: 100900
@@ -883,14 +1182,30 @@ questions:
         criterion: "Include at least one relevant concrete example from an inspected original source; an invented scenario does not satisfy this check."
         applicability: "required"
         evidence_alternatives:
-          - source: "sivers"
-            description: "Include a relevant concrete example from an inspected original source; invented scenarios do not count."
-            start_char: null
-            end_char: null
           - source: "ferriss"
             description: "Include a relevant concrete example from an inspected original source; invented scenarios do not count."
             start_char: 100900
             end_char: 104975
+          - source: "ferriss"
+            description: "A concrete example from Ferriss's first business of lowering buyer risk to win paying customers."
+            start_char: 38168
+            end_char: 38322
+          - source: "ferriss"
+            description: "A concrete example of reading interest from whether people ask a follow-up question in conversation."
+            start_char: 99571
+            end_char: 99747
+          - source: "ferriss"
+            description: "A concrete example of testing the pitch directly in front of a warm group of likely buyers."
+            start_char: 115391
+            end_char: 115602
+          - source: "sivers"
+            description: "A concrete example of Sivers setting constraints for his first business from the customer's point of view."
+            start_char: 476
+            end_char: 694
+          - source: "sivers"
+            description: "A concrete example of improving an offer until customers respond, noted beside Sivers' advice."
+            start_char: 1708
+            end_char: 1802
   - id: "Q8"
     question: "I need to hire two people for my team and don't know how to do this. If Luca Ferrari and Derek Sivers were here in this room, how would they help me do so?"
     purpose: "Compare two perspectives to plan two new hires."
@@ -912,10 +1227,22 @@ questions:
             description: "Attribute talent over experience to Ferrari."
             start_char: 14093
             end_char: 14633
-          - source: "sivers"
-            description: "Attribute talent over experience to Ferrari."
-            start_char: null
-            end_char: null
+          - source: "bending_spoons"
+            description: "Ferrari states that a smart, caring person can outdeliver someone far more experienced."
+            start_char: 9800
+            end_char: 9970
+          - source: "bending_spoons"
+            description: "Ferrari argues experience is overrated and can even make people worse."
+            start_char: 12760
+            end_char: 12968
+          - source: "bending_spoons"
+            description: "Ferrari contrasts unreliable experience with talent that is always valuable."
+            start_char: 13837
+            end_char: 14064
+          - source: "bending_spoons"
+            description: "Ferrari treats favoring experienced candidates over high-potential green ones as a hiring mistake."
+            start_char: 29476
+            end_char: 29639
       - id: "Q8.C2"
         dimension: "coverage"
         criterion: "Describe using application signals such as academic records or personal projects to assess long-term potential."
@@ -927,10 +1254,22 @@ questions:
             description: "Describe Ferrari's deliberate hiring signals."
             start_char: 21598
             end_char: 21889
-          - source: "sivers"
-            description: "Describe Ferrari's deliberate hiring signals."
-            start_char: null
-            end_char: null
+          - source: "bending_spoons"
+            description: "Ferrari names academic record (GPA) as one of the application signals used to predict potential."
+            start_char: 22212
+            end_char: 22425
+          - source: "bending_spoons"
+            description: "Ferrari explains that predictive signals are drawn from every part of a candidate's application."
+            start_char: 23622
+            end_char: 23877
+          - source: "bending_spoons"
+            description: "Ferrari describes reading a candidate's academic record for signs of drive."
+            start_char: 61137
+            end_char: 61304
+          - source: "bending_spoons"
+            description: "Ferrari uses personal projects such as a startup as a signal of a candidate's commitment."
+            start_char: 61780
+            end_char: 62064
       - id: "Q8.C3"
         dimension: "coverage"
         criterion: "Explain avoiding hiring merely to fill an urgent vacancy."
@@ -942,10 +1281,22 @@ questions:
             description: "Explain Ferrari's caution against hiring merely to fill an urgent seat."
             start_char: 29030
             end_char: 29214
-          - source: "sivers"
-            description: "Explain Ferrari's caution against hiring merely to fill an urgent seat."
-            start_char: null
-            end_char: null
+          - source: "bending_spoons"
+            description: "Ferrari describes the bad incentive to fill a seat fast with anyone adequate."
+            start_char: 28615
+            end_char: 28901
+          - source: "bending_spoons"
+            description: "Ferrari values waiting longer when a better candidate is likely to come."
+            start_char: 32857
+            end_char: 33034
+          - source: "bending_spoons"
+            description: "The source cites, and Ferrari endorses, the maxim that an empty seat beats a poor hire."
+            start_char: 34020
+            end_char: 34115
+          - source: "bending_spoons"
+            description: "Ferrari says an empty seat is no reason to rush a hire because the team absorbs the work."
+            start_char: 35613
+            end_char: 35723
       - id: "Q8.G1"
         dimension: "grounding"
         criterion: "Material factual claims have support in the original passages the answer agent inspected and cites."
@@ -960,43 +1311,23 @@ questions:
             description: "Keep source speakers and the agent's adaptations distinct."
             start_char: 14093
             end_char: 14633
-          - source: "sivers"
-            description: "Keep source speakers and the agent's adaptations distinct."
-            start_char: null
-            end_char: null
           - source: "bending_spoons"
             description: "Attribute talent over experience to Ferrari."
             start_char: 14093
             end_char: 14633
-          - source: "sivers"
-            description: "Attribute talent over experience to Ferrari."
-            start_char: null
-            end_char: null
           - source: "bending_spoons"
             description: "Describe Ferrari's deliberate hiring signals."
             start_char: 21598
             end_char: 21889
-          - source: "sivers"
-            description: "Describe Ferrari's deliberate hiring signals."
-            start_char: null
-            end_char: null
           - source: "bending_spoons"
             description: "Explain Ferrari's caution against hiring merely to fill an urgent seat."
             start_char: 29030
             end_char: 29214
-          - source: "sivers"
-            description: "Explain Ferrari's caution against hiring merely to fill an urgent seat."
-            start_char: null
-            end_char: null
       - id: "Q8.G3"
         dimension: "grounding"
         criterion: "Identify the question-led feedback suggestion as a reader-added note rather than Sivers' quoted words."
         applicability: "required"
         evidence_alternatives:
-          - source: "bending_spoons"
-            description: "Use Sivers' ownership and question-led management ideas only as an adaptation to leading hires."
-            start_char: null
-            end_char: null
           - source: "sivers"
             description: "Use Sivers' question-led management only as an adaptation to leading hires."
             start_char: 10472
@@ -1010,10 +1341,6 @@ questions:
             description: "Keep source speakers and the agent's adaptations distinct."
             start_char: 14093
             end_char: 14633
-          - source: "sivers"
-            description: "Keep source speakers and the agent's adaptations distinct."
-            start_char: null
-            end_char: null
       - id: "Q8.G5"
         dimension: "grounding"
         criterion: "Do not present the Sivers highlights as a source-provided two-person recruiting system."
@@ -1033,12 +1360,20 @@ questions:
             description: "Include a relevant concrete example from an inspected original source; invented scenarios do not count."
             start_char: 21598
             end_char: 21889
-          - source: "sivers"
-            description: "Include a relevant concrete example from an inspected original source; invented scenarios do not count."
-            start_char: null
-            end_char: null
+          - source: "bending_spoons"
+            description: "Concrete example of a hiring signal: how candidates treat scheduling staff predicts collaboration."
+            start_char: 25415
+            end_char: 25741
+          - source: "bending_spoons"
+            description: "Concrete example of the central talent team moving a candidate to a better-fitting role."
+            start_char: 33388
+            end_char: 33615
+          - source: "bending_spoons"
+            description: "Concrete example of testing whether higher advertised pay attracts better applicants."
+            start_char: 137330
+            end_char: 137601
 criteria_changes:
-  - "Only coverage, grounding, and example are scored dimensions; this proposal remains a draft."
+  - "Only coverage, grounding, and example are scored dimensions; frozen on 2026-10-15."
   - "Coverage checks measure inclusion; correctness and representation are evaluated under grounding."
   - "A coverage detail is applicable only when its parent primary check is pass. An absent parent makes the detail not applicable."
   - "Optional checks cover useful extra content: omission is N/A; included content is assessed pass/fail separately. They are excluded from the scored numerator and denominator, earn no bonus, and their details require a passing parent. Optional claims remain subject to grounding."

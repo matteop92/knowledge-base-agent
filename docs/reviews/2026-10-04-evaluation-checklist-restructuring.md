@@ -74,6 +74,12 @@ Q1.C2 remains primary as approved: developing promising people can be included i
 ## Decisions recorded on 2026-10-15
 
 - Q8.C4 (asking about reasoning instead of dictating changes) and Q8.C11 (preserving ownership) are removed: they are about managing people after hiring, which Q8 does not ask. This reverses the 2026-10-05 decision to keep Q8.C4 as a primary. The checklist has 89 checks. Q8.G3 (the reader's "My note" is not Sivers' words) stays as a grounding check for answers that mention it.
+- Q8 stays about Ferrari only: the Sivers highlights say nothing about finding or choosing candidates, and no check asks the answer to say so.
+- Q2.C4 is reworded: "Challenge the assumption that a growing business needs the formal processes or overheads others say it needs."
+- Q4.C14 (the note's label 'weakness') is dropped: it scored one word choice, not an idea. The checklist has 88 checks.
+- Pass bar: 70% of all scored checks as one overall total across the eight questions. Grounding failures are reported and a material one still blocks the Stage 5 gate.
+- Each coverage and example check gets every source passage that supports it, not only one, so the grader and the retrieval diagnostic accept an answer that relies on another passage making the same point. The user approves the added passages with each question.
+- From the approval review: Q1.C11 (misleading: its passage says nothing about working across products), Q2.C14, and Q4.C15 (same idea as Q4.C4) are removed. Q6.C3 now reads "Recommend not letting discomfort keep you silent, for example by naming the discomfort itself." The mock-up tagline passage no longer counts for Q7.C2. The user kept 114 of 127 proposed passages and asked for few extras on Q4 and Q5. The checklist has 85 checks.
 
 ## Verification
 
