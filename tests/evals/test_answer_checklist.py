@@ -17,6 +17,12 @@ DRAFT = Path("evals/answer_questions_v4_restructured.yaml")
 MODEL = ModelSpec(provider="fake", model_id="grader", model_version="1")
 
 
+def load_draft() -> Checklist:
+    """The frozen checklist as an unapproved draft, for the rules that guard drafts."""
+    data = yaml.safe_load(DRAFT.read_text(encoding="utf-8"))
+    return Checklist.model_validate({**data, "status": "draft", "approved_questions": []})
+
+
 def checks():
     return [
         {"id": "Q1.C1", "dimension": "coverage", "type": "primary", "parent_id": None, "applicability": "required"},
@@ -37,12 +43,13 @@ def ratings(**changes):
 
 
 class ChecklistTest(unittest.TestCase):
-    def test_draft_loads_as_checklist_and_older_rubrics_are_unchanged(self):
+    def test_checklist_loads_frozen_and_older_rubrics_are_unchanged(self):
         draft = load_rubric(DRAFT)
         self.assertIsInstance(draft, Checklist)
-        self.assertEqual(draft.status, "draft")
+        self.assertEqual(draft.status, "frozen")
+        self.assertEqual(draft.approved_questions, [f"Q{n}" for n in range(1, 9)])
         all_checks = [check for question in draft.questions for check in question.checks]
-        self.assertEqual(len(all_checks), 89)
+        self.assertEqual(len(all_checks), 85)
         self.assertEqual({check.dimension for check in all_checks}, {"coverage", "grounding", "example"})
         self.assertEqual([check.id for check in all_checks if check.applicability == "optional"],
                          ["Q1.C4", "Q1.C5", "Q1.C7", "Q1.C8", "Q1.C18", "Q1.C20", "Q1.C21"])
@@ -55,7 +62,8 @@ class ChecklistTest(unittest.TestCase):
         data = yaml.safe_load(DRAFT.read_text(encoding="utf-8"))
         hashes = {item["document_id"]: item["source_sha256"] for item in data["source_revisions"].values()}
         with self.assertRaisesRegex(ValueError, "freeze"):
-            load_rubric(DRAFT).require_comparison_ready(hashes)
+            load_draft().require_comparison_ready(hashes)
+        load_rubric(DRAFT).require_comparison_ready(hashes)
         frozen = {**data, "status": "frozen", "approved_questions": [f"Q{n}" for n in range(1, 9)]}
         with self.assertRaisesRegex(ValueError, "no open decisions"):
             Checklist.model_validate({**frozen, "open_decisions": ["Something is undecided."]})
@@ -183,7 +191,7 @@ class ChecklistGraderTest(unittest.TestCase):
                 self.calls += 1
                 return GenerationResult(data={}, model=MODEL)
 
-        draft = load_rubric(DRAFT)
+        draft = load_draft()
         client = Client()
         receipt = {"configuration": {"source_revisions": {
             item.document_id: item.source_sha256 for item in draft.source_revisions.values()}},
@@ -195,7 +203,7 @@ class ChecklistGraderTest(unittest.TestCase):
 
 class ReviewPageTest(unittest.TestCase):
     def setUp(self):
-        self.draft = load_rubric(DRAFT)
+        self.draft = load_draft()
         self.hashes = {item.document_id: item.source_sha256 for item in self.draft.source_revisions.values()}
 
     def receipt(self, answer="An answer </script> [E1.0].", **changes):
@@ -241,7 +249,8 @@ class ReviewPageTest(unittest.TestCase):
         self.assertTrue(result["provisional"])
         self.assertFalse(result["complete"])  # the scope has not been checked yet
         coverage = result["dimensions"]["coverage"]
-        self.assertEqual(coverage["scored"] - coverage["pass"], 3)
+        self.assertEqual(coverage["scored"] - coverage["pass"],  # every detail was rated fail
+                         sum(check.parent_id is not None for check in question.checks))
         before = dict(result["total"])
         # Each point outside the question's scope is one failed check; nothing else changes.
         review["reviews"][0].update(out_of_scope_points=["Point 4 is about team culture", " "], scope_reviewed=True)
