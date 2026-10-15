@@ -42,7 +42,7 @@ class ChecklistTest(unittest.TestCase):
         self.assertIsInstance(draft, Checklist)
         self.assertEqual(draft.status, "draft")
         all_checks = [check for question in draft.questions for check in question.checks]
-        self.assertEqual(len(all_checks), 91)
+        self.assertEqual(len(all_checks), 89)
         self.assertEqual({check.dimension for check in all_checks}, {"coverage", "grounding", "example"})
         self.assertEqual([check.id for check in all_checks if check.applicability == "optional"],
                          ["Q1.C4", "Q1.C5", "Q1.C7", "Q1.C8", "Q1.C18", "Q1.C20", "Q1.C21"])

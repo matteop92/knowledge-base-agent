@@ -15,6 +15,8 @@
 # Shared-platform integration (former Q1.C10) is not distinctive or unusual and is not a check.
 # Q1.C7 and Q1.C8 are optional details: useful follow-up content, never scored.
 # Q6.C10 (stating what was observed when asking) is removed as not needed.
+# Q8.C4 (question-led feedback) and Q8.C11 (preserving ownership) were removed by the user on
+# 2026-10-15: they are about managing people after hiring, which the question does not ask.
 # Relevance: each question has a scope. Each main point of an answer that falls outside it
 # counts as one failed check. Points inside the scope add nothing, so depth is not penalised.
 # The in_scope lines were corrected by the user on 2026-10-06. The out_of_scope lines are
@@ -944,32 +946,6 @@ questions:
             description: "Explain Ferrari's caution against hiring merely to fill an urgent seat."
             start_char: null
             end_char: null
-      - id: "Q8.C4"
-        dimension: "coverage"
-        criterion: "Describe asking employees about their reasoning instead of dictating changes."
-        type: "primary"
-        parent_id: null
-        applicability: "required"
-        evidence_alternatives:
-          - source: "bending_spoons"
-            description: "Use Sivers' ownership and question-led management ideas only as an adaptation to leading hires."
-            start_char: null
-            end_char: null
-          - source: "sivers"
-            description: "Use Sivers' question-led management only as an adaptation to leading hires."
-            start_char: 10472
-            end_char: 10863
-      - id: "Q8.C11"
-        dimension: "coverage"
-        criterion: "Explain preserving employees' ownership of their work."
-        type: "primary"
-        parent_id: null
-        applicability: "required"
-        evidence_alternatives:
-          - source: "sivers"
-            description: "Keep Sivers' ownership advice distinct from Ferrari's hiring practices."
-            start_char: 9804
-            end_char: 10449
       - id: "Q8.G1"
         dimension: "grounding"
         criterion: "Material factual claims have support in the original passages the answer agent inspected and cites."
