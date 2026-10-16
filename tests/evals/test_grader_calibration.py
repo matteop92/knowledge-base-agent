@@ -24,11 +24,11 @@ class RelevanceTest(unittest.TestCase):
         result = validate_judgments(grader_payload(), with_points(["Its detail."]))
         self.assertEqual(result["out_of_scope_points"], ["Its detail."])
         self.assertEqual(validate_judgments(grader_payload(), with_points([]))["out_of_scope_points"], [])
-        for points, message in ((["A point the answer never made"], "exact answer excerpt"),
-                                ([" "], "exact answer excerpt"),
-                                (["Its detail.", "Its detail. "], "listed twice")):
-            with self.subTest(points=points), self.assertRaisesRegex(ValueError, message):
-                validate_judgments(grader_payload(), with_points(points))
+        # Points the answer never made, blanks, and repeats are dropped and recorded.
+        result = validate_judgments(grader_payload(), with_points(["A point the answer never made", " ",
+                                                                   "Its detail.", "Its detail. "]))
+        self.assertEqual(result["out_of_scope_points"], ["Its detail."])
+        self.assertEqual(len(result["dropped_out_of_scope_points"]), 3)
 
     def test_schema_and_prompt_require_the_scope(self):
         self.assertIn("out_of_scope_points", GRADE_SCHEMA_V3["required"])
