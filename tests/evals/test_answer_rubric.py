@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from evals.answer_rubric import AnswerRubric, load_rubric, rubric_fingerprint
+from evals.answer_rubric import AnswerRubric, evidence_hits, load_rubric, rubric_fingerprint
 
 
 class AnswerRubricTest(unittest.TestCase):
@@ -15,12 +15,32 @@ class AnswerRubricTest(unittest.TestCase):
         self.assertEqual(revised.status, 'draft')
         self.assertGreater(sum(len(q.checks) for q in revised.questions), 70)
         q3 = revised.questions[2]
-        in_person = [check for check in q3.checks if 'conversations or presentations' in check.criterion]
-        self.assertEqual(len(in_person), 1)
-        self.assertEqual(in_person[0].applicability, 'conditional')
+        wording = [check for check in q3.checks if check.id == 'Q3.C5']
+        self.assertEqual(len(wording), 1)
+        self.assertIn('website tests are acceptable', wording[0].criterion)
+        self.assertEqual(wording[0].applicability, 'required')
+        self.assertTrue(all(any(alt.start_char is not None for alt in check.evidence_alternatives)
+                            for question in revised.questions for check in question.checks
+                            if check.dimension in ('coverage', 'example', 'attribution')))
         with self.assertRaisesRegex(ValueError, 'freeze'):
             revised.require_comparison_ready({source.document_id: source.source_sha256
                                               for source in revised.source_revisions.values()})
+
+    def test_evidence_counts_only_overlapping_passages_of_the_same_revision(self):
+        rubric = load_rubric(Path("evals/answer_questions_v4.yaml"))
+        question = rubric.questions[0]
+        check = next(item for item in question.checks
+                     if any(alt.start_char is not None for alt in item.evidence_alternatives))
+        alternative = next(alt for alt in check.evidence_alternatives if alt.start_char is not None)
+        source = rubric.source_revisions[alternative.source]
+        passage = {"document_id": source.document_id, "source_sha256": source.source_sha256,
+                   "start_char": alternative.start_char + 1, "end_char": alternative.start_char + 5}
+        found, bound = evidence_hits(rubric, question.id, [passage])
+        self.assertGreaterEqual(found, 1)
+        self.assertGreater(bound, found)
+        self.assertEqual(evidence_hits(rubric, question.id, [{**passage, "source_sha256": "0" * 64}])[0], 0)
+        self.assertEqual(evidence_hits(rubric, question.id, [{**passage, "start_char": 0, "end_char": 1}])[0], 0)
+
 
     def setUp(self):
         self.rubric = load_rubric(Path("evals/answer_questions.yaml"))

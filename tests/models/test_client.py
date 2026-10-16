@@ -73,6 +73,16 @@ class ModelClientTests(unittest.TestCase):
             client.generate_json(**kwargs, reasoning_effort="medium")
             self.assertEqual(post.call_args.args[1]["reasoning"], {"effort": "medium"})
             self.assertEqual(post.call_args.args[1]["max_completion_tokens"], 80)
+        # Any model may take an explicit effort; it then has no fixed temperature.
+        other = {**kwargs, "model": ModelSpec(provider="openrouter", model_id="z-ai/glm-5.3", model_version="1")}
+        with patch.object(client, "_post", return_value=response) as post:
+            client.generate_json(**other, reasoning_effort="medium")
+            sent = post.call_args.args[1]
+            self.assertEqual((sent["reasoning"], sent["max_tokens"]), ({"effort": "medium"}, 80))
+            self.assertNotIn("temperature", sent)
+            client.generate_json(**other)
+            self.assertEqual((post.call_args.args[1]["temperature"], post.call_args.args[1]["max_tokens"]), (0, 40))
+            self.assertNotIn("reasoning", post.call_args.args[1])
         response["choices"][0]["finish_reason"] = "length"
         with patch.object(client, "_post", return_value=response), self.assertRaises(ModelClientError):
             client.generate_json(**kwargs)

@@ -13,7 +13,7 @@ from psycopg.types.json import Jsonb
 
 from app.ingestion.contracts import CaptureManifest, ChunkSet, ParsedDocument
 from app.ingestion.embeddings import EmbeddingBatch
-from app.ingestion.enrichment import ChunkContext, EvidenceCardsArtifact
+from app.ingestion.enrichment import ChunkContext
 from app.ingestion.run_manifest import ArtifactRecord, RunManifest
 from app.ingestion.summary import Summary
 from app.storage import StorageError
@@ -23,7 +23,7 @@ from app.storage.records import spec_id
 @dataclass(frozen=True)
 class ValidatedArtifact:
     record: ArtifactRecord
-    payload: ChunkContext | EvidenceCardsArtifact | Summary | EmbeddingBatch | None
+    payload: ChunkContext | Summary | EmbeddingBatch | None
 
 
 @dataclass(frozen=True)
@@ -81,9 +81,13 @@ def validate_run(run_dir: Path) -> ValidatedRun:
     if len(chunks) != sum(len(item.chunks) for item in sets):
         raise StorageError("chunk IDs collide across variants")
     artifacts = []
-    models = {"context": ChunkContext, "cards": EvidenceCardsArtifact, "summary": Summary, "embedding": EmbeddingBatch}
+    models = {"context": ChunkContext, "summary": Summary, "embedding": EmbeddingBatch}
     for artifact_id, record in manifest.artifacts.items():
-        if artifact_id != record.artifact_id or record.kind not in models:
+        if artifact_id != record.artifact_id:
+            raise StorageError("unknown or mismatched artifact")
+        if record.kind == "cards":
+            continue
+        if record.kind not in models:
             raise StorageError("unknown or mismatched artifact")
         payload = None
         if record.status == "ready":
@@ -102,15 +106,6 @@ def validate_run(run_dir: Path) -> ValidatedRun:
                     or record.version_inputs.get("prompt_version") != payload.prompt_version
                     or record.version_inputs.get("input_recipe_version") != payload.input_recipe_version):
                     raise StorageError("context chunk or model mismatch")
-            elif record.kind == "cards":
-                chunk = chunks.get(payload.chunk_id)
-                if (chunk is None or payload.model != record.model
-                    or record.version_inputs.get("chunk_id") != payload.chunk_id
-                    or record.version_inputs.get("prompt_version") != payload.prompt_version
-                    or record.version_inputs.get("extraction_version") != payload.extraction_version):
-                    raise StorageError("cards chunk or model mismatch")
-                for card in payload.cards:
-                    card.validate_against(parsed, chunk)
             elif record.kind == "summary":
                 if (payload.model != record.model or any(cid not in chunks for cid in payload.chunk_ids)
                     or payload.chunk_ids != record.version_inputs.get("chunk_ids")
@@ -246,10 +241,6 @@ def load_run(conn: psycopg.Connection, run_dir: Path) -> str:
             if record.kind == "context":
                 cur.execute("insert into knowledge.contexts values (%s,%s,%s,%s) on conflict do nothing",
                             (capture.run_id, record.artifact_id, payload.chunk_id, Jsonb(value)))
-            elif record.kind == "cards":
-                for card in payload.cards:
-                    cur.execute("insert into knowledge.cards values (%s,%s,%s,%s,%s) on conflict do nothing",
-                                (capture.run_id, record.artifact_id, card.card_id, card.chunk_id, Jsonb(card.model_dump(mode="json"))))
             elif record.kind == "summary":
                 cur.execute("insert into knowledge.summaries values (%s,%s,%s) on conflict do nothing",
                             (capture.run_id, record.artifact_id, Jsonb(value)))

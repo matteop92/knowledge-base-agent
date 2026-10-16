@@ -16,7 +16,7 @@ from psycopg.rows import dict_row
 PORT = 8765
 TABLES = (
     "documents", "runs", "chunk_sets", "chunks", "artifacts", "contexts",
-    "cards", "summaries", "embedding_specs", "embedding_vectors",
+    "summaries", "embedding_specs", "embedding_vectors",
     "profiles", "active_runs", "corpus_state",
 )
 URL_PREFIX = "KNOWLEDGE_DATABASE_URL="
@@ -88,8 +88,6 @@ form{{display:flex;flex-wrap:wrap;gap:10px;align-items:end}}
 label{{display:grid;gap:4px;font-weight:600}}
 select,input,button{{font:inherit;padding:8px;border:1px solid #aebdca;border-radius:5px}}
 select{{max-width:min(100%,600px)}} input{{min-width:250px}} button{{background:#155d96;color:white;cursor:pointer}}
-.card{{background:white;border:1px solid #dce3ea;border-radius:9px;padding:15px;margin:12px 0}}
-.card h2{{font-size:1.1rem;margin:0 0 6px}} .card p{{margin:6px 0}} .card small{{color:#556574}}
 </style></head><body><header><a href="/">← All tables</a> · Local knowledge database · Read-only</header><main>{body}</main></body></html>"""
 
 
@@ -125,21 +123,18 @@ class Handler(BaseHTTPRequestHandler):
                 sql.SQL("select count(*) as n from knowledge.{}").format(sql.Identifier(name))
             ).fetchone()["n"] for name in TABLES}
             documents = db.execute("select relative_path from knowledge.documents order by relative_path").fetchall()
-        cards = "".join(f'<a href="/table?name={quote(name)}"><strong>{count:,}</strong>{escape(name)}</a>' for name, count in counts.items())
+        table_links = "".join(f'<a href="/table?name={quote(name)}"><strong>{count:,}</strong>{escape(name)}</a>' for name, count in counts.items())
         items = "".join("<li>" + escape(row["relative_path"]) + "</li>" for row in documents)
         body = ("<h1>Browse the local database</h1>"
                 "<p class='hint'>This is a live view of the private <code>knowledge</code> schema on this computer. Click a table, then a row to inspect its fields.</p>"
                 f"<div class='box'><b>Selected search profile:</b> {escape(str(profile))}</div>"
-                f"<div class='grid'>{cards}</div><h2>Loaded source documents</h2><div class='box'><ul>{items}</ul></div>")
+                f"<div class='grid'>{table_links}</div><h2>Loaded source documents</h2><div class='box'><ul>{items}</ul></div>")
         self.send_page("All tables", body)
 
     def table(self, params):
         name = params.get("name", [""])[0]
         if name not in TABLES:
             self.send_page("Unknown table", "<h1>Unknown table</h1>", 404)
-            return
-        if name == "cards":
-            self.cards(params)
             return
         try:
             page = max(1, min(10000, int(params.get("page", ["1"])[0])))
@@ -166,66 +161,6 @@ class Handler(BaseHTTPRequestHandler):
             pager += f'<a href="/table?name={quote(name)}&page={page+1}">Next →</a>'
         pager += "</div>"
         self.send_page(name, f"<h1>{escape(name)}</h1><p class='hint'>{count:,} rows · page {page}</p><div class='scroll'><table>{head}{''.join(body_rows)}</table></div>{pager}")
-
-    def cards(self, params):
-        document_id = params.get("document", [""])[0][:200]
-        query = params.get("q", [""])[0].strip()[:200]
-        try:
-            page = max(1, min(10000, int(params.get("page", ["1"])[0])))
-        except ValueError:
-            page = 1
-        limit = 25
-        with connection() as db:
-            documents = db.execute("select document_id, relative_path from knowledge.documents order by relative_path").fetchall()
-            valid_ids = {row["document_id"] for row in documents}
-            if document_id and document_id not in valid_ids:
-                document_id = ""
-            profile_row = db.execute("select profile_id from knowledge.corpus_state").fetchone()
-            profile = profile_row["profile_id"] if profile_row else None
-            where = (" where ar.profile_id = %s"
-                     " and a.status = 'ready' and a.kind = 'cards'"
-                     " and (ar.selection->'required_artifact_ids') ? c.artifact_id"
-                     " and ch.variant = p.variant and ch.chunking_version = p.chunking_version")
-            args = [profile]
-            if document_id:
-                where += " and d.document_id = %s"
-                args.append(document_id)
-            if query:
-                where += " and (coalesce(c.payload->>'statement','') || ' ' || coalesce(c.payload->>'situation','') || ' ' || coalesce(c.payload->>'action','') || ' ' || coalesce(c.payload->>'result','') || ' ' || coalesce(c.payload->>'principle','') || ' ' || coalesce(c.payload->>'evidence_text','')) ilike %s"
-                args.append("%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%")
-                where += " escape '\\'"
-            base = (" from knowledge.cards c"
-                    " join knowledge.artifacts a on a.run_id = c.run_id and a.artifact_id = c.artifact_id"
-                    " join knowledge.runs r on r.run_id = c.run_id"
-                    " join knowledge.documents d on d.document_id = r.document_id"
-                    " join knowledge.active_runs ar on ar.run_id = c.run_id and ar.document_id = d.document_id"
-                    " join knowledge.profiles p on p.profile_id = ar.profile_id"
-                    " join knowledge.chunks ch on ch.run_id = c.run_id and ch.chunk_id = c.chunk_id")
-            count = db.execute("select count(*) as n" + base + where, args).fetchone()["n"]
-            rows = db.execute("select c.ctid::text as row_locator, c.card_id, c.payload, d.relative_path" + base + where + " order by d.relative_path, c.card_id limit %s offset %s", args + [limit, (page - 1) * limit]).fetchall()
-        options = '<option value="">All documents</option>' + "".join(
-            f'<option value="{escape(row["document_id"], quote=True)}"' + (' selected' if row["document_id"] == document_id else '') + f'>{escape(row["relative_path"])}</option>'
-            for row in documents
-        )
-        form = (f'<form class="box" action="/table" method="get"><input type="hidden" name="name" value="cards">'
-                f'<label>Source document<select name="document">{options}</select></label>'
-                f'<label>Search card text<input name="q" value="{escape(query, quote=True)}" placeholder="e.g. hiring"></label>'
-                '<button type="submit">Filter cards</button><a href="/table?name=cards">Clear</a></form>')
-        cards = []
-        for row in rows:
-            payload = row["payload"]
-            heading = payload.get("statement") or payload.get("principle") or payload.get("action") or row["card_id"]
-            fields = "".join(f'<p><b>{label}:</b> {escape(str(payload[key]))}</p>' for key, label in (("situation", "Situation"), ("action", "Action"), ("result", "Result"), ("principle", "Principle")) if payload.get(key))
-            link = f'/row?name=cards&loc={quote(row["row_locator"])}'
-            cards.append(f'<article class="card"><h2>{escape(str(heading))}</h2><small>{escape(row["relative_path"])}</small>{fields}<p><a href="{link}">View full card and evidence</a></p></article>')
-        pager = '<div class="pager">'
-        for label, target in (("← Previous", page - 1), ("Next →", page + 1)):
-            if (target >= 1 and page > 1 and target < page) or (target > page and page * limit < count):
-                url = "/table?" + urlencode({"name": "cards", "document": document_id, "q": query, "page": target})
-                pager += f'<a href="{escape(url, quote=True)}">{label}</a>'
-        pager += "</div>"
-        body = f'<h1>Evidence cards</h1><p class="hint">Selected profile: {escape(str(profile))}. Search the current cards; each result links to its full source evidence.</p>{form}<p>{count:,} matching cards · page {page}</p>{"".join(cards) or "<p>No matching cards.</p>"}{pager}'
-        self.send_page("Evidence cards", body)
 
     def row(self, params):
         name = params.get("name", [""])[0]

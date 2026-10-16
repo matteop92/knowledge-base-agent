@@ -53,6 +53,12 @@ class MarkdownParserTests(unittest.TestCase):
         with self.assertRaisesRegex(TranscriptParseError, "invalid YAML"):
             self.parse("Notes/bad.md", "---\ntitle: [\n---\nBody.\n", "note")
 
+    def test_guest_is_kept_with_author_and_missing_title_uses_filename(self) -> None:
+        parsed = self.parse("Notes/interview.md", "---\nauthor: Host\nguest: '[[Luca Ferrari]]'\n---\nBody.\n", "note")
+        self.assertEqual(parsed.metadata.title, "interview")
+        self.assertEqual(parsed.metadata.authors, ["Host"])
+        self.assertEqual(parsed.metadata.guests, ["Luca Ferrari"])
+
 
 if __name__ == "__main__":
     unittest.main()

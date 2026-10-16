@@ -21,7 +21,22 @@ def action_v2(kind: str, **updates):
     return data
 
 
+def action_v3(kind: str, **updates):
+    return {**action_v2(kind), "version": 3, **updates}
+
+
 class ActionsTest(unittest.TestCase):
+    def test_only_v3_accepts_complete_finish_with_gaps(self):
+        for version in (1, 2):
+            with self.subTest(version=version), self.assertRaises(ValueError):
+                AgentAction.model_validate(action("finish", version=version,
+                    answer="Claim [E1.0]", citation_ids=["E1.0"],
+                    completeness="complete", sufficient=True, gaps=["A detail is missing"]))
+        parsed = AgentAction.model_validate(action_v3("finish", answer="Claim [E1.0]",
+            citation_ids=["E1.0"], completeness="complete", sufficient=True,
+            gaps=["A detail is missing"]))
+        self.assertEqual(parsed.gaps, ["A detail is missing"])
+
     def test_v2_find_and_need_boundaries(self):
         self.assertEqual(AgentAction.model_validate(action_v2("find", query="later detail",
                                                        reference_id="E1")).action, "find")
