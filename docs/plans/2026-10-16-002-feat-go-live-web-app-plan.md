@@ -209,8 +209,8 @@ stateDiagram-v2
 - **Requirements:** R15 (prerequisite for later units).
 - **Dependencies:** none.
 - **Files:** `FOUNDATION.md`, `SYSTEM.md`, `evals/README.md`, `README.md`.
-- **Approach:** The v13 work is already on `main` (PR #8). Correct the "parked" wording in all three docs: the grader is built and ready to run; it missed the pass bar an earlier session set on its held-out test, so its ratings are pre-ratings Matt confirms. Update `FOUNDATION.md` "Choices still open" per KTD16 and KTD3, and the stale README lines listed in the Appendix.
-- **Test expectation:** none -- documentation and merge only.
+- **Approach:** The v13 work is already on `main` (PR #8). Correct the "parked" wording in `FOUNDATION.md`, `SYSTEM.md` and `evals/README.md`: the grader is built and ready to run; it missed the pass bar an earlier session set on its held-out test, so its ratings are pre-ratings Matt confirms. Update `FOUNDATION.md` "Choices still open" per KTD16 and KTD3, and the stale README lines listed in the Appendix.
+- **Test expectation:** none -- documentation only.
 - **Verification:** No doc calls the grader "parked".
 
 ### U2. Security review before private data
