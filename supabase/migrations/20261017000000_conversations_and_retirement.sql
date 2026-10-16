@@ -16,7 +16,7 @@ create table knowledge.turns (
   status text not null default 'running'
     check (status in ('running', 'done', 'done_with_gaps', 'failed')),
   receipt jsonb,
-  cost_usd numeric(12, 6) not null default 0 check (cost_usd >= 0),
+  cost_usd numeric(14, 8) not null default 0 check (cost_usd >= 0),
   error text,
   created_at timestamptz not null default now(),
   finished_at timestamptz,
@@ -29,7 +29,7 @@ create table knowledge.capture_jobs (
   status text not null default 'running' check (status in ('running', 'done', 'failed')),
   vault_path text,
   error text,
-  cost_usd numeric(12, 6) not null default 0 check (cost_usd >= 0),
+  cost_usd numeric(14, 8) not null default 0 check (cost_usd >= 0),
   created_at timestamptz not null default now(),
   finished_at timestamptz
 );
@@ -51,7 +51,7 @@ create table knowledge.spend (
   day date not null default (now() at time zone 'utc')::date,
   source text not null
     check (source in ('answer', 'rewrite', 'indexing', 'properties', 'vision', 'transcript', 'bulk_load')),
-  estimated_usd numeric(12, 6) not null check (estimated_usd >= 0),
+  estimated_usd numeric(14, 8) not null check (estimated_usd >= 0),
   job_id text,
   created_at timestamptz not null default now()
 );

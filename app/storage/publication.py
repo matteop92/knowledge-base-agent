@@ -100,3 +100,12 @@ def select_profile(conn: psycopg.Connection, profile_id: str) -> None:
             if not documents.issubset({row[0] for row in cur.fetchall()}):
                 raise StorageError("new profile lacks a complete active corpus")
         cur.execute("update knowledge.corpus_state set profile_id=%s where singleton=true", (profile_id,))
+
+
+def retire_document(conn: psycopg.Connection, profile_id: str, document_id: str) -> bool:
+    """Stop serving a deleted or emptied file; its runs and chunks stay as history."""
+    with conn.transaction(), conn.cursor() as cur:
+        cur.execute("select profile_id from knowledge.corpus_state where singleton=true for update")
+        cur.execute("delete from knowledge.active_runs where profile_id=%s and document_id=%s",
+                    (profile_id, document_id))
+        return cur.rowcount == 1
