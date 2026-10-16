@@ -22,8 +22,9 @@ from evals.answer_rubric import AnswerRubric, Checklist, rubric_fingerprint, sco
 PROMPT_ROOT = Path(__file__).resolve().parents[1] / "prompts"
 PROMPT = (PROMPT_ROOT / "answer_grader_v1.md").read_text(encoding="utf-8")
 # The three-dimension checklist is binary and has its own instructions; version 3 adds
-# the relevance scope. Version 2 is kept for the record and is no longer sent.
-CHECKLIST_PROMPT = (PROMPT_ROOT / "answer_grader_v3.md").read_text(encoding="utf-8")
+# the relevance scope and version 4 the source titles and people. Earlier versions are kept
+# for the record and are no longer sent; the response format is still version 3.
+CHECKLIST_PROMPT = (PROMPT_ROOT / "answer_grader_v4.md").read_text(encoding="utf-8")
 CHECKLIST_LAYOUT = "three-dimension"
 
 
@@ -138,15 +139,32 @@ def prepare_evidence(rubric: AnswerRubric | Checklist, question_id: str, answer_
     checks = [{"id": check.id, "dimension": check.dimension,
                "criterion": check.criterion, "applicability": check.applicability,
                "condition": check.condition} for check in question.checks]
-    scope = None
+    extra = {}
     if layout == CHECKLIST_LAYOUT:
         for item, check in zip(checks, question.checks):
             item.update(type=check.type, parent_id=check.parent_id)
-        scope = {"in_scope": question.in_scope, "out_of_scope": question.out_of_scope}
+        extra["scope"] = {"in_scope": question.in_scope, "out_of_scope": question.out_of_scope}
+        extra["sources"] = _source_labels(result, inspected)
     return {"question_id": question.id, "question": question.question, "layout": layout,
-            "checks": checks, **({"scope": scope} if scope else {}),
+            "checks": checks, **extra,
             "answer": answer, "inspected": inspected, "citations": citations,
             "gold_alternatives": gold}
+
+
+def _source_labels(result: dict, inspected: dict) -> dict:
+    """Title and people for each inspected document, as the answer agent saw them in
+    search results; a document without a search result is named by its file."""
+    seen = {}
+    for hit in (result.get("host_search") or {}).get("results") or []:
+        if isinstance(hit, dict) and hit.get("document_id") and hit["document_id"] not in seen:
+            seen[hit["document_id"]] = {"title": hit.get("title"), "people": hit.get("people") or []}
+    labels = {}
+    for passage in inspected.values():
+        document_id = passage.get("document_id")
+        if document_id and document_id not in labels:
+            fallback = (passage.get("relative_path") or "").rsplit("/", 1)[-1].removesuffix(".md")
+            labels[document_id] = seen.get(document_id) or {"title": fallback or None, "people": []}
+    return labels
 
 
 def validate_judgments(payload: dict, response: GraderResponse) -> dict:
@@ -294,7 +312,7 @@ def grade_answer(rubric: AnswerRubric | Checklist, question_id: str, answer_rece
     payload = prepare_evidence(rubric, question_id, answer_receipt, gold_sources)
     checklist = payload.get("layout") == CHECKLIST_LAYOUT
     prompt, schema_name, schema, version = (
-        (CHECKLIST_PROMPT, "answer_grader_v3", GRADE_SCHEMA_V3, 3) if checklist
+        (CHECKLIST_PROMPT, "answer_grader_v4", GRADE_SCHEMA_V3, 3) if checklist
         else (PROMPT, "answer_grader_v1", GRADE_SCHEMA, 1))
     identity = {"question_id": question_id, "rubric_sha256": rubric_fingerprint(rubric),
                 "grader_prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
