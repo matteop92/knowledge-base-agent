@@ -31,6 +31,7 @@ from app.storage.loader import connect_runtime, load_run
 from app.storage.publication import create_profile, publish_run, select_profile
 from app.storage.records import PublicationSelection, SearchProfile, spec_id
 from app.storage.search import search_text, search_vector
+from app.models.routes import PRIVACY
 
 
 @dataclass(frozen=True)
@@ -47,7 +48,6 @@ CANDIDATES = (
     Candidate("baai/bge-m3", 1024, 0.01, None, None),
     Candidate("perplexity/pplx-embed-v1-0.6b", 1024, 0.004, "search_query", "search_document"),
 )
-PRIVACY = {"data_collection": "deny", "zdr": True}
 K_VALUES = (5, 10, 20)
 
 
