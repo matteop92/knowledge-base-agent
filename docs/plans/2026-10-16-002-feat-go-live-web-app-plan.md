@@ -42,7 +42,8 @@ The agent works today only as a local command-line tool over six checked files (
 
 **Vault index**
 
-- R6. The whole current vault is searchable after a one-time bulk load whose cost was checked by a dry run first.
+- R6. Files in the vault folders Matt selects (plus `Inbox/`) are searchable after a one-time bulk load whose cost was checked by a dry run first. Other folders are never synced to the server, read or indexed.
+- R6b. Every indexed file has a consistent set of properties (type, tags from an approved list, people, date, one-line description). Properties Matt already set are never overwritten. New captures get the same properties from the same step.
 - R7. A file Matt adds or edits in Obsidian becomes searchable within a few minutes; a file he deletes or empties stops appearing in answers.
 - R8. Files stay in the Obsidian vault on Obsidian Sync; Supabase stores only text, chunks, embeddings, conversation history and spend records.
 
@@ -81,8 +82,11 @@ The agent works today only as a local command-line tool over six checked files (
 None block Phase 0 or the start of Phase 1. Each has a default the executor uses unless Matt says otherwise.
 
 - Q1. Sign-in method: settled by Matt on 2026-10-16 as Supabase Auth with a six-digit email code typed into the app (see KTD10).
-- Q2. Railway or Fly (needed by U8). Default: whichever gives a persistent volume, an interactive shell and IPv6 or Supabase pooler access at the lowest price on the day.
+- Q2. Host: settled by Matt on 2026-10-16 as Railway (Hobby plan, about $5-8/month with a persistent volume). Fly only if Railway cannot give a persistent volume, a shell and Supabase access.
 - Q3. Daily spend cap (needed by U6). Default: $2 for all model spend, adjustable by environment variable.
+- Q4. Which vault folders to index (needed by U4b and U5). Matt names them before the dry run. Default if he has not: the folders the six checked files come from (`Transcripts/`, `Notes/`, `Articles/`, `Books/`, `Book Highlights/`) plus `Inbox/`.
+- Q5. The tag list (needed by U4b). Default: the classifier proposes a list from a sample of about 50 selected files plus the tags already in use; Matt edits and approves it before the full run.
+- Q6. Writing properties back into existing vault files. Default: no. Properties for existing files live in Supabase only (see the non-goal on editing existing notes); new captures carry them in the file. A later opt-in command can write them into files after Matt reviews a sample.
 
 ---
 
@@ -91,7 +95,7 @@ None block Phase 0 or the start of Phase 1. Each has a default the executor uses
 ### Key Technical Decisions
 
 - KTD1. Interface is a small private installable web app (PWA) with Android Web Share Target and desktop drag-and-drop/paste, a conversation sidebar, and citations with expandable excerpts. (session-settled: user-directed — chosen over a chat-bot or native app: one client covers Android and desktop with share support.)
-- KTD2. Hosting is one always-on Python server on Railway or Fly (~$5/month) running FastAPI, the sync job, ingestion and the answer agent. (session-settled: user-directed — chosen over Vercel functions: serverless functions cannot hold a synced vault copy.)
+- KTD2. Hosting is one always-on Python server on Railway (~$5-8/month) running FastAPI, the sync job, ingestion and the answer agent. (session-settled: user-directed — chosen over Vercel functions: serverless functions cannot hold a synced vault copy.)
 - KTD3. The vault stays on Obsidian Sync. The server runs Obsidian Headless (`ob sync --continuous`) to write into Inbox and pick up Matt's edits; the fallback is a private GitHub copy of the vault with the Obsidian Git plugin. Supabase project `ielkvsfcnwtaljnemxua` keeps the search copy and conversation history only. (session-settled: user-directed — chosen over moving files into Supabase storage: the vault remains Matt's home for files.)
 - KTD4. A job every few minutes indexes new or changed vault files by comparing the source byte hash with the active run, and retires deleted files. A one-time bulk load runs after a cost dry run. (session-settled: user-directed — chosen over manual uploads: edits made in Obsidian must reach the index on their own.)
 - KTD5. Capture inputs v1 are markdown, pasted text, screenshots through a cheap vision model, and YouTube through the Gemini API with the public URL as input; a paid transcript API is the backup. (session-settled: user-directed — chosen over self-hosted transcription: no audio pipeline to run.)
@@ -107,6 +111,8 @@ None block Phase 0 or the start of Phase 1. Each has a default the executor uses
 - KTD15. Phase 2 builds memory before capture. Once vault sync runs, Matt can already add notes by writing them in Obsidian on his phone, while follow-ups happen in every conversation. Capture still covers all four inputs: screenshots, YouTube, pasted text and markdown files. This adjusts the brief's order inside Phase 2 only.
 - KTD16. Citations link to originals with an `obsidian://open?vault=<name>&file=<path>` URL built from the stored relative path, both parts URL-encoded. This closes the open question in `FOUNDATION.md` "Choices still open" about how the UI opens an original file; KTD3 closes the sync-provider question there.
 - KTD17. Phase 1 ships in two steps: deploy the API and web app over the bulk-loaded index (U8), then add Headless sync and the scheduled index job (U16). The beta dependency then cannot hold back the first usable release.
+- KTD19. Indexing covers an allowlist of vault folders (`KNOWLEDGE_INCLUDED_FOLDERS`); `Inbox/` is always included. Headless sync excludes every other top-level folder (`ob sync-config --excluded-folders`), so unselected notes never reach the server. Removing a folder from the list retires its documents only with `--allow-mass-retire`, so a typo cannot wipe the index. (session-settled: user-directed — chosen over the whole vault: Matt wants only selected folders.)
+- KTD20. A properties classifier runs once per new or changed file before chunking: one cheap zero-retention model call reads the existing frontmatter and the first part of the text and returns a fixed schema (`source_type`, `tags` chosen from the approved list, up to five, plus at most one proposed new tag held for Matt's review, `people`, `date`, `description` of one line, `language`). It only fills properties that are missing. Results are stored per document and source hash in `knowledge.document_properties` and feed the source labels that named-source search and candidate previews already use. The same function sets properties on captures (U10). It is metadata, not chunk text, so embeddings and the measured recall baseline are unchanged; earlier card and summary experiments showed generated text inside the index did not earn its cost, so this layer is for consistent organisation and filtering. (session-settled: user-directed — chosen over hand-tagging: one process for the existing files and every future input.)
 - KTD18. Every model-calling path (answers, rewrites, indexing, vision, transcripts) writes its cost to one `knowledge.spend` ledger and checks the day's total plus the job's worst-case bound against the daily cap before calling. A call with unknown usage is recorded at its worst-case bound.
 
 ### High-Level Technical Design
@@ -118,7 +124,7 @@ flowchart TB
         DESK["Desktop: browser PWA<br/>Obsidian desktop"]
     end
     OSYNC["Obsidian Sync"]
-    subgraph SERVER["One server on Railway or Fly (persistent volume)"]
+    subgraph SERVER["One server on Railway (persistent volume)"]
         OB["ob sync --continuous<br/>vault copy on volume"]
         API["FastAPI: sessions, conversations,<br/>ask jobs, feedback, capture"]
         JOB["Index job every few minutes<br/>hash compare, ingest, retire"]
@@ -247,7 +253,7 @@ stateDiagram-v2
 - **Requirements:** R6, R7, R8, R14.
 - **Dependencies:** U3.
 - **Files:** `app/ingestion/vault_sync.py`, `app/models/routes.py`, `app/ingestion/live_run.py`, `evals/compare_embeddings.py`, `evals/trial_routes.py`, `app/storage/publication.py`, `tests/ingestion/test_vault_sync.py`, `tests/models/test_routes.py`, `tests/storage/test_retirement.py`.
-- **Approach:** Walk `KNOWLEDGE_SOURCE_ROOT` (the vault root, fixed root alias) for `.md` files, skipping `.obsidian/`, `.trash/`, configured excluded folders and Obsidian conflict-copy files. Treat empty or whitespace-only files as absent. Compare each file's byte hash with the active run's `source_sha256` for its locator; only differing files go through source capture, routing, structural chunking, raw embeddings with the selected spec, `load_run` and `publish_run`. Retire locators with an active run but no file. Record failures by (locator, hash) and skip a hash that already failed until its bytes change. Mass-retire guard: when one pass would retire more than 10% of active documents or more than 20 files, or the vault root is missing, retire nothing and report it unless `--allow-mass-retire` is given. `--dry-run` parses every file and reports counts, parse failures by reason, chunk and token estimates, worst-case cost and projected database size, with no model calls. `--live` needs `--max-usd` and writes spend to the ledger (KTD18). A lock prevents overlapping runs. Move route and price handling into `app/models/routes.py` per KTD14.
+- **Approach:** Walk only the folders in `KNOWLEDGE_INCLUDED_FOLDERS` plus `Inbox/` under `KNOWLEDGE_SOURCE_ROOT` (the vault root, fixed root alias; KTD19) for `.md` files, skipping `.obsidian/`, `.trash/`, configured excluded folders and Obsidian conflict-copy files. Treat empty or whitespace-only files as absent. Compare each file's byte hash with the active run's `source_sha256` for its locator; only differing files go through source capture, routing, structural chunking, raw embeddings with the selected spec, `load_run` and `publish_run`. Retire locators with an active run but no file. Record failures by (locator, hash) and skip a hash that already failed until its bytes change. Mass-retire guard: when one pass would retire more than 10% of active documents or more than 20 files, or the vault root is missing, retire nothing and report it unless `--allow-mass-retire` is given. `--dry-run` parses every file and reports counts, parse failures by reason, chunk and token estimates, worst-case cost and projected database size, with no model calls. `--live` needs `--max-usd` and writes spend to the ledger (KTD18). A lock prevents overlapping runs. Move route and price handling into `app/models/routes.py` per KTD14.
 - **Patterns to follow:** `preview_markdown` and the run directory layout in `app/ingestion/preview.py`; `embed_chunks` in `app/ingestion/embeddings.py`; budget guards in `app/ingestion/live_run.py`.
 - **Test scenarios:**
   - Three new fixture files: dry run reports three to ingest and a cost; live run with a fake client publishes three active runs.
@@ -260,16 +266,34 @@ stateDiagram-v2
   - A file whose embedding call fails keeps its previous active run; other files still publish.
   - Spend cap reached mid-run stops before the next call and reports partial progress.
   - `.obsidian/`, `.trash/` and conflict-copy files are ignored.
+  - A file outside the included folders is never read; removing a folder from the list retires nothing without `--allow-mass-retire`.
   - `evals/` still passes its own tests after importing from `app/models/routes.py`.
 - **Verification:** Ingestion, model and storage suites pass; a local run over a copy of the vault reaches a second pass that makes no model calls and retries no failed hash.
 
+### U4b. Properties classifier
+
+- **Goal:** Every indexed file, and later every capture, gets the same consistent properties without overwriting what Matt set.
+- **Requirements:** R6b, R14.
+- **Dependencies:** U3, U4.
+- **Files:** `supabase/migrations/20261017000100_document_properties.sql`, `app/ingestion/properties.py`, `prompts/properties_v1.md`, `config/tags.yaml`, `app/ingestion/vault_sync.py`, `app/storage/retrieval.py`, `tests/ingestion/test_properties.py`, `tests/storage/test_properties_labels.py`.
+- **Approach:** Per KTD20. `knowledge.document_properties` (document, source hash, properties JSON, model, prompt version, cost, created) with runtime grants as in U3. `classify_properties(parsed_document, tag_list)` sends existing frontmatter and the first about 2,000 tokens to a cheap zero-retention route and validates the reply against the schema; tags outside the approved list are dropped, except one `proposed_tag` kept for review. The indexer calls it for new or changed files only, before chunking, and writes spend per KTD18. `--propose-tags N` samples N selected files and writes a draft `config/tags.yaml` with counts for Matt to edit (Q5). `named_sources` and candidate previews merge stored properties with frontmatter, frontmatter winning. The dry run includes classifier cost.
+- **Test scenarios:**
+  - A file with no frontmatter gets `source_type`, tags from the list, `people` and `description` stored for its hash.
+  - A file whose frontmatter has `tags` and `author` keeps them; only missing fields are filled.
+  - A reply with a tag not on the list keeps only listed tags and at most one `proposed_tag`.
+  - An invalid model reply is recorded as a classifier failure; the file is still indexed without generated properties.
+  - Re-running on an unchanged file makes no model call.
+  - A stored `people` value makes the file match named-source search.
+  - `--propose-tags` writes a draft list and makes no other change.
+- **Verification:** On the six checked files, Matt reviews the properties and finds them right or near; the 41/44/47 recall baseline is unchanged.
+
 ### U5. Bulk load the vault to the hosted project
 
-- **Goal:** The whole current vault is searchable in the hosted project, with retrieval quality re-measured at full scale.
+- **Goal:** The selected folders are searchable in the hosted project with properties, with retrieval quality re-measured at full scale.
 - **Requirements:** R6, R14.
-- **Dependencies:** U2, U4.
+- **Dependencies:** U2, U4, U4b.
 - **Files:** none in the repo; record numbers in `FOUNDATION.md#current-progress` via `$finish-task`.
-- **Approach:** Run U4's dry run against a copy of the vault with the same root alias and root level the server will use. Show Matt file count, parse failures, token estimate, worst-case cost and projected database size against the Supabase plan limit. Proceed only on his OK; the `--max-usd` he approves is this load's limit, separate from the daily cap. Create and select the hosted structural/raw profile, then load and publish with the runtime login. Rerun the existing source-span recall questions on the hosted index and compare with the six-file 41/44/47 baseline. Time ten representative searches, recording `named_sources`, vector search and text search separately.
+- **Approach:** Matt confirms the folder list (Q4) and approves the tag list from `--propose-tags` (Q5). Run U4's dry run, classifier included, against a copy of the vault with the same root alias and root level the server will use. Show Matt file count, parse failures, token estimate, worst-case cost and projected database size against the Supabase plan limit. Proceed only on his OK; the `--max-usd` he approves is this load's limit, separate from the daily cap. Create and select the hosted structural/raw profile, then load and publish with the runtime login. Rerun the existing source-span recall questions on the hosted index and compare with the six-file 41/44/47 baseline. Time ten representative searches, recording `named_sources`, vector search and text search separately.
 - **Execution note:** Operational step; prove it with the dry-run report, the live report, the recall report and the latency sample.
 - **Test expectation:** none -- operational load using U4.
 - **Verification:** A count over `knowledge.active_runs` for the selected profile equals the number of indexable vault files; Q8 returns both named sources; recall and latency are recorded and within the Goal Capsule stop conditions.
@@ -333,7 +357,7 @@ stateDiagram-v2
 - **Requirements:** R7, R8.
 - **Dependencies:** U4, U8.
 - **Files:** `Dockerfile`, `deploy/start.sh`, `deploy/README.md`, `app/api/scheduler.py`, `tests/api/test_scheduler.py`.
-- **Approach:** Add Node 22 and `obsidian-headless` to the image and a persistent volume for the vault copy and Headless config. The start script supervises `ob sync --continuous` and uvicorn, restarting either if it exits. The FastAPI process runs U4's indexer every five minutes in a background thread with U4's lock, and records the last result for `/health`. The first tick waits until `ob sync-status` reports a completed initial sync. `deploy/README.md` documents the one-time `ob login`, `ob sync-setup --device-name kb-server` (vault password typed at the prompt, not passed as an argument) and `ob sync-config --conflict-strategy conflict`.
+- **Approach:** Add Node 22 and `obsidian-headless` to the image and a persistent volume for the vault copy and Headless config. Headless sync excludes every top-level folder outside the KTD19 allowlist. The start script supervises `ob sync --continuous` and uvicorn, restarting either if it exits. The FastAPI process runs U4's indexer every five minutes in a background thread with U4's lock, and records the last result for `/health`. The first tick waits until `ob sync-status` reports a completed initial sync. `deploy/README.md` documents the one-time `ob login`, `ob sync-setup --device-name kb-server` (vault password typed at the prompt, not passed as an argument) and `ob sync-config --conflict-strategy conflict`.
 - **Execution note:** Prove with a smoke check on the deployed host beyond the scheduler tests.
 - **Test scenarios:**
   - The scheduler skips a tick when the previous index job still holds the lock.
@@ -363,9 +387,9 @@ stateDiagram-v2
 
 - **Goal:** Any captured input becomes a markdown file with properties in the vault Inbox and is indexed at once.
 - **Requirements:** R12, R13.
-- **Dependencies:** U16.
+- **Dependencies:** U4b, U16.
 - **Files:** `app/capture/notes.py`, `app/api/capture.py`, `tests/capture/test_notes.py`, `tests/api/test_capture.py`.
-- **Approach:** Build YAML properties with the names the parser reads: `title`, `url`, `author` (post author or YouTube channel), `created` (capture date), `tags`, plus `source_type` (screenshot, youtube, text, markdown). Ignore client-supplied file names; build the name from a slug of `[a-z0-9-]` plus date, resolve the final path, refuse anything outside `Inbox/`, and never overwrite. Uploaded markdown keeps its own properties and gains missing ones. Captures run as `capture_jobs` per KTD11, write spend per KTD18, and enforce a 20 MB upload limit. After writing, the capture waits up to 30 seconds for U4's lock and indexes that one file; on timeout it reports "saved, indexing queued" and the next tick picks it up.
+- **Approach:** Fill properties through U4b's `classify_properties`, written into the new file's frontmatter. Build YAML properties with the names the parser reads: `title`, `url`, `author` (post author or YouTube channel), `created` (capture date), `tags`, plus `source_type` (screenshot, youtube, text, markdown). Ignore client-supplied file names; build the name from a slug of `[a-z0-9-]` plus date, resolve the final path, refuse anything outside `Inbox/`, and never overwrite. Uploaded markdown keeps its own properties and gains missing ones. Captures run as `capture_jobs` per KTD11, write spend per KTD18, and enforce a 20 MB upload limit. After writing, the capture waits up to 30 seconds for U4's lock and indexes that one file; on timeout it reports "saved, indexing queued" and the next tick picks it up.
 - **Test scenarios:**
   - Pasted text produces one Inbox note with properties and becomes searchable.
   - A captured note's `author` appears as a person in the source label used by named-source search.
@@ -439,7 +463,7 @@ stateDiagram-v2
 
 | Gate | Command or check | Applies to |
 | --- | --- | --- |
-| Ingestion tests | `python -m unittest discover -s tests/ingestion -p 'test_*.py'` | U4, U10-U12 |
+| Ingestion tests | `python -m unittest discover -s tests/ingestion -p 'test_*.py'` | U4, U4b, U10-U12 |
 | Model tests | `python -m unittest discover -s tests/models -p 'test_*.py'` | U4, U11, U12 |
 | Storage tests (disposable DB via `KNOWLEDGE_TEST_DATABASE_URL`) | `python -m unittest discover -s tests/storage -p 'test_*.py'` | U3, U4 |
 | Agent tests | `python -m unittest discover -s tests/agent -p 'test_*.py'` | U9 |
