@@ -22,6 +22,18 @@ class RouterTests(unittest.TestCase):
         path.write_text(text, encoding="utf-8")
         return capture_source(self.root, relative, self.runtime)
 
+    def test_known_folder_inside_a_vault_folder_keeps_its_route(self) -> None:
+        # Indexing from the vault root puts the Knowledge folder first in the path.
+        cases = [
+            ("Knowledge/Transcripts/first.md", "**Host:** Hi.\n", "transcript_bold"),
+            ("Knowledge/Books/book.md", "## STEP 1: Decide\n", "book"),
+            ("Knowledge/Notes/note.md", "An unheaded thought.\n", "note"),
+            ("Inbox/Notes.md", "A note named Notes.\n", "generic"),
+        ]
+        for relative, text, expected in cases:
+            with self.subTest(relative=relative):
+                self.assertEqual(choose_route(self.capture(relative, text))[0], expected)
+
     def test_routes_observed_structures_and_explicit_override(self) -> None:
         cases = [
             ("Transcripts/first.md", "**Host:** Hi.\n", "transcript_bold"),

@@ -21,6 +21,7 @@ SourceKind = Literal[
     "transcript_bold", "transcript_bracket", "highlights",
     "book", "article", "note", "generic",
 ]
+KNOWN_FOLDERS = {"transcripts", "book highlights", "books", "articles", "notes"}
 
 
 def choose_route(
@@ -28,7 +29,9 @@ def choose_route(
 ) -> tuple[SourceKind, str]:
     if override is not None:
         return override, f"explicit source-kind override: {override}"
-    folder = PurePosixPath(capture.manifest.locator.relative_path).parts[0].casefold()
+    # The nearest known folder decides, so Knowledge/Transcripts/x.md routes like Transcripts/x.md.
+    folders = [part.casefold() for part in PurePosixPath(capture.manifest.locator.relative_path).parts[:-1]]
+    folder = next((part for part in reversed(folders) if part in KNOWN_FOLDERS), "")
     text = capture.source_text
     bold_count = len(SPEAKER_MARKER.findall(text))
     bracket_count = len(BRACKET_MARKER.findall(text))
