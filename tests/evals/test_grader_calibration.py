@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from evals.answer_grader import CHECKLIST_PROMPT, GRADE_SCHEMA_V3, GraderResponse, validate_judgments
+from evals.answer_grader import CHECKLIST_PROMPT, GRADE_SCHEMA_V3, GraderResponse, _source_labels, validate_judgments
 from evals.answer_rubric import load_rubric
 from evals.grade_answers import completion_bound, gold_sources, receipts_from_judgments
 from evals.grader_agreement import _checks, answer_score, compare
@@ -35,6 +35,19 @@ class RelevanceTest(unittest.TestCase):
         self.assertEqual(GRADE_SCHEMA_V3["properties"]["version"]["enum"], [3])
         self.assertIn("out_of_scope_points", CHECKLIST_PROMPT)
         self.assertIn("version 3", CHECKLIST_PROMPT)
+
+
+class SourceLabelTest(unittest.TestCase):
+    def test_inspected_documents_carry_the_title_and_people_the_agent_saw(self):
+        result = {"host_search": {"results": [
+            {"document_id": "d1", "title": "Decisions", "people": ["Tim Ferriss"]},
+            {"document_id": "d1", "title": "Later duplicate", "people": []}]}}
+        inspected = {"E1.0": {"document_id": "d1", "relative_path": "Notes/Decisions.md"},
+                     "E2.0": {"document_id": "d2", "relative_path": "Notes/Anger.md"}}
+        self.assertEqual(_source_labels(result, inspected), {
+            "d1": {"title": "Decisions", "people": ["Tim Ferriss"]},
+            "d2": {"title": "Anger", "people": []}})
+        self.assertIn("`sources`", CHECKLIST_PROMPT)
 
 
 class RunnerTest(unittest.TestCase):
