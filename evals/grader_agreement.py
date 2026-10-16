@@ -14,7 +14,7 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
-from evals.answer_review import _private_output
+from evals.answer_review import private_output
 from evals.answer_rubric import Checklist, load_rubric, score_checklist_ratings
 
 CHECKLIST = Path("evals/answer_questions_v4_restructured.yaml")
@@ -31,6 +31,25 @@ def _checks(checklist: Checklist, question_id: str) -> list[dict]:
 
 def _percent(passed: int, scored: int) -> float | None:
     return round(100 * passed / scored, 1) if scored else None
+
+
+def _mask(checks: list[dict], mine: dict[str, str], theirs: dict[str, str]) -> dict[str, str]:
+    """Leave the checks the grader could not judge out of the user's score too, keeping the
+    user's ratings consistent: a detail under a primary the user did not pass stays not
+    applicable, and a masked primary takes its details with it."""
+    masked = dict(mine)
+    for check in checks:
+        if check["parent_id"] is None and theirs.get(check["id"]) == "unreviewed":
+            masked[check["id"]] = "unreviewed"
+    for check in checks:
+        parent = check["parent_id"]
+        if parent is None:
+            continue
+        if masked.get(parent) == "unreviewed":
+            masked[check["id"]] = "unreviewed"
+        elif theirs.get(check["id"]) == "unreviewed" and mine.get(parent) == "pass":
+            masked[check["id"]] = "unreviewed"
+    return masked
 
 
 def answer_score(checks: list[dict], ratings: dict[str, str], off_scope: int) -> tuple[int, int]:
@@ -91,9 +110,7 @@ def compare(checklist: Checklist, human: dict[str, dict], grades: list[dict],
                                   "check": check["id"], "dimension": check["dimension"], "kind": kind,
                                   "user": mine, "grader": theirs, "reason": given[check["id"]].get("reason")})
         theirs = {key: value["rating"] for key, value in given.items()}
-        # Checks the grader could not judge are left out of both scores.
-        mine_scored = {key: ("unreviewed" if theirs.get(key) == "unreviewed" else value)
-                       for key, value in review["ratings"].items()}
+        mine_scored = _mask(checks, review["ratings"], theirs)
         points = grade.get("out_of_scope_points", [])
         for source, ratings, count in (("user", mine_scored, len(review.get("out_of_scope_points") or [])),
                                        ("grader", theirs, len(points))):
@@ -154,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
               for directory in args.grades for path in sorted(glob.glob(str(Path(directory) / "*.repeat-*.json")))]
     planted = json.loads(args.planted.read_text(encoding="utf-8")) if args.planted else None
     result = compare(checklist, human, grades, planted)
-    _private_output(args.output).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    private_output(args.output).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({key: result[key] for key in ("agreement", "scores", "unstable_share")}, indent=1))
     print("ungraded", len(result["ungraded"]), "disagreements", len(result["disagreements"]),
           "planted caught", sum(item["caught"] for item in result["planted"]), "of", len(result["planted"]))

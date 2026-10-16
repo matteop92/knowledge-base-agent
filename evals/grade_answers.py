@@ -17,9 +17,9 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from app.models.client import ModelClientError, ModelSpec
-from app.models.openrouter import OpenRouterClient
+from app.models.openrouter import OpenRouterClient, completion_limit
 from evals.answer_grader import CHECKLIST_PROMPT, GRADE_SCHEMA_V3, grade_answer, prepare_evidence
-from evals.answer_review import _private_output, _receipts
+from evals.answer_review import private_output, load_receipts
 from evals.answer_rubric import Checklist, load_rubric
 
 CHECKLIST = Path("evals/answer_questions_v4_restructured.yaml")
@@ -48,10 +48,8 @@ def receipts_from_judgments(path: str) -> list[str]:
 
 
 def completion_bound(model_id: str, max_output_tokens: int, reasoning_effort: str | None) -> int:
-    """The completion-token ceiling the OpenRouter adapter sends for one call."""
-    if model_id in ("openai/gpt-5-mini", "openai/gpt-6-luna") or reasoning_effort:
-        return max_output_tokens * 4
-    return max_output_tokens * 2
+    """The completion-token ceiling the OpenRouter adapter sends for one grader call."""
+    return completion_limit(model_id, "answer_grader_v4", max_output_tokens, reasoning_effort)[1]
 
 
 def _price(pricing: object, key: str) -> Decimal:
@@ -103,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
     inputs = list(args.inputs) + [item for path in args.from_judgments for item in receipts_from_judgments(path)]
     if not inputs:
         parser.error("no receipts to grade")
-    entries = _receipts(inputs)
+    entries = load_receipts(inputs)
     sources = gold_sources(checklist)
     planned = plan(checklist, entries, sources)
     calls = len(planned) * args.repeats
@@ -155,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("route price exceeds --max-usd-per-million")
     if worst > args.max_usd:
         parser.error(f"worst-case cost {worst} exceeds --max-usd")
-    target = _private_output(args.output)
+    target = private_output(args.output)
     target.mkdir()
     model = ModelSpec(provider="openrouter", model_id=args.model, model_version="current")
     spent = Decimal(0)
