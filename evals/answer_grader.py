@@ -19,8 +19,9 @@ from evals.answer_rubric import AnswerRubric, Checklist, rubric_fingerprint, sco
 
 PROMPT_ROOT = Path(__file__).resolve().parents[1] / "prompts"
 PROMPT = (PROMPT_ROOT / "answer_grader_v1.md").read_text(encoding="utf-8")
-# The three-dimension checklist is binary and has its own instructions.
-CHECKLIST_PROMPT = (PROMPT_ROOT / "answer_grader_v2.md").read_text(encoding="utf-8")
+# The three-dimension checklist is binary and has its own instructions; version 3 adds
+# the relevance scope. Version 2 is kept for the record and is no longer sent.
+CHECKLIST_PROMPT = (PROMPT_ROOT / "answer_grader_v3.md").read_text(encoding="utf-8")
 CHECKLIST_LAYOUT = "three-dimension"
 
 
@@ -38,8 +39,10 @@ class CheckJudgment(StrictRecord):
 
 
 class GraderResponse(StrictRecord):
-    version: Literal[1, 2]
+    version: Literal[1, 2, 3]
     judgments: list[CheckJudgment]
+    # Version 3: exact answer excerpts, one per main point outside the question's scope.
+    out_of_scope_points: list[str] = Field(default_factory=list)
 
 
 GRADE_SCHEMA = {
@@ -63,6 +66,11 @@ GRADE_SCHEMA_V2 = json.loads(json.dumps(GRADE_SCHEMA))
 GRADE_SCHEMA_V2["properties"]["version"]["enum"] = [2]
 GRADE_SCHEMA_V2["properties"]["judgments"]["items"]["properties"]["rating"]["enum"] = [
     "pass", "fail", "not_applicable", "unreviewed"]
+
+GRADE_SCHEMA_V3 = json.loads(json.dumps(GRADE_SCHEMA_V2))
+GRADE_SCHEMA_V3["properties"]["version"]["enum"] = [3]
+GRADE_SCHEMA_V3["properties"]["out_of_scope_points"] = {"type": "array", "items": {"type": "string"}}
+GRADE_SCHEMA_V3["required"] = ["version", "judgments", "out_of_scope_points"]
 
 SOURCE_DIMENSIONS = {"coverage", "example", "grounding", "attribution"}
 
@@ -128,11 +136,13 @@ def prepare_evidence(rubric: AnswerRubric | Checklist, question_id: str, answer_
     checks = [{"id": check.id, "dimension": check.dimension,
                "criterion": check.criterion, "applicability": check.applicability,
                "condition": check.condition} for check in question.checks]
+    scope = None
     if layout == CHECKLIST_LAYOUT:
         for item, check in zip(checks, question.checks):
             item.update(type=check.type, parent_id=check.parent_id)
+        scope = {"in_scope": question.in_scope, "out_of_scope": question.out_of_scope}
     return {"question_id": question.id, "question": question.question, "layout": layout,
-            "checks": checks,
+            "checks": checks, **({"scope": scope} if scope else {}),
             "answer": answer, "inspected": inspected, "citations": citations,
             "gold_alternatives": gold}
 
@@ -143,7 +153,7 @@ def validate_judgments(payload: dict, response: GraderResponse) -> dict:
     if len(judgments) != len(response.judgments) or set(judgments) != set(checks):
         raise ValueError("grader omitted, duplicated, or invented check IDs")
     if payload.get("layout") == CHECKLIST_LAYOUT:
-        return _validate_checklist_judgments(payload, checks, judgments)
+        return _validate_checklist_judgments(payload, checks, judgments, response.out_of_scope_points)
     counts = {dimension: {rating: 0 for rating in
               ("pass", "partial", "fail", "not_applicable", "unreviewed")}
               for dimension in {check["dimension"] for check in checks.values()}}
@@ -173,8 +183,15 @@ def validate_judgments(payload: dict, response: GraderResponse) -> dict:
             "judgments": [item.model_dump(mode="json") for item in response.judgments]}
 
 
-def _validate_checklist_judgments(payload: dict, checks: dict, judgments: dict) -> dict:
-    """Binary ratings, primary/detail dependencies, and one count per grounding error."""
+def _validate_checklist_judgments(payload: dict, checks: dict, judgments: dict,
+                                  out_of_scope_points: list[str]) -> dict:
+    """Binary ratings, primary/detail dependencies, one count per grounding error, and
+    off-scope points that must be exact, distinct excerpts of the answer."""
+    points = [point.strip() for point in out_of_scope_points]
+    if any(not point or point not in payload["answer"] for point in points):
+        raise ValueError("off-scope point is not an exact answer excerpt")
+    if len(set(points)) != len(points):
+        raise ValueError("off-scope point listed twice")
     grounding_failures: set[str] = set()
     for check_id, item in judgments.items():
         check = checks[check_id]
@@ -201,27 +218,29 @@ def _validate_checklist_judgments(payload: dict, checks: dict, judgments: dict) 
             raise ValueError("passing coverage or example check needs an answer excerpt and inspected support")
     scores = score_checklist_ratings(list(checks.values()),
                                      {check_id: item.rating for check_id, item in judgments.items()})
-    return {"status": "graded", "scores": scores,
+    return {"status": "graded", "scores": scores, "out_of_scope_points": points,
             "judgments": [item.model_dump(mode="json") for item in judgments.values()]}
 
 
 def grade_answer(rubric: AnswerRubric | Checklist, question_id: str, answer_receipt: dict,
                  gold_sources: dict[str, bytes], *, client: ModelClient, model: ModelSpec,
-                 max_output_tokens: int = 2800) -> dict:
+                 max_output_tokens: int = 8000, reasoning_effort: str | None = None) -> dict:
     """One bounded grader call; all failures remain ungraded for review or retry."""
     payload = prepare_evidence(rubric, question_id, answer_receipt, gold_sources)
     checklist = payload.get("layout") == CHECKLIST_LAYOUT
     prompt, schema_name, schema, version = (
-        (CHECKLIST_PROMPT, "answer_grader_v2", GRADE_SCHEMA_V2, 2) if checklist
+        (CHECKLIST_PROMPT, "answer_grader_v3", GRADE_SCHEMA_V3, 3) if checklist
         else (PROMPT, "answer_grader_v1", GRADE_SCHEMA, 1))
     identity = {"question_id": question_id, "rubric_sha256": rubric_fingerprint(rubric),
                 "grader_prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
-                "model": model.model_id}
+                "model": model.model_id, "grader_prompt_version": schema_name,
+                "reasoning_effort": reasoning_effort,
+                "answer_sha256": hashlib.sha256(payload["answer"].encode("utf-8")).hexdigest()}
     try:
         result = client.generate_json(model=model, system_prompt=prompt,
             input_text=json.dumps(payload, ensure_ascii=False),
             schema_name=schema_name, json_schema=schema,
-            max_output_tokens=max_output_tokens)
+            max_output_tokens=max_output_tokens, reasoning_effort=reasoning_effort)
         if result.model != model:
             raise ValueError("grader model changed")
         response = GraderResponse.model_validate(result.data)
