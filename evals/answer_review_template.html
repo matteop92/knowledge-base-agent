@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Answer review</title>
+<style>
+:root { --bg:#f6f7f9; --panel:#fff; --ink:#1c2430; --muted:#5b6777; --line:#d9dee6; --accent:#2f5fd0;
+        --pass:#1f7a45; --fail:#b3261e; --na:#6b7280; --warn-bg:#fff4d6; --warn-ink:#6b4e00; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#14181e; --panel:#1c222b; --ink:#e6eaf0; --muted:#9aa6b6; --line:#2e3744; --accent:#8fb0ff;
+          --pass:#5fd08d; --fail:#ff8a80; --na:#9aa3af; --warn-bg:#3a3110; --warn-ink:#f1d98a; }
+}
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { position:sticky; top:0; z-index:2; background:var(--panel); border-bottom:1px solid var(--line); padding:10px 16px; }
+header h1 { font-size:16px; margin:0 0 6px; }
+.bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+select, button { font:inherit; color:inherit; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:6px 10px; }
+button.primary { background:var(--accent); color:#fff; border-color:var(--accent); cursor:pointer; }
+.notice { background:var(--warn-bg); color:var(--warn-ink); padding:8px 16px; font-size:13px; }
+main { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; padding:16px; max-width:1500px; margin:0 auto; }
+@media (max-width: 900px) { main { grid-template-columns:minmax(0,1fr); } }
+section { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; min-width:0; }
+h2 { font-size:15px; margin:0 0 8px; }
+h3 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:18px 0 6px; }
+.question { color:var(--muted); margin:0 0 10px; }
+.answer { white-space:pre-wrap; overflow-wrap:anywhere; }
+details { border-top:1px solid var(--line); padding:6px 0; }
+summary { cursor:pointer; color:var(--muted); overflow-wrap:anywhere; }
+details p { white-space:pre-wrap; overflow-wrap:anywhere; margin:6px 0 0; }
+.tally { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 4px; }
+.tally div { border:1px solid var(--line); border-radius:8px; padding:6px 10px; font-size:13px; }
+.tally b { display:block; font-size:12px; color:var(--muted); font-weight:600; }
+.check { border-top:1px solid var(--line); padding:8px 0; }
+.check.detail { margin-left:22px; }
+.check.off { opacity:.5; }
+.check .id { font:12px ui-monospace, Consolas, monospace; color:var(--muted); }
+.tag { font-size:11px; border:1px solid var(--line); border-radius:10px; padding:0 6px; margin-left:6px; color:var(--muted); }
+.cond { font-size:12px; color:var(--muted); margin:2px 0 0; }
+.opts { display:flex; flex-wrap:wrap; gap:12px; margin-top:4px; font-size:13px; }
+.opts label { cursor:pointer; }
+.pass { color:var(--pass); } .fail { color:var(--fail); } .na { color:var(--na); }
+textarea { width:100%; min-height:34px; margin-top:6px; font:inherit; color:inherit; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:4px 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Answer review · checklist status: __STATUS__</h1>
+  <div class="bar">
+    <select id="pick" aria-label="Answer to review"></select>
+    <span id="progress"></span>
+    <button class="primary" id="export">Download judgments</button>
+  </div>
+</header>
+<div class="notice" id="notice" hidden></div>
+<main>
+  <section>
+    <h2 id="qid"></h2>
+    <p class="question" id="qtext"></p>
+    <div class="answer" id="answer"></div>
+    <h3>Passages the answer cites</h3>
+    <div id="citations"></div>
+  </section>
+  <section>
+    <h2>Checks</h2>
+    <div class="tally" id="tally"></div>
+    <div id="checks"></div>
+  </section>
+</main>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+const DATA = JSON.parse(document.getElementById("data").textContent);
+const STORE = "answer-review:" + DATA.checklist_sha256;
+const DIMENSIONS = ["coverage", "grounding", "example"];
+let state = {};
+try { state = JSON.parse(localStorage.getItem(STORE) || "{}"); } catch (error) { state = {}; }
+const save = () => { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (error) {} };
+const el = (tag, cls, text) => { const node = document.createElement(tag); if (cls) node.className = cls; if (text !== undefined) node.textContent = text; return node; };
+const entryState = entry => {
+  if (!state[entry.key]) {
+    const earlier = (DATA.prefill || {})[entry.key] || {};
+    state[entry.key] = { ratings: { ...(earlier.ratings || {}) }, notes: { ...(earlier.notes || {}) },
+      outside: (earlier.out_of_scope_points || []).join("\n"), scopeReviewed: Boolean(earlier.scope_reviewed) };
+  }
+  return state[entry.key];
+};
+const outsidePoints = entry => (entryState(entry).outside || "").split("\n").map(line => line.trim()).filter(Boolean);
+const checksOf = entry => DATA.questions[entry.question_id].checks;
+
+// A detail is rated only when its primary passes; otherwise it follows the primary.
+function effective(entry, check) {
+  const ratings = entryState(entry).ratings;
+  if (check.parent_id) {
+    const parent = ratings[check.parent_id] || "unreviewed";
+    if (parent === "unreviewed") return "unreviewed";
+    if (parent !== "pass") return "not_applicable";
+    const own = ratings[check.id] || "unreviewed";
+    return own === "not_applicable" && check.applicability !== "optional" ? "unreviewed" : own;
+  }
+  return ratings[check.id] || "unreviewed";
+}
+function allowed(check) {
+  if (check.parent_id && check.applicability !== "optional") return ["pass", "fail"];
+  return check.applicability === "required" ? ["pass", "fail"] : ["pass", "fail", "not_applicable"];
+}
+const LABELS = { pass: "Pass", fail: "Fail" };
+function naLabel(check) { return check.applicability === "optional" ? "Not included" : "Does not apply"; }
+
+function tally(entry) {
+  const out = {};
+  for (const name of DIMENSIONS) out[name] = { pass: 0, fail: 0, not_applicable: 0, unreviewed: 0, optional: 0 };
+  for (const check of checksOf(entry)) {
+    const rating = effective(entry, check);
+    if (rating === "unreviewed") out[check.dimension].unreviewed++;
+    else if (check.applicability === "optional") out[check.dimension].optional++;
+    else out[check.dimension][rating]++;
+  }
+  return out;
+}
+function renderTally(entry) {
+  const box = document.getElementById("tally"); box.replaceChildren();
+  const counts = tally(entry);
+  for (const name of DIMENSIONS) {
+    const c = counts[name], cell = el("div");
+    cell.append(el("b", "", name), document.createTextNode(
+      c.pass + " of " + (c.pass + c.fail) + " pass · " + c.not_applicable + " n/a · " + c.unreviewed + " to review" +
+      (c.optional ? " · " + c.optional + " optional rated" : "")));
+    box.append(cell);
+  }
+  const outside = outsidePoints(entry).length, cell = el("div");
+  cell.append(el("b", "", "relevance"), document.createTextNode(
+    entryState(entry).scopeReviewed ? outside + " point(s) outside the scope" : "to review"));
+  box.append(cell);
+  let passed = 0, scored = outside;
+  for (const name of DIMENSIONS) { passed += counts[name].pass; scored += counts[name].pass + counts[name].fail; }
+  const total = el("div");
+  total.append(el("b", "", "this answer"), document.createTextNode(
+    passed + " of " + scored + (scored ? " (" + Math.round(100 * passed / scored) + "%)" : "")));
+  box.append(total);
+  const done = DATA.entries.filter(item => entryState(item).scopeReviewed &&
+    Object.values(tally(item)).every(c => c.unreviewed === 0)).length;
+  document.getElementById("progress").textContent = done + " of " + DATA.entries.length + " answers fully reviewed";
+}
+function renderChecks(entry) {
+  const box = document.getElementById("checks"); box.replaceChildren();
+  const local = entryState(entry);
+  const question = DATA.questions[entry.question_id];
+  box.append(el("h3", "", "relevance"));
+  const scope = el("div", "check");
+  scope.append(el("div", "", "In scope: " + (question.in_scope || "not defined yet")),
+               el("div", "cond", "Out of scope: " + (question.out_of_scope || "not defined yet")),
+               el("p", "cond", "List each main point of the answer that falls outside the scope, one per line. Each line counts as one failed check. Leave empty if there are none."));
+  const outside = el("textarea"); outside.style.minHeight = "70px"; outside.value = local.outside || "";
+  outside.setAttribute("aria-label", "Points outside the scope");
+  outside.addEventListener("input", () => { local.outside = outside.value; save(); renderTally(entry); });
+  const reviewedLabel = el("label"), reviewed = el("input"); reviewed.type = "checkbox"; reviewed.checked = Boolean(local.scopeReviewed);
+  reviewed.addEventListener("change", () => { local.scopeReviewed = reviewed.checked; save(); renderTally(entry); });
+  reviewedLabel.append(reviewed, document.createTextNode(" I have checked this answer against the scope"));
+  scope.append(outside, reviewedLabel);
+  box.append(scope);
+  for (const name of DIMENSIONS) {
+    const inDimension = checksOf(entry).filter(check => check.dimension === name);
+    if (!inDimension.length) continue;
+    // Show each detail directly under its primary, whatever the file order.
+    const list = [];
+    for (const check of inDimension.filter(item => !item.parent_id)) {
+      list.push(check, ...inDimension.filter(item => item.parent_id === check.id));
+    }
+    box.append(el("h3", "", name));
+    for (const check of list) {
+      const rating = effective(entry, check);
+      const locked = Boolean(check.parent_id) && (local.ratings[check.parent_id] || "unreviewed") !== "pass";
+      const row = el("div", "check" + (check.parent_id ? " detail" : "") + (locked ? " off" : ""));
+      const head = el("div");
+      head.append(el("span", "id", check.id));
+      if (check.type === "detail") head.append(el("span", "tag", "detail of " + check.parent_id));
+      if (check.applicability === "optional") head.append(el("span", "tag", "optional, not scored"));
+      row.append(head, el("div", "", check.criterion));
+      if (check.condition) row.append(el("p", "cond", "Applies when: " + check.condition));
+      const opts = el("div", "opts");
+      if (locked) {
+        opts.append(el("span", "na", rating === "unreviewed" ? "Rate the primary check first" : "Not applicable: its primary did not pass"));
+      } else {
+        for (const value of allowed(check)) {
+          const label = el("label", value === "not_applicable" ? "na" : value);
+          const input = el("input"); input.type = "radio"; input.name = entry.key + check.id; input.checked = rating === value;
+          input.addEventListener("change", () => { local.ratings[check.id] = value; save(); renderChecks(entry); renderTally(entry); });
+          label.append(input, document.createTextNode(" " + (LABELS[value] || naLabel(check))));
+          opts.append(label);
+        }
+      }
+      row.append(opts);
+      const note = el("textarea"); note.placeholder = "Note (optional)"; note.value = local.notes[check.id] || "";
+      note.setAttribute("aria-label", "Note for " + check.id);
+      note.addEventListener("input", () => { local.notes[check.id] = note.value; save(); });
+      row.append(note);
+      box.append(row);
+    }
+  }
+}
+function show(entry) {
+  document.getElementById("qid").textContent = entry.question_id + " · " + entry.label;
+  document.getElementById("qtext").textContent = DATA.questions[entry.question_id].question;
+  document.getElementById("answer").textContent = entry.answer;
+  const cites = document.getElementById("citations"); cites.replaceChildren();
+  for (const citation of entry.citations) {
+    const block = el("details");
+    block.append(el("summary", "", "[" + citation.id + "] " + citation.source), el("p", "", citation.text));
+    cites.append(block);
+  }
+  renderChecks(entry); renderTally(entry);
+}
+function exported() {
+  return { checklist_sha256: DATA.checklist_sha256, checklist_status: DATA.checklist_status,
+    reviews: DATA.entries.map(entry => {
+      const ratings = {};
+      for (const check of checksOf(entry)) ratings[check.id] = effective(entry, check);
+      return { key: entry.key, label: entry.label, question_id: entry.question_id,
+               answer_sha256: entry.answer_sha256, ratings, notes: entryState(entry).notes,
+               out_of_scope_points: outsidePoints(entry), scope_reviewed: Boolean(entryState(entry).scopeReviewed) };
+    }) };
+}
+const pick = document.getElementById("pick");
+DATA.entries.forEach((entry, index) => { const option = el("option", "", entry.question_id + " · " + entry.label); option.value = index; pick.append(option); });
+pick.addEventListener("change", () => show(DATA.entries[Number(pick.value)]));
+document.getElementById("export").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(exported(), null, 2)], { type: "application/json" });
+  const link = el("a"); link.href = URL.createObjectURL(blob); link.download = "answer-review-judgments.json"; link.click();
+  URL.revokeObjectURL(link.href);
+});
+if (DATA.checklist_status !== "frozen") {
+  const notice = document.getElementById("notice"); notice.hidden = false;
+  notice.textContent = "Draft checklist: scores from this page are provisional. Open decisions: " +
+    (DATA.open_decisions.length ? DATA.open_decisions.join(" | ") : "none recorded") + ".";
+}
+if (DATA.entries.length) show(DATA.entries[0]);
+</script>
+</body>
+</html>

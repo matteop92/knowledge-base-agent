@@ -23,7 +23,7 @@ class SearchProfile(StrictRecord):
     chunking_version: str = Field(min_length=1)
     embedding_spec_id: str = Field(min_length=64, max_length=64)
     text_config: Literal["simple"] = "simple"
-    required_artifact_kinds: list[Literal["context", "cards", "summary"]] = Field(default_factory=list)
+    required_artifact_kinds: list[Literal["context", "summary"]] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def unique_artifacts(self) -> SearchProfile:
@@ -55,6 +55,8 @@ class SearchHit(StrictRecord):
     chunk_id: str
     source_spans: list[dict]
     raw_text: str
+    title: str | None = None
+    people: list[str] = Field(default_factory=list)
 
 
 class FusedHit(StrictRecord):
@@ -62,25 +64,6 @@ class FusedHit(StrictRecord):
     rrf_score: float
     channels: list[str]
     hit: SearchHit
-
-
-class CardHit(StrictRecord):
-    rank: int
-    score: float
-    document_id: str
-    run_id: str
-    source_sha256: str
-    root_alias: str
-    relative_path: str
-    card_id: str
-    chunk_id: str
-    statement: str
-    evidence_span: dict
-    situation: str | None = None
-    action: str | None = None
-    result: str | None = None
-    principle: str | None = None
-    query_mode: Literal["all_terms", "or_fallback"] = "all_terms"
 
 
 class SourcePassage(StrictRecord):

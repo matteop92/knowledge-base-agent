@@ -18,6 +18,25 @@ from app.models.client import (
 )
 
 
+def completion_limit(model_id: str, schema_name: str, max_output_tokens: int,
+                     reasoning_effort: str | None) -> tuple[str, int]:
+    """The completion-token field and ceiling sent for one structured call.
+
+    Reasoning and constrained JSON consume completion tokens before the visible
+    object appears, so the caller's bound (visible content) is multiplied. Spending
+    caps use this same function, so they cannot drift from what is sent.
+    """
+    if model_id in ("openai/gpt-5-mini", "openai/gpt-6-luna") or reasoning_effort:
+        field = "max_completion_tokens" if model_id.startswith("openai/") else "max_tokens"
+        return field, max_output_tokens * 4
+    multiplier = 2
+    if model_id == "deepseek/deepseek-v4.1-flash":
+        # DeepSeek's longer document summaries need more room to finish
+        # constrained JSON even with reasoning disabled.
+        multiplier = 8 if schema_name == "summary" else 4
+    return "max_tokens", max_output_tokens * multiplier
+
+
 class OpenRouterClient:
     BASE_URL = "https://openrouter.ai/api/v1"
 
@@ -224,28 +243,19 @@ class OpenRouterClient:
                 "json_schema": {"name": schema_name, "strict": True, "schema": json_schema},
             },
         }
-        # Reasoning and constrained JSON consume completion tokens before the
-        # visible object appears. The caller's bound is for visible content.
-        completion_budget = max_output_tokens * 4
         if reasoning_effort is not None and reasoning_effort not in (
             "minimal", "low", "medium", "high"
         ):
             raise ModelClientError("unsupported reasoning effort")
-        if reasoning_effort is not None and not model.model_id.startswith("openai/"):
-            raise ModelClientError("reasoning effort is unavailable for this model")
+        limit, tokens = completion_limit(model.model_id, schema_name, max_output_tokens, reasoning_effort)
+        payload[limit] = tokens
         if model.model_id in ("openai/gpt-5-mini", "openai/gpt-6-luna") or reasoning_effort:
-            payload["max_completion_tokens"] = completion_budget
+            # OpenRouter's unified reasoning setting; callers check that the pinned route
+            # lists "reasoning" before asking for an effort on a non-OpenAI model.
             payload["reasoning"] = {"effort": reasoning_effort or "minimal"}
         else:
             payload["temperature"] = 0
-            # DeepSeek's longer document summaries need more room to finish
-            # constrained JSON even with reasoning disabled.
-            deepseek = model.model_id == "deepseek/deepseek-v4.1-flash"
-            multiplier = 2
-            if deepseek:
-                multiplier = 8 if schema_name == "summary" else 4
-            payload["max_tokens"] = max_output_tokens * multiplier
-            if model.model_id.startswith("qwen/qwen3.5-") or deepseek:
+            if model.model_id.startswith("qwen/qwen3.5-") or model.model_id == "deepseek/deepseek-v4.1-flash":
                 payload["reasoning"] = {"enabled": False}
         route = self._model_providers.get(model.model_id, self._provider)
         if route is not None:

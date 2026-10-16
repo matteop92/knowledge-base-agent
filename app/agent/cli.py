@@ -12,7 +12,7 @@ from pathlib import Path
 import psycopg
 
 from app.agent.harness import answer_question, PROMPT, PROMPT_PATH, PROMPT_VERSION
-from app.agent.actions import ACTION_SCHEMA_V2
+from app.agent.actions import ACTION_SCHEMA_V3
 from app.agent.records import AnswerLimits
 from app.models.client import ModelClientError, ModelSpec
 from app.models.openrouter import OpenRouterClient
@@ -59,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--input-byte-budget", type=int,
                         help="conservative input allowance: request UTF-8 bytes plus 512 tokens per request")
     parser.add_argument("--model", default="openai/gpt-5-mini")
-    parser.add_argument("--reasoning-effort", choices=("none", "minimal", "low", "medium", "high"), default="minimal")
+    parser.add_argument("--reasoning-effort", choices=("none", "minimal", "low", "medium", "high"), default="medium")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--report", type=Path, help="explicit private report under .local/")
     args = parser.parse_args(argv)
@@ -67,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.request_budget is None:
         args.request_budget = 28 if args.budget_profile == "broad" else 18
     if args.input_byte_budget is None:
-        args.input_byte_budget = 700000 if args.budget_profile == "broad" else 400000
+        args.input_byte_budget = 1600000 if args.budget_profile == "broad" else 800000
     if not args.question.strip():
         parser.error("question must not be empty")
     if args.reasoning_effort != "none" and not args.model.startswith("openai/"):
@@ -119,8 +119,8 @@ def main(argv: list[str] | None = None) -> int:
                         "embedding_spec_id": sid, "source_revisions": hashes,
                         "prompt_version": PROMPT_VERSION, "prompt_sha256": hashlib.sha256(PROMPT.encode("utf-8")).hexdigest(),
                         "prompt_file_sha256": hashlib.sha256(PROMPT_PATH.read_bytes()).hexdigest(),
-                        "action_schema_version": 2,
-                        "action_schema_sha256": hashlib.sha256(json.dumps(ACTION_SCHEMA_V2, sort_keys=True).encode()).hexdigest(),
+                        "action_schema_version": 3,
+                        "action_schema_sha256": hashlib.sha256(json.dumps(ACTION_SCHEMA_V3, sort_keys=True).encode()).hexdigest(),
                         "budget_profile": args.budget_profile,
                         "limits": limits.model_dump(), "request_budget": args.request_budget,
                         "input_byte_budget": args.input_byte_budget, "input_budget_mode": "utf8_bytes_plus_512_per_request",
@@ -145,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
                                for model_id, usage in client.billable_requests)
                 value = {"status": "completed" if result.termination == "completed" and known_usage else "failed", "configuration": metadata,
                          "result": result.model_dump(mode="json"), "usage_complete": known_usage,
+                         "refused_actions": sum("rejected" in action or action.get("action") == "invalid"
+                                                for action in result.actions),
                          "estimated_usd": str(measured) if known_usage else None,
                          "billable_requests": [{"model": model_id, "usage": usage.model_dump()}
                                                for model_id, usage in client.billable_requests],

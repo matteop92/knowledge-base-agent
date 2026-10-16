@@ -68,6 +68,13 @@ class PreviewTests(unittest.TestCase):
         self.assertEqual(summary["unclassified_spans"][0]["start_char"], 0)
         self.assertEqual(summary["warnings"], ["unclassified source text"])
 
+    def test_preview_reports_missing_title_and_author_with_filename_fallback(self) -> None:
+        self.source.write_text("**Host:** Hello.\n", encoding="utf-8")
+        summary = preview_markdown(self.root, "episode.md", self.runtime)
+        self.assertEqual(summary["title"], "episode")
+        self.assertEqual(summary["missing_metadata"], ["title", "author"])
+        self.assertEqual(summary["locator"]["relative_path"], "episode.md")
+
     def test_eval_labels_are_bound_to_exact_source_revision(self) -> None:
         summary = preview_source(self.root, "episode.md", self.runtime)
         record = ParsedDocument.model_validate_json(

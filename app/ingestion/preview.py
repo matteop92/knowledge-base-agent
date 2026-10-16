@@ -20,6 +20,17 @@ from app.ingestion.source_reader import SourceReadError, capture_source
 from app.ingestion.transcript_parser import TranscriptParseError, parse_transcript
 
 
+def missing_source_metadata(metadata) -> list[str]:
+    """Flag missing source labels while retaining parser fallbacks."""
+    title = metadata.frontmatter.get("title")
+    missing = []
+    if not isinstance(title, str) or not title.strip():
+        missing.append("title")
+    if not metadata.authors:
+        missing.append("author")
+    return missing
+
+
 def preview_source(
     source_root: Path,
     relative_path: str,
@@ -40,6 +51,7 @@ def preview_source(
         "source_sha256": parsed.source_sha256,
         "locator": parsed.locator.model_dump(),
         "title": parsed.metadata.title,
+        "missing_metadata": missing_source_metadata(parsed.metadata),
         "source_url": parsed.metadata.source_url,
         "source_origin": parsed.metadata.source_origin,
         "published": parsed.metadata.published.isoformat() if parsed.metadata.published else None,
@@ -110,6 +122,7 @@ def preview_markdown(
         "source_sha256": parsed.source_sha256,
         "locator": parsed.locator.model_dump(),
         "title": parsed.metadata.title,
+        "missing_metadata": missing_source_metadata(parsed.metadata),
         "source_kind": parsed.source_kind,
         "route_reason": parsed.route_reason,
         "structural_confidence": parsed.structural_confidence,

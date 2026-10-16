@@ -52,6 +52,7 @@ class SourceMetadata(StrictRecord):
     source_url: str | None = None
     source_origin: str | None = None
     authors: list[str] = Field(default_factory=list)
+    guests: list[str] = Field(default_factory=list)
     published: Date | None = None
     created: Date | None = None
     date: Date | None = None
@@ -286,79 +287,3 @@ def _merge_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
         else:
             merged.append((start, end))
     return merged
-
-
-class EvidenceCard(StrictRecord):
-    card_id: str = Field(min_length=1)
-    card_type: Literal[
-        "example", "principle", "claim", "counterexample", "framework",
-        "tactic", "mistake", "lesson",
-    ]
-    statement: str = Field(min_length=1)
-    situation: str | None = None
-    action: str | None = None
-    result: str | None = None
-    principle: str | None = None
-    principle_is_derived: bool = False
-    evidence_span: SourceSpan
-    evidence_text: str = Field(min_length=1)
-    document_id: str = Field(min_length=1)
-    run_id: str = Field(min_length=1)
-    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    chunk_id: str = Field(min_length=1)
-    content_role: Literal["source", "personal_note"]
-    attribution: str | None = None
-
-    @model_validator(mode="after")
-    def check_derived(self) -> EvidenceCard:
-        if self.principle is not None and not self.principle_is_derived:
-            raise ValueError("a principle must be marked as derived")
-        return self
-
-    def validate_against(self, document: ParsedDocument, chunk: Chunk) -> None:
-        if (self.document_id, self.run_id, self.source_sha256, self.chunk_id) != (
-            document.document_id, document.run_id, document.source_sha256, chunk.chunk_id
-        ):
-            raise ValueError("card provenance does not match its source chunk")
-        document._check_span(self.evidence_span)
-        if document.source_text[
-            self.evidence_span.start_char:self.evidence_span.end_char
-        ] != self.evidence_text:
-            raise ValueError("card evidence is not exact source text")
-        within_one_span = any(
-            span.start_char <= self.evidence_span.start_char
-            and self.evidence_span.end_char <= span.end_char
-            for span in chunk.source_spans
-        )
-        supporting = [
-            block for block in document.blocks
-            if (block.content_span or block.span).start_char < self.evidence_span.end_char
-            and self.evidence_span.start_char < (block.content_span or block.span).end_char
-        ]
-        if not supporting or any(block.index not in chunk.block_indices
-                                 or block.content_role != self.content_role
-                                 for block in supporting):
-            raise ValueError("card content role does not match its source blocks")
-        if not within_one_span:
-            indices = [block.index for block in supporting]
-            start_inside = any(span.start_char <= self.evidence_span.start_char < span.end_char
-                               for span in chunk.source_spans)
-            end_inside = any(span.start_char < self.evidence_span.end_char <= span.end_char
-                             for span in chunk.source_spans)
-            if (len(supporting) < 2 or not start_inside or not end_inside
-                    or any(right != left + 1 for left, right in zip(indices, indices[1:]))):
-                raise ValueError("card evidence span is outside its raw chunk")
-        first_span = supporting[0].content_span or supporting[0].span
-        last_span = supporting[-1].content_span or supporting[-1].span
-        if (self.evidence_span.start_char < first_span.start_char
-                or last_span.end_char < self.evidence_span.end_char):
-            raise ValueError("card evidence is outside its source blocks")
-        attributions = {
-            "personal_note" if block.content_role == "personal_note"
-            else block.speaker or (
-                document.metadata.authors[0] if len(document.metadata.authors) == 1 else None
-            )
-            for block in supporting
-        }
-        if attributions != {self.attribution}:
-            raise ValueError("card attribution does not match its source blocks")

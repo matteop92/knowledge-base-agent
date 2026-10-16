@@ -4,10 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.ingestion.chunking import structural_raw_chunks
-from app.ingestion.enrichment import (
-    extract_evidence_cards,
-    generate_chunk_context,
-)
+from app.ingestion.enrichment import generate_chunk_context
 from app.ingestion.router import route_source
 from app.ingestion.run_manifest import RunManifest
 from app.ingestion.source_reader import capture_source
@@ -134,11 +131,6 @@ class EnrichmentTests(unittest.TestCase):
                     document, chunks, chunks.chunks[0], client, self.model,
                     manifest, capture.run_dir,
                 )
-            with self.assertRaisesRegex(ModelClientError, "do not match"):
-                extract_evidence_cards(
-                    document, chunks, chunks.chunks[0], client, self.model,
-                    manifest, capture.run_dir,
-                )
             generate.assert_not_called()
             wrong_budget = RunManifest.for_document(
                 document, live_call_selected=True, request_budget=1,
@@ -163,180 +155,6 @@ class EnrichmentTests(unittest.TestCase):
             self.assertEqual(saved.request_budget, 2)
             self.assertEqual(saved.estimated_input_token_budget, 200)
 
-    def test_exact_card_and_nullable_fields(self) -> None:
-        text = "**Host:** We called ten customers first.\n"
-        capture, document, chunks, manifest = self.setup_source("Transcripts/episode.md", text)
-        quote = "called ten customers"
-        start = document.source_text.index(quote)
-        client = FakeClient({"cards": [{
-            "card_type": "tactic", "statement": "Call customers early.",
-            "situation": None, "action": None, "result": None,
-            "principle": "Seek firsthand feedback.",
-            "evidence_start_char": start,
-            "evidence_end_char": start + len(quote), "evidence_text": quote,
-        }]})
-        artifact = extract_evidence_cards(
-            document, chunks, chunks.chunks[0], client, self.model,
-            manifest, capture.run_dir,
-        )
-        card = artifact.cards[0]
-        self.assertIsNone(card.situation)
-        self.assertIsNone(card.action)
-        self.assertIsNone(card.result)
-        self.assertTrue(card.principle_is_derived)
-        self.assertEqual(card.attribution, "Host")
-        card.validate_against(document, chunks.chunks[0])
-
-    def test_quote_location_v2_requires_one_exact_source_occurrence(self) -> None:
-        capture, document, chunks, manifest = self.setup_source(
-            "Notes/idea.md", "A real sentence supports this tactic.\n"
-        )
-        card = {"card_type": "tactic", "statement": "Use the stated tactic.",
-                "situation": None, "action": None, "result": None,
-                "principle": None, "evidence_text": "real sentence supports"}
-        artifact = extract_evidence_cards(
-            document, chunks, chunks.chunks[0], FakeClient({"cards": [card]}),
-            self.model, manifest, capture.run_dir,
-            prompt_version="evidence_cards_v2",
-        )
-        self.assertEqual(artifact.extraction_version, "quote-locate-v2")
-        self.assertEqual(artifact.cards[0].evidence_span.start_char,
-                         document.source_text.index(card["evidence_text"]))
-        artifact.cards[0].validate_against(document, chunks.chunks[0])
-
-        capture2, document2, chunks2, manifest2 = self.setup_source(
-            "Notes/repeated.md", "Same phrase. Same phrase.\n"
-        )
-        with self.assertRaisesRegex(ValueError, "exactly once"):
-            extract_evidence_cards(
-                document2, chunks2, chunks2.chunks[0],
-                FakeClient({"cards": [{**card, "evidence_text": "Same phrase"}]}),
-                self.model, manifest2, capture2.run_dir,
-                prompt_version="evidence_cards_v2",
-            )
-
-    def test_block_location_v3_uses_exact_source_span(self) -> None:
-        capture, document, chunks, manifest = self.setup_source(
-            "Notes/block.md", "A real sentence supports this tactic.\n"
-        )
-        block = next(block for block in document.blocks
-                     if block.index in chunks.chunks[0].block_indices)
-        card = {"card_type": "tactic", "statement": "Use the stated tactic.",
-                "situation": None, "action": None, "result": None,
-                "principle": None, "evidence_block_index": block.index}
-        artifact = extract_evidence_cards(
-            document, chunks, chunks.chunks[0], FakeClient({"cards": [card]}),
-            self.model, manifest, capture.run_dir,
-            prompt_version="evidence_cards_v3",
-        )
-        self.assertEqual(artifact.extraction_version, "block-locate-v3")
-        artifact.cards[0].validate_against(document, chunks.chunks[0])
-        self.assertEqual(artifact.cards[0].evidence_text,
-                         document.source_text[block.span.start_char:block.span.end_char])
-
-        bad_capture, bad_document, bad_chunks, bad_manifest = self.setup_source(
-            "Notes/bad-block.md", "A real sentence supports this tactic.\n"
-        )
-        with self.assertRaisesRegex(ValueError, "invalid source block"):
-            extract_evidence_cards(
-                bad_document, bad_chunks, bad_chunks.chunks[0],
-                FakeClient({"cards": [{**card, "evidence_block_index": 9999}]}),
-                self.model, bad_manifest, bad_capture.run_dir,
-                prompt_version="evidence_cards_v3",
-            )
-
-    def test_v4_rejects_a_short_source_fragment(self) -> None:
-        capture, document, chunks, manifest = self.setup_source(
-            "Notes/fragments.md",
-            "Belly crash.\n\nA complete source block explains that a practical choice requires direct observation and a deliberate response.\n",
-        )
-        short = next(block for block in document.blocks
-                     if block.raw_text.strip() == "Belly crash.")
-        card = {"card_type": "tactic", "statement": "Observe before acting.",
-                "situation": None, "action": None, "result": None,
-                "principle": None, "evidence_block_index": short.index}
-        with self.assertRaisesRegex(ValueError, "source fragment"):
-            extract_evidence_cards(
-                document, chunks, chunks.chunks[0], FakeClient({"cards": [card]}),
-                self.model, manifest, capture.run_dir,
-                prompt_version="evidence_cards_v4",
-            )
-
-    def test_v5_through_v7_group_adjacent_turns_from_one_speaker(self) -> None:
-        capture, document, chunks, manifest = self.setup_source(
-            "Transcripts/grouped.md",
-            "**Host:** A useful observation begins here, and it concerns a decision that needs more context.\n\n"
-            "**Host:** The decision should be made after checking the relevant customer evidence.\n\n"
-            "**Guest:** I agree with the approach, but my example is a separate observation.\n",
-        )
-        card = {"card_type": "tactic", "statement": "Check customer evidence before deciding.",
-                "situation": None, "action": None, "result": None,
-                "principle": None, "evidence_group_index": 0}
-        for prompt_version, output_bound in (("evidence_cards_v5", 700),
-                                             ("evidence_cards_v6", 1400),
-                                             ("evidence_cards_v7", 1400)):
-            with self.subTest(prompt_version=prompt_version):
-                client = FakeClient({"cards": [card]})
-                artifact = extract_evidence_cards(
-                    document, chunks, chunks.chunks[0], client,
-                    self.model, manifest, capture.run_dir,
-                    prompt_version=prompt_version,
-                )
-                self.assertEqual(client.calls[0]["max_output_tokens"], output_bound)
-                if prompt_version == "evidence_cards_v7":
-                    self.assertIn("Valid evidence_group_index values (zero-based):",
-                                  client.calls[0]["input_text"])
-                self.assertIn("A useful observation", artifact.cards[0].evidence_text)
-                self.assertIn("checking the relevant customer evidence", artifact.cards[0].evidence_text)
-                self.assertNotIn("Guest", artifact.cards[0].evidence_text)
-                self.assertEqual(artifact.cards[0].attribution, "Host")
-                artifact.cards[0].validate_against(document, chunks.chunks[0])
-
-    def test_personal_annotation_is_not_attributed_to_book_author(self) -> None:
-        capture, document, chunks, manifest = self.setup_source(
-            "Book Highlights/book.md",
-            Path("sources/fixtures/sample_highlights.md").read_text(encoding="utf-8"),
-        )
-        quote = "I want to revisit this."
-        start = document.source_text.index(quote)
-        target = next(
-            chunk for chunk in chunks.chunks
-            if any(span.start_char <= start < span.end_char for span in chunk.source_spans)
-        )
-        client = FakeClient({"cards": [{
-            "card_type": "lesson", "statement": "Revisit the passage.",
-            "evidence_start_char": start,
-            "evidence_end_char": start + len(quote), "evidence_text": quote,
-        }]})
-        artifact = extract_evidence_cards(
-            document, chunks, target, client, self.model, manifest, capture.run_dir,
-        )
-        self.assertEqual(artifact.cards[0].content_role, "personal_note")
-        self.assertEqual(artifact.cards[0].attribution, "personal_note")
-
-    def test_invented_evidence_and_model_failure_leave_no_ready_artifact(self) -> None:
-        capture, document, chunks, manifest = self.setup_source(
-            "Notes/idea.md", "A real sentence.\n"
-        )
-        invented = FakeClient({"cards": [{
-            "card_type": "claim", "statement": "Unsupported.",
-            "evidence_start_char": 0, "evidence_end_char": 6,
-            "evidence_text": "made up",
-        }]})
-        with self.assertRaisesRegex(ValueError, "exact source text"):
-            extract_evidence_cards(
-                document, chunks, chunks.chunks[0], invented, self.model,
-                manifest, capture.run_dir,
-            )
-        self.assertTrue(all(record.status == "failed" for record in manifest.artifacts.values()))
-        self.assertEqual(list((capture.run_dir / "artifacts").rglob("*.json")) if (capture.run_dir / "artifacts").exists() else [], [])
-        failing = FakeClient(error=ModelClientError("timeout"))
-        with self.assertRaises(ModelClientError):
-            generate_chunk_context(
-                document, chunks, chunks.chunks[0], failing, self.model,
-                manifest, capture.run_dir,
-            )
-        self.assertTrue(all(record.status == "failed" for record in manifest.artifacts.values()))
 
 
 if __name__ == "__main__":

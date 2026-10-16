@@ -7,7 +7,7 @@ from app.agent.records import AnswerLimits
 from app.models.client import GenerationResult, ModelSpec
 from app.storage import StorageError
 from app.storage.records import FusedHit, SearchHit, SourcePassage
-from tests.agent.test_actions import action, action_v2
+from tests.agent.test_actions import action, action_v2, action_v3
 
 
 MODEL = ModelSpec(provider="fake", model_id="fake", model_version="1")
@@ -33,9 +33,6 @@ class FakeRetriever:
                          raw_text="actual source")
         return [FusedHit(rank=1, rrf_score=1 / 61, channels=["text"], hit=item)]
 
-    def search_cards(self, query):
-        return []
-
     def read(self, reference, span_index):
         if span_index != 0:
             raise IndexError
@@ -45,9 +42,85 @@ class FakeRetriever:
 
 
 class HarnessTest(unittest.TestCase):
+    def test_complete_finish_with_declared_gap_is_recorded_partial(self):
+        resolved = [{"id": "N1", "description": "Explain", "status": "resolved",
+                     "evidence_ids": ["E1.0"], "rationale": None}]
+        result = answer_question("Explain", retriever=FakeRetriever(), client=FakeClient([
+            action_v3("read", reference_id="E1"),
+            action_v3("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
+                      completeness="complete", sufficient=True, gaps=["One detail is unavailable"],
+                      need_updates=resolved)]), model=MODEL)
+        self.assertEqual(result.termination, "completed")
+        self.assertEqual(result.completeness, "partial")
+        self.assertEqual(result.gaps, ["One detail is unavailable"])
+        self.assertNotIn("rejected", result.actions[-1])
+
+    def test_candidate_shows_title_and_people_without_path(self):
+        class LabeledRetriever(FakeRetriever):
+            def search(self, query):
+                found = super().search(query)[0]
+                return [found.model_copy(update={"hit": found.hit.model_copy(update={
+                    "title": "Anything You Want", "people": ["Derek Sivers"]})})]
+
+        class CapturingClient(FakeClient):
+            def generate_json(self, **kwargs):
+                self.first_input = kwargs["input_text"]
+                return super().generate_json(**kwargs)
+
+        import json
+        client = CapturingClient([action_v3("finish", answer="No verified source.",
+            completeness="unsupported", sufficient=False, gaps=["Need a read"])])
+        answer_question("Explain", retriever=LabeledRetriever(), client=client, model=MODEL,
+                        limits=AnswerLimits(max_model_calls=1))
+        candidate = json.loads(client.first_input)["candidates"][0]
+        self.assertEqual(candidate["title"], "Anything You Want")
+        self.assertEqual(candidate["people"], ["Derek Sivers"])
+        self.assertNotIn("path", candidate)
+
+    def test_nonfinish_draft_answer_does_not_discard_valid_source_read(self):
+        draft_read = action_v3("read", reference_id="E1", span_index=0,
+                               answer="Unverified draft", citation_ids=["E1.0"],
+                               completeness="partial", sufficient=False,
+                               gaps=["More to inspect"])
+        resolved = [{"id": "N1", "description": "Explain", "status": "resolved",
+                     "evidence_ids": ["E1.0"], "rationale": None}]
+        client = FakeClient([action_v3("search", query="source"), draft_read,
+                             action_v3("finish", answer="Grounded [E1.0]",
+                                       citation_ids=["E1.0"], completeness="complete",
+                                       sufficient=True, need_updates=resolved)])
+        result = answer_question("Explain", retriever=FakeRetriever(), client=client, model=MODEL,
+                                 limits=AnswerLimits(max_model_calls=3))
+        self.assertEqual(result.termination, "completed")
+        self.assertEqual(result.actions[1]["ignored_draft_fields"],
+                         ["answer", "citation_ids", "completeness", "gaps", "sufficient"])
+        self.assertEqual(result.citations["E1.0"].text, "actual source")
+
+    def test_two_discovery_actions_require_an_original_read(self):
+        class CapturingClient(FakeClient):
+            def __init__(self, actions):
+                super().__init__(actions)
+                self.allowed = []
+
+            def generate_json(self, **kwargs):
+                self.allowed.append(kwargs["json_schema"]["properties"]["action"]["enum"])
+                return super().generate_json(**kwargs)
+
+        client = CapturingClient([
+            action_v3("search", query="first"),
+            action_v3("search", query="second"),
+            action_v3("read", reference_id="E1", span_index=0),
+            action_v3("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
+                      completeness="complete", sufficient=True,
+                      need_updates=[{"id": "N1", "description": "Explain", "status": "resolved",
+                                     "evidence_ids": ["E1.0"], "rationale": None}]),
+        ])
+        result = answer_question("Explain", retriever=FakeRetriever(), client=client, model=MODEL)
+        self.assertEqual(client.allowed[2], ["read"])
+        self.assertEqual(result.termination, "completed")
+
     def test_new_run_rejects_legacy_action_version(self):
-        client = FakeClient([action('search', query='source'),
-                             action_v2('finish', answer='No verified source.',
+        client = FakeClient([action_v2('search', query='source'),
+                             action_v3('finish', answer='No verified source.',
                                        completeness='unsupported', sufficient=False,
                                        gaps=['No source was inspected'])])
         result = _answer_question('Explain', retriever=FakeRetriever(), client=client,
@@ -73,11 +146,11 @@ class HarnessTest(unittest.TestCase):
         retriever = FindingRetriever()
         needs = [{"id": "N1", "description": "Explain the later source", "status": "resolved",
                   "evidence_ids": ["E2.0"], "rationale": None}]
-        client = FakeClient([action_v2("search", query="source"),
-            action_v2("find", reference_id="E1", query="later detail"),
-            action_v2("read", reference_id="E2", span_index=0),
-            action_v2("finish", answer="Later fact [E2.0]", citation_ids=["E2.0"],
-                      completeness="complete", sufficient=True, need_updates=needs)])
+        client = FakeClient([action_v3("search", query="source"),
+            action_v3("find", reference_id="E1", query="later detail"),
+            action_v3("read", reference_id="E2", span_index=0),
+            *[action_v3("finish", answer="Later fact [E2.0]", citation_ids=["E2.0"],
+                        completeness="complete", sufficient=True, need_updates=needs)] * 2])
         result = answer_question("Explain the later source", retriever=retriever, client=client, model=MODEL)
         self.assertEqual(retriever.find_query, "later detail")
         self.assertEqual(result.completeness, "complete")
@@ -91,45 +164,190 @@ class HarnessTest(unittest.TestCase):
 
         resolved = [{"id": "N1", "description": "Explain", "status": "resolved",
                      "evidence_ids": ["E1.0"], "rationale": None}]
-        client = CapturingClient([action_v2("search", query="source"),
-            action_v2("read", reference_id="E1", span_index=0),
-            action_v2("finish", answer="Too early [E1.0]", citation_ids=["E1.0"],
+        client = CapturingClient([action_v3("search", query="source"),
+            action_v3("read", reference_id="E1", span_index=0),
+            action_v3("finish", answer="Too early [E1.0]", citation_ids=["E1.0"],
                       completeness="complete", sufficient=True),
-            action_v2("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
+            action_v3("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
                       completeness="complete", sufficient=True, need_updates=resolved)])
         result = answer_question("Explain", retriever=FakeRetriever(), client=client, model=MODEL)
         self.assertEqual(result.completeness, "complete")
         self.assertEqual(result.actions[2]["rejected"], "Material investigation needs remain open")
         self.assertIn("still-open material needs", client.last_input)
 
-    def test_continuation_has_distinct_citation_and_exact_offset(self):
-        class LongRetriever(FakeRetriever):
+    def test_one_read_inspects_every_span_and_continuation_of_the_chunk(self):
+        class ChunkRetriever(FakeRetriever):
+            spans = [{"start_char": 0, "end_char": 5000}, {"start_char": 5010, "end_char": 5030}]
+
             def search(self, query):
                 item = super().search(query)[0]
                 return [item.model_copy(update={"hit": item.hit.model_copy(update={
-                    "source_spans": [{"start_char": 0, "end_char": 5000}], "raw_text": "x" * 5000})})]
+                    "source_spans": self.spans, "raw_text": "x" * 5020})})]
 
             def read(self, reference, span_index, *, offset=0):
-                self.offsets.append(offset)
+                span = self.spans[span_index]
+                start = span["start_char"] + offset
+                end = min(span["end_char"], start + 2400)
+                self.offsets.append((span_index, offset))
                 return SourcePassage(document_id="doc", run_id="run", source_sha256="a" * 64,
                     root_alias="root", relative_path="note.md", chunk_id="chunk",
-                    start_char=offset, end_char=offset + 2400, text="x" * 2400)
+                    start_char=start, end_char=end, text="x" * (end - start))
 
-        retriever = LongRetriever()
+        retriever = ChunkRetriever()
         retriever.offsets = []
         resolved = [{"id": "N1", "description": "Later detail", "status": "resolved",
                      "evidence_ids": ["E1.0@2400"], "rationale": None}]
-        client = FakeClient([action_v2("search", query="detail"),
-            action_v2("read", reference_id="E1", span_index=0),
-            action_v2("read", reference_id="E1", span_index=0, offset=100),
-            action_v2("read", reference_id="E1", span_index=0, offset=2400),
-            action_v2("finish", answer="Later detail [E1.0@2400]", citation_ids=["E1.0@2400"],
+        client = FakeClient([action_v3("read", reference_id="E1"),
+            action_v3("read", reference_id="E1.1"),
+            action_v3("finish", answer="Later detail [E1.0@2400] and [E1.1]",
+                      citation_ids=["E1.0@2400", "E1.1"],
                       completeness="complete", sufficient=True, need_updates=resolved)])
         result = answer_question("Later detail", retriever=retriever, client=client, model=MODEL)
-        self.assertEqual(retriever.offsets, [0, 2400])
-        self.assertEqual(result.actions[2]['rejected'], 'Already inspected offset')
+        self.assertEqual(retriever.offsets, [(0, 0), (0, 2400), (0, 4800), (1, 0)])
+        self.assertEqual(list(result.inspected), ["E1.0", "E1.0@2400", "E1.0@4800", "E1.1"])
+        self.assertEqual(result.actions[1]["rejected"], "Already inspected chunk")
         self.assertEqual(result.inspected["E1.0"].next_offset, 2400)
         self.assertEqual(result.citations["E1.0@2400"].start_char, 2400)
+        self.assertEqual(result.host_search["query"], "Later detail")
+
+    def test_candidates_keep_best_rank_without_facts(self):
+        class Ranked(FakeRetriever):
+            def search(self, query):
+                sample = super().search(query)[0]
+                order = range(20) if query == "Explain" else [19, *range(20, 39)]
+                return [sample.model_copy(update={"rank": rank, "hit": sample.hit.model_copy(update={
+                    "chunk_id": str(index), "raw_text": f"chunk {index} text"})})
+                    for rank, index in enumerate(order, 1)]
+
+        class CapturingClient(FakeClient):
+            def generate_json(self, **kwargs):
+                self.last_input = kwargs["input_text"]
+                return super().generate_json(**kwargs)
+
+        import json
+        client = CapturingClient([action_v3("search", query="narrow"),
+            action_v3("finish", answer="Not yet verified.", completeness="unsupported",
+                      sufficient=False, gaps=["Need original reads"],
+                      need_updates=[{"id": "N1", "description": "Explain", "status": "excluded",
+                                     "evidence_ids": [], "rationale": "test"}]),
+            action_v3("finish", answer="Not yet verified.", completeness="unsupported",
+                      sufficient=False, gaps=["Need original reads"])])
+        answer_question("Explain", retriever=Ranked(), client=client, model=MODEL,
+                        limits=AnswerLimits(max_model_calls=3))
+        shown = json.loads(client.last_input)["candidates"]
+        # Top hits of both searches stay visible; the first search's leaders are not pushed out.
+        self.assertEqual([item["id"] for item in shown[:3]], ["E1", "E20", "E2"])
+        self.assertEqual(len(shown), 20)
+        self.assertNotIn("facts", shown[0])
+
+    def test_stray_fields_are_ignored_and_invalid_feedback_names_the_rule(self):
+        class CapturingClient(FakeClient):
+            def __init__(self, actions):
+                super().__init__(actions)
+                self.inputs = []
+
+            def generate_json(self, **kwargs):
+                self.inputs.append(kwargs["input_text"])
+                return super().generate_json(**kwargs)
+
+        resolved = [{"id": "N1", "description": "Explain", "status": "resolved",
+                     "evidence_ids": ["E1.0"], "rationale": None}]
+        client = CapturingClient([action_v3("read", reference_id="E1.0", query="stray"),
+            action_v3("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
+                      completeness="complete", sufficient=False, need_updates=resolved),
+            action_v3("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
+                      completeness="complete", sufficient=True, need_updates=resolved)])
+        result = answer_question("Explain", retriever=FakeRetriever(), client=client, model=MODEL)
+        self.assertEqual(result.actions[0]["ignored_fields"], ["query"])
+        self.assertEqual(result.actions[0]["inspected_ids"], ["E1.0"])
+        self.assertEqual(result.actions[1]["action"], "invalid")
+        self.assertIn("complete answer requires a positive sufficiency decision", client.inputs[2])
+        self.assertEqual(result.termination, "completed")
+
+    def test_finish_is_checked_against_unread_chunks_of_sources_already_used(self):
+        class TwoChunks(FakeRetriever):
+            def search(self, query):
+                first = super().search(query)[0]
+                second = first.model_copy(update={"rank": 2, "hit": first.hit.model_copy(update={
+                    "chunk_id": "second", "source_spans": [{"start_char": 20, "end_char": 31}],
+                    "raw_text": "more source"})})
+                other = first.model_copy(update={"rank": 3, "hit": first.hit.model_copy(update={
+                    "document_id": "other-doc", "chunk_id": "other"})})
+                return [first, second, other]
+
+            def read(self, reference, span_index):
+                if reference.hit.chunk_id == "second":
+                    return SourcePassage(document_id="doc", run_id="run", source_sha256="a" * 64,
+                                         root_alias="root", relative_path="note.md", chunk_id="second",
+                                         start_char=20, end_char=31, text="more source")
+                return super().read(reference, span_index)
+
+        class CapturingClient(FakeClient):
+            def __init__(self, actions):
+                super().__init__(actions)
+                self.inputs = []
+
+            def generate_json(self, **kwargs):
+                self.inputs.append(kwargs["input_text"])
+                return super().generate_json(**kwargs)
+
+        resolved = [{"id": "N1", "description": "Explain", "status": "resolved",
+                     "evidence_ids": ["E1.0"], "rationale": None}]
+        early = action_v3("finish", answer="Grounded [E1.0]", citation_ids=["E1.0"],
+                          completeness="complete", sufficient=True, need_updates=resolved)
+        client = CapturingClient([action_v3("read", reference_id="E1"), early, early])
+        result = answer_question("Explain", retriever=TwoChunks(), client=client, model=MODEL)
+        self.assertEqual(result.actions[1]["rejected"], "Unread chunks remain in sources already used")
+        self.assertIn("E2", client.inputs[2])
+        self.assertNotIn("'E3'", client.inputs[2].split('"feedback"')[1].split('"remaining"')[0])
+        # A second finish without new reading is accepted.
+        self.assertEqual(result.termination, "completed")
+        self.assertEqual(result.model_calls, 3)
+
+    def test_repeated_query_is_rejected_and_low_ranked_sources_stay_visible(self):
+        class TwoSources(FakeRetriever):
+            def search(self, query):
+                sample = super().search(query)[0]
+                self.calls += 1
+                return [sample.model_copy(update={"rank": rank, "hit": sample.hit.model_copy(update={
+                    "chunk_id": str(rank), "relative_path": "big.md" if rank < 25 else "small.md",
+                    "document_id": "big" if rank < 25 else "small"})}) for rank in range(1, 27)]
+
+        class CapturingClient(FakeClient):
+            def generate_json(self, **kwargs):
+                self.last_input = kwargs["input_text"]
+                return super().generate_json(**kwargs)
+
+        import json
+        retriever = TwoSources()
+        retriever.calls = 0
+        done = action_v3("finish", answer="Not verified.", completeness="unsupported",
+                         sufficient=False, gaps=["Need original reads"])
+        client = CapturingClient([action_v3("search", query="Small  Source"),
+                                  action_v3("search", query="small source"), done, done])
+        result = answer_question("Explain", retriever=retriever, client=client, model=MODEL,
+                                 limits=AnswerLimits(max_model_calls=4))
+        self.assertEqual(retriever.calls, 2)  # host search plus one model search
+        self.assertEqual(result.actions[1]["rejected"], "Repeated query")
+        shown = json.loads(client.last_input)["candidates"]
+        self.assertEqual([item["title"] for item in shown].count("small.md"), 2)
+        self.assertTrue(all("path" not in item for item in shown))
+        self.assertEqual(len(shown), 22)
+
+    def test_unknown_card_action_does_not_call_retriever(self):
+        class TrackingRetriever(FakeRetriever):
+            calls = 0
+            def search(self, query):
+                self.calls += 1
+                return super().search(query)
+        retriever = TrackingRetriever()
+        client = FakeClient([action_v3("search_cards", query="lead"),
+            action_v3("finish", answer="Not verified.", completeness="unsupported",
+                      sufficient=False, gaps=["No inspected evidence"])])
+        result = _answer_question("Explain", retriever=retriever, client=client, model=MODEL,
+                                  limits=AnswerLimits(max_model_calls=2))
+        self.assertEqual(retriever.calls, 1)
+        self.assertEqual(result.actions[0]["action"], "invalid")
 
     def test_later_malformed_json_can_be_repaired_without_losing_reads(self):
         from app.models.client import ModelClientError
@@ -150,6 +368,45 @@ class HarnessTest(unittest.TestCase):
         self.assertEqual(result.actions[2], {'action':'invalid','reason':'malformed_output'})
         self.assertIn('no prose or Markdown fences', client.last_input)
         self.assertEqual(result.citations['E1.0'].text, 'actual source')
+
+    def test_first_malformed_json_gets_one_format_correction(self):
+        from app.models.client import ModelClientError
+
+        class RepairClient(FakeClient):
+            calls = 0
+            correction_input = None
+
+            def generate_json(self, **kwargs):
+                self.calls += 1
+                self.last_input = kwargs['input_text']
+                if self.calls == 1:
+                    raise ModelClientError('OpenRouter returned malformed structured output (finish=stop)')
+                if self.calls == 2:
+                    self.correction_input = kwargs['input_text']
+                return super().generate_json(**kwargs)
+
+        client = RepairClient([action('read', reference_id='E1', span_index=0),
+            action('finish', answer='Verified [E1.0]', citation_ids=['E1.0'],
+                   completeness='complete', sufficient=True)])
+        result = answer_question('Explain', retriever=FakeRetriever(), client=client,
+                                 model=MODEL, limits=AnswerLimits(max_model_calls=3))
+        self.assertEqual(result.termination, 'completed')
+        self.assertEqual(result.model_calls, 3)
+        self.assertEqual(result.actions[0], {'action': 'invalid', 'reason': 'malformed_output'})
+        self.assertIn('no prose or Markdown fences', client.correction_input)
+
+    def test_second_malformed_json_stops_after_one_correction(self):
+        from app.models.client import ModelClientError
+
+        class AlwaysMalformed(FakeClient):
+            def generate_json(self, **kwargs):
+                raise ModelClientError('OpenRouter returned malformed structured output (finish=stop)')
+
+        result = answer_question('Explain', retriever=FakeRetriever(), client=AlwaysMalformed([]),
+                                 model=MODEL, limits=AnswerLimits(max_model_calls=3))
+        self.assertEqual(result.termination, 'model_failed')
+        self.assertEqual(result.model_calls, 2)
+        self.assertEqual([a['action'] for a in result.actions], ['invalid', 'model_failed'])
 
     def test_input_allowance_reserves_finish_and_keeps_inspected_originals(self):
         class BudgetClient(FakeClient):
@@ -264,11 +521,13 @@ class HarnessTest(unittest.TestCase):
 
     def test_failed_tool_keeps_prior_reads_and_records_stop_reason(self):
         class FailingRetriever(FakeRetriever):
-            def search_cards(self, query):
-                raise StorageError("private passage must not enter error")
+            def search(self, query):
+                if query == "another angle":
+                    raise StorageError("private passage must not enter error")
+                return super().search(query)
         client = FakeClient([action("search", query="source"),
                              action("read", reference_id="E1", span_index=0),
-                             action("search_cards", query="another angle")])
+                             action("search", query="another angle")])
         result = answer_question("Explain", retriever=FailingRetriever(), client=client, model=MODEL)
         self.assertEqual(result.termination, "tool_failed")
         self.assertEqual(result.inspected["E1.0"].text, "actual source")
@@ -282,13 +541,3 @@ class HarnessTest(unittest.TestCase):
         self.assertEqual(result.actions[0]["results"][0]["rank"], 1)
         self.assertTrue(result.actions[-1]["sufficient"])
         self.assertEqual(result.inspected, result.citations)
-
-    def test_candidate_span_previews_show_later_passages_without_marking_them_read(self):
-        from app.agent.harness import span_hints
-        from app.storage.records import SearchHit
-        hit = SearchHit(rank=1, score=0, document_id="d", run_id="r", source_sha256="a"*64,
-            root_alias="root", relative_path="note.md", chunk_id="c", raw_text="Overview.Detailed step.",
-            source_spans=[{"start_char":0,"end_char":9}, {"start_char":12,"end_char":26}])
-        hints = span_hints(hit)
-        self.assertEqual(hints[1]["preview"], "Detailed step.")
-        self.assertEqual(hints[1]["index"], 1)

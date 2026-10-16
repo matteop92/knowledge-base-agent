@@ -7,23 +7,24 @@ import tempfile
 import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import psycopg
 
 from app.ingestion.contracts import ChunkSet, ParsedDocument
-from app.ingestion.enrichment import extract_evidence_cards
 from app.ingestion.embeddings import EmbeddedChunk, EmbeddingBatch, EmbeddingSpec
 from app.ingestion.preview import preview_markdown
 from app.ingestion.run_manifest import RunManifest, write_artifact_json
-from app.models.client import GenerationResult, ModelSpec, ModelUsage
+from app.models.client import ModelUsage
+from app.models.client import EmbeddingResult
 from app.storage import StorageError
 from app.storage.loader import load_run
 from app.storage.publication import create_profile, publish_run, select_profile
 from app.storage.records import PublicationSelection, SearchProfile, spec_id
 from app.storage.search import search_text, search_vector
-from app.storage.retrieval import DatabaseRetriever, find_in_document, read_passage, search_cards, selected_embedding_spec
+from app.storage.retrieval import DatabaseRetriever, find_in_document, hybrid_search, read_passage, selected_embedding_spec
 
 
 def add_vectors(run_dir: Path, spec: EmbeddingSpec):
@@ -45,11 +46,12 @@ def add_vectors(run_dir: Path, spec: EmbeddingSpec):
     result.save(run_dir)
 
 
-def fixture_run(base: Path, text: str, *, vectors: bool = True):
-    source = base / "vault" / "Notes"
-    source.mkdir(parents=True, exist_ok=True)
-    (source / "sample.md").write_text(text, encoding="utf-8")
-    result = preview_markdown(base / "vault", "Notes/sample.md", base / "runs")
+def fixture_run(base: Path, text: str, *, vectors: bool = True,
+                relative_path: str = "Notes/sample.md"):
+    source = base / "vault" / relative_path
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(text, encoding="utf-8")
+    result = preview_markdown(base / "vault", relative_path, base / "runs")
     run_dir = base / "runs" / result["run_id"]
     chunk_set = ChunkSet.model_validate_json((run_dir / "fixed_raw.json").read_text(encoding="utf-8"))
     spec = EmbeddingSpec(provider="fixture", model="synthetic", model_version="1", dimensions=3,
@@ -74,6 +76,50 @@ class Stage3IntegrationTest(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.conn.close()
+
+    def test_a_named_source_reservation_uses_published_metadata(self):
+        # This suite shares one disposable database; remove the extra documents
+        # before later profile-switch tests assert complete-corpus publication.
+        def cleanup():
+            self.conn.execute("reset role")
+            self.conn.execute("update knowledge.corpus_state set profile_id=null where singleton=true")
+            self.conn.execute("truncate knowledge.documents cascade")
+            self.conn.execute("delete from knowledge.profiles where profile_id=%s", ("named-source-proof",))
+            self.conn.execute("set role knowledge_runtime")
+        self.addCleanup(cleanup)
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder)
+            files = (
+                ("Books/anything.md", "---\ntitle: Anything You Want\nauthor: Derek Sivers\n---\n# Note\n\nThe apricot is ripe.\n"),
+                ("Transcripts/interview.md", "---\ntitle: Inside Bending Spoons\nauthor: David Senra\nguest: Luca Ferrari\n---\n# Note\n\nThe plum is ripe.\n"),
+                ("Notes/how-to-grow.md", "---\ntitle: How to Grow a Company\ntags: [operations]\n---\n# Note\n\nThe peach is ripe.\n"),
+            )
+            runs = [fixture_run(base, body, relative_path=path) for path, body in files]
+            profile_id = "named-source-proof"
+            for run_dir, _, _ in runs:
+                load_run(self.conn, run_dir)
+            spec = runs[0][1]
+            create_profile(self.conn, SearchProfile(profile_id=profile_id, variant="fixed_raw",
+                chunking_version=spec.chunking_version, embedding_spec_id=spec_id(spec)))
+            for run_dir, _, _ in runs:
+                publish_run(self.conn, PublicationSelection(run_id=run_dir.name, profile_id=profile_id))
+            select_profile(self.conn, profile_id)
+            from app.storage.retrieval import named_sources
+            self.assertEqual(len(named_sources(self.conn, "What did Derek Sivers say?")), 1)
+            self.assertEqual(len(named_sources(self.conn, "What did LUCA FERRARI say?")), 1)
+            self.assertEqual(len(named_sources(self.conn, "how to")), 0)
+            self.assertEqual(len(named_sources(self.conn, "operations")), 1)
+            query = "Compare Derek Sivers with Inside Bending Spoons"
+            with patch("app.storage.retrieval.embed_queries", return_value=(
+                spec_id(spec), spec, EmbeddingResult(model=spec.model_spec(), vectors=[[1.0, 0.0, 0.0]]))):
+                hits = hybrid_search(self.conn, MagicMock(), query, provider_tag="unused",
+                                     max_embedding_usd_per_million=Decimal("0"))
+            titles = {item.hit.title for item in hits}
+            self.assertIn("Anything You Want", titles)
+            self.assertIn("Inside Bending Spoons", titles)
+            self.assertTrue(any("Derek Sivers" in item.hit.people for item in hits))
+            self.assertTrue(any("Luca Ferrari" in item.hit.people for item in hits))
+            self.assertTrue(all("Derek" not in item.hit.raw_text for item in hits))
 
     def test_passage_read_is_scoped_to_selected_revision_and_chunk(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -109,49 +155,24 @@ class Stage3IntegrationTest(unittest.TestCase):
                 with self.assertRaises(psycopg.errors.ReadOnlySqlTransaction), self.conn.transaction():
                     self.conn.execute("update knowledge.corpus_state set profile_id=profile_id where false")
 
-    def test_only_published_cards_are_searchable_and_open_originals(self):
+    def test_ready_card_manifest_is_ignored_on_load_and_publication(self):
         with tempfile.TemporaryDirectory() as folder:
-            run_dir, spec, chunks = fixture_run(Path(folder),
-                "# Orchard\n\nThe crimson pear helps customers.\n\nThis improves service.\n")
-            document = ParsedDocument.model_validate_json((run_dir / "parsed.json").read_text(encoding="utf-8"))
-            start = document.source_text.index("The crimson pear")
-            end = document.source_text.index("This improves service.") + len("This improves service.")
-            quote = document.source_text[start:end]
-            client = MagicMock()
-            client.live_run_selection = (False, 0, 0)
-            model = ModelSpec(provider="fixture", model_id="cards", model_version="1")
-            client.generate_json.return_value = GenerationResult(model=model, data={"cards": [{
-                "card_type": "claim", "statement": "Customers enjoy crimson pears.",
-                "evidence_start_char": start, "evidence_end_char": start + len(quote),
-                "evidence_text": quote}]})
+            run_dir, spec, _ = fixture_run(Path(folder), "# Orchard\n\nA grounded pear claim.\n")
             manifest = RunManifest.load(run_dir)
-            extract_evidence_cards(document, chunks, chunks.chunks[0], client, model, manifest, run_dir)
+            record = manifest.begin("cards", {"prompt_version": "historical"})
+            path = write_artifact_json(run_dir, "cards", record.artifact_id, {"historical": True})
+            manifest.succeed(record.artifact_id, path)
+            manifest.save(run_dir)
             load_run(self.conn, run_dir)
-            create_profile(self.conn, SearchProfile(profile_id="card-proof", variant="fixed_raw",
+            profile_id = "card-free-manifest-proof"
+            create_profile(self.conn, SearchProfile(profile_id=profile_id, variant="fixed_raw",
                 chunking_version=spec.chunking_version, embedding_spec_id=spec_id(spec)))
-            publish_run(self.conn, PublicationSelection(run_id=run_dir.name, profile_id="card-proof"))
-            select_profile(self.conn, "card-proof")
-            self.assertEqual(search_cards(self.conn, "crimson"), [])
-            with self.assertRaises(StorageError):
-                read_passage(self.conn, document_id=document.document_id, run_id=document.run_id,
-                    source_sha256=document.source_sha256, chunk_id=chunks.chunks[0].chunk_id,
-                    start_char=start, end_char=end)
-            card_ids = [item.artifact_id for item in manifest.artifacts.values() if item.kind == "cards"]
-            publish_run(self.conn, PublicationSelection(run_id=run_dir.name, profile_id="card-proof",
-                                                       required_artifact_ids=card_ids))
-            cards = search_cards(self.conn, "crimson")
-            self.assertEqual(len(cards), 1)
-            card = cards[0]
-            fallback = search_cards(self.conn, "crimson customers nonexistent")
-            self.assertTrue(fallback)
-            self.assertEqual(fallback[0].query_mode, "or_fallback")
-            within_document = find_in_document(self.conn, card, "improves service")
-            self.assertTrue(within_document)
-            self.assertEqual({hit.hit.document_id for hit in within_document}, {card.document_id})
-            passage = read_passage(self.conn, document_id=card.document_id, run_id=card.run_id,
-                source_sha256=card.source_sha256, chunk_id=card.chunk_id,
-                start_char=card.evidence_span["start_char"], end_char=card.evidence_span["end_char"])
-            self.assertEqual(passage.text, quote)
+            publish_run(self.conn, PublicationSelection(run_id=run_dir.name, profile_id=profile_id))
+            self.assertEqual(self.conn.execute(
+                "select count(*) from knowledge.cards where run_id=%s", (run_dir.name,)).fetchone()[0], 0)
+            self.assertEqual(self.conn.execute(
+                "select count(*) from knowledge.artifacts where run_id=%s and kind='cards'",
+                (run_dir.name,)).fetchone()[0], 0)
 
     def test_long_span_continuation_cannot_cross_revision(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -328,6 +349,11 @@ class Stage3IntegrationTest(unittest.TestCase):
 
 
 class LoaderValidationTest(unittest.TestCase):
+    def test_new_profile_cannot_require_removed_artifact_kind(self):
+        with self.assertRaises(ValueError):
+            SearchProfile(profile_id="invalid", variant="fixed_raw", chunking_version="v1",
+                          embedding_spec_id="a" * 64, required_artifact_kinds=["cards"])
+
     def test_missing_database_url_has_no_secret_in_error(self):
         from app.storage.loader import connect_runtime
         with patch.dict(os.environ, {}, clear=True), self.assertRaisesRegex(StorageError, "KNOWLEDGE_DATABASE_URL is required"):
