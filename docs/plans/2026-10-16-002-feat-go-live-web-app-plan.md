@@ -168,7 +168,7 @@ stateDiagram-v2
 - The vault is a few hundred to a few thousand Markdown files; U5's dry run confirms size, cost and projected database size before anything loads.
 - Matt holds an Obsidian Sync subscription and can run `ob login` and `ob sync-setup` once in an interactive shell on the host, typing the vault password at the prompt. Credentials and the vault live on the persistent volume.
 - The desktop Obsidian app and Headless run on different devices, as Obsidian requires.
-- The current branch `codex/complete-answer-quality` (36 commits ahead of `main`) merges before Phase 1, so `main` carries the v13 harness and source-aware search.
+- `main` already carries the v13 harness and source-aware search: `codex/complete-answer-quality` merged as PR #8 on 2026-10-16.
 - Only public YouTube videos go to the Gemini free tier, which may use inputs to improve its models; no vault text or tags are sent with them. Screenshots may contain private content and go only through a zero-retention OpenRouter vision route.
 - Supabase direct database hosts are IPv6-only; if the chosen host lacks IPv6 egress, the runtime login uses the Supavisor session pooler.
 
@@ -203,15 +203,15 @@ stateDiagram-v2
 
 ### Phase 0: Clear the way
 
-### U1. Land the answer baseline and correct the grader status
+### U1. Correct the grader status and stale docs
 
-- **Goal:** `main` carries the accepted v13 work, and the docs describe the grader correctly.
+- **Goal:** The docs describe the grader and the open choices correctly.
 - **Requirements:** R15 (prerequisite for later units).
 - **Dependencies:** none.
 - **Files:** `FOUNDATION.md`, `SYSTEM.md`, `evals/README.md`, `README.md`.
-- **Approach:** Merge `codex/complete-answer-quality` into `main` after its review; only the merge blocks U3. Then correct the "parked" wording in all three docs: the grader is built and ready to run; it missed the pass bar an earlier session set on its held-out test, so its ratings are pre-ratings Matt confirms. Update `FOUNDATION.md` "Choices still open" per KTD16 and KTD3, and the stale README lines listed in the Appendix.
+- **Approach:** The v13 work is already on `main` (PR #8). Correct the "parked" wording in all three docs: the grader is built and ready to run; it missed the pass bar an earlier session set on its held-out test, so its ratings are pre-ratings Matt confirms. Update `FOUNDATION.md` "Choices still open" per KTD16 and KTD3, and the stale README lines listed in the Appendix.
 - **Test expectation:** none -- documentation and merge only.
-- **Verification:** `main` contains prompt v13 and source-aware search; no doc calls the grader "parked".
+- **Verification:** No doc calls the grader "parked".
 
 ### U2. Security review before private data
 
@@ -229,7 +229,7 @@ stateDiagram-v2
 
 - **Goal:** The database holds conversations, turns, capture jobs, sessions, thumbs-down feedback and spend, and the runtime role can retire a deleted file.
 - **Requirements:** R1, R2, R4, R7, R14.
-- **Dependencies:** U1 (merge), U2.
+- **Dependencies:** U2.
 - **Files:** `supabase/migrations/20261017000000_conversations_and_retirement.sql`, `tests/storage/test_conversation_store.py`.
 - **Approach:** New tables in `knowledge`: `conversations` (id, title from the first question truncated, created, last activity), `turns` (conversation, position, question, standalone query, status, answer receipt JSON including the evidence ledger, cost, error), `capture_jobs` (kind, status, vault path, error, cost), `sessions` (id, created, expires), `feedback` (turn, verdict, note, created), `spend` (day, source, estimated USD, job id). Enable RLS, add the runtime policy and revoke public, `anon` and `authenticated` on these six tables by name; do not re-run the first migration's schema-wide loop, which would fail on existing policies. Grant `knowledge_runtime` select/insert/update on the new tables, delete on `sessions`, and delete on `active_runs` (KTD13).
 - **Patterns to follow:** RLS statements and grants at the end of `supabase/migrations/20260923152944_private_knowledge_index.sql`.
