@@ -16,6 +16,7 @@ from app.storage.loader import load_run
 from app.storage.publication import create_profile, publish_run, select_profile
 from app.storage.records import PublicationSelection, SearchProfile, spec_id
 from tests.agent.test_actions import action_v3
+from tests.storage.database import apply_migrations
 from tests.storage.test_stage3_integration import fixture_run
 
 
@@ -24,9 +25,7 @@ class CLIIntegrationTest(unittest.TestCase):
     def test_cli_reads_published_fixture_without_vault_and_isolates_requests(self):
         dsn = os.environ["KNOWLEDGE_TEST_DATABASE_URL"]
         with psycopg.connect(dsn, autocommit=True) as setup:
-            for role in ("anon", "authenticated"):
-                setup.execute(f"do $$ begin if not exists (select 1 from pg_roles where rolname='{role}') then create role {role} nologin; end if; end $$")
-            setup.execute(Path("supabase/migrations/20260923152944_private_knowledge_index.sql").read_text())
+            apply_migrations(setup.cursor())
             setup.execute("set role knowledge_runtime")
             with tempfile.TemporaryDirectory() as folder:
                 run_dir, spec, _ = fixture_run(Path(folder), "# Orchard\n\nThe pear is ripe.\n")
