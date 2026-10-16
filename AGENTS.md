@@ -1,6 +1,6 @@
 # Project guide
 
-**Status:** The repository captures, parses, and chunks mixed Markdown from an external vault, with source-linked eval labels and local previews. A card-free six-file structural/raw profile with 83 vectors is selected; source-aware search passed the live 41/44/47 recall repeat and Q8's first search returned both named sources. The agent shows source titles and people. The 85-check answer checklist is frozen; the card-free answer baseline, grader validation, final answer gate, and a private hosted vault load remain pending.
+**Status:** The repository captures, parses, and chunks mixed Markdown from an external vault, with source-linked eval labels and local previews. A card-free six-file structural/raw profile with 83 vectors is selected; source-aware search passed the live 41/44/47 recall repeat and Q8's first search returned both named sources. The agent shows source titles and people. The 85-check answer checklist is frozen and prompt v13 is the accepted answer baseline; a wider corpus, a minimal ask interface, and a private hosted vault load remain.
 
 Read [SYSTEM.md](SYSTEM.md) for the one-page map. [FOUNDATION.md#current-progress](FOUNDATION.md#current-progress) is the single progress tracker; [INGESTION.md](INGESTION.md), [RETRIEVAL.md](RETRIEVAL.md), and [DATA.md](DATA.md) explain individual parts. Update current facts in place rather than adding a history section.
 

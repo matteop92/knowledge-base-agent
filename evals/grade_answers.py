@@ -121,8 +121,11 @@ def main(argv: list[str] | None = None) -> int:
                "input_bytes_per_answer": {item["label"]: item["input_bytes"] for item in planned}}
     route = {"only": [args.provider_tag], "allow_fallbacks": False, "data_collection": "deny",
              "zdr": True, "require_parameters": True} if args.provider_tag else None
-    client = OpenRouterClient(allow_live=args.live, request_budget=calls,
-                              estimated_input_token_budget=input_tokens, conservative_input_budget=True,
+    # A rate-limited request is retried up to twice and each retry takes from the client's
+    # allowances, though it is not billed; leave room for that. The cost cap below still
+    # counts each call once, at its full input and output allowance.
+    client = OpenRouterClient(allow_live=args.live, request_budget=calls * 3,
+                              estimated_input_token_budget=input_tokens * 3, conservative_input_budget=True,
                               provider=route, capture_failed_outputs=True)
     endpoint = None
     if args.provider_tag:
@@ -175,6 +178,7 @@ def main(argv: list[str] | None = None) -> int:
             written.append(path.name)
             print(item["label"], f"repeat {repeat}", result["status"], f"${cost:.4f}")
     manifest = {**summary, "spent_usd": str(spent), "grades": written,
+                "rate_limit_retries": client.rate_limit_retries,
                 "failed_outputs": client.failed_outputs}
     (target / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2, default=str),
                                           encoding="utf-8")
