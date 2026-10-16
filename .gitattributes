@@ -1,1 +1,3 @@
 sources/fixtures/*.md -text
+*.sh text eol=lf
+Dockerfile text eol=lf
