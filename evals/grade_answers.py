@@ -18,7 +18,7 @@ from pathlib import Path
 
 from app.models.client import ModelClientError, ModelSpec
 from app.models.openrouter import OpenRouterClient
-from evals.answer_grader import CHECKLIST_PROMPT, grade_answer, prepare_evidence
+from evals.answer_grader import CHECKLIST_PROMPT, GRADE_SCHEMA_V3, grade_answer, prepare_evidence
 from evals.answer_review import _private_output, _receipts
 from evals.answer_rubric import Checklist, load_rubric
 
@@ -69,7 +69,10 @@ def plan(checklist: Checklist, entries: list[tuple[str, str, dict]], sources: di
     planned = []
     for question_id, label, receipt in entries:
         payload = prepare_evidence(checklist, question_id, receipt, sources)
-        size = len(CHECKLIST_PROMPT.encode("utf-8")) + len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+        # Measured the way the adapter sends it: the input is itself a JSON string inside an
+        # ASCII-escaped request body, so non-ASCII characters count six bytes each.
+        size = len(json.dumps({"system": CHECKLIST_PROMPT, "input": json.dumps(payload, ensure_ascii=False),
+                               "schema": GRADE_SCHEMA_V3}).encode("utf-8"))
         planned.append({"question_id": question_id, "label": label, "receipt": receipt, "input_bytes": size})
     return planned
 
@@ -104,9 +107,9 @@ def main(argv: list[str] | None = None) -> int:
     sources = gold_sources(checklist)
     planned = plan(checklist, entries, sources)
     calls = len(planned) * args.repeats
-    # The adapter's conservative input estimate is request bytes plus 512 per request; the
-    # request body also carries the response schema and JSON framing, so allow 4 KB more.
-    input_tokens = sum(item["input_bytes"] + 512 + 4096 for item in planned) * args.repeats
+    # The adapter's conservative input estimate is request bytes plus 512 per request;
+    # allow 2 KB more per request for the model, route and message framing.
+    input_tokens = sum(item["input_bytes"] + 512 + 2048 for item in planned) * args.repeats
     output_tokens = calls * completion_bound(args.model, args.max_output_tokens, args.reasoning_effort)
     summary = {"model": args.model, "reasoning_effort": args.reasoning_effort, "answers": len(planned),
                "repeats": args.repeats, "calls": calls, "worst_case_input_tokens": input_tokens,

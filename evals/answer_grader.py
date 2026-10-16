@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+import unicodedata
 from pathlib import Path
 from typing import Literal
 
@@ -149,11 +151,11 @@ def prepare_evidence(rubric: AnswerRubric | Checklist, question_id: str, answer_
 
 def validate_judgments(payload: dict, response: GraderResponse) -> dict:
     checks = {check["id"]: check for check in payload["checks"]}
+    if payload.get("layout") == CHECKLIST_LAYOUT:
+        return _validate_checklist_judgments(payload, checks, response)
     judgments = {item.id: item for item in response.judgments}
     if len(judgments) != len(response.judgments) or set(judgments) != set(checks):
         raise ValueError("grader omitted, duplicated, or invented check IDs")
-    if payload.get("layout") == CHECKLIST_LAYOUT:
-        return _validate_checklist_judgments(payload, checks, judgments, response.out_of_scope_points)
     counts = {dimension: {rating: 0 for rating in
               ("pass", "partial", "fail", "not_applicable", "unreviewed")}
               for dimension in {check["dimension"] for check in checks.values()}}
@@ -183,43 +185,106 @@ def validate_judgments(payload: dict, response: GraderResponse) -> dict:
             "judgments": [item.model_dump(mode="json") for item in response.judgments]}
 
 
-def _validate_checklist_judgments(payload: dict, checks: dict, judgments: dict,
-                                  out_of_scope_points: list[str]) -> dict:
-    """Binary ratings, primary/detail dependencies, one count per grounding error, and
-    off-scope points that must be exact, distinct excerpts of the answer."""
-    points = [point.strip() for point in out_of_scope_points]
-    if any(not point or point not in payload["answer"] for point in points):
-        raise ValueError("off-scope point is not an exact answer excerpt")
-    if len(set(points)) != len(points):
-        raise ValueError("off-scope point listed twice")
+def _normalized(text: str) -> str:
+    """Compatibility forms, one hyphen, straight quotes, single spaces, lower case."""
+    text = unicodedata.normalize("NFKC", text)
+    text = "".join("-" if unicodedata.category(char) == "Pd" else "'" if char in "‘’‚‛"
+                   else '"' if char in "“”„‟" else char for char in text)
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def quoted(excerpt: str | None, text: str) -> bool:
+    """An excerpt matches when it appears in the text after normalizing punctuation and
+    spacing; an ellipsis may stand for omitted words, with the parts in order."""
+    if not excerpt or not excerpt.strip():
+        return False
+    if excerpt in text:
+        return True
+    haystack, position = _normalized(text), 0
+    parts = [_normalized(part).strip(" .") for part in re.split(r"\.\.\.|…", excerpt)]
+    parts = [part for part in parts if part]
+    for part in parts:
+        found = haystack.find(part, position)
+        if found < 0:
+            return False
+        position = found + len(part)
+    return bool(parts)
+
+
+def _validate_checklist_judgments(payload: dict, checks: dict, response: GraderResponse) -> dict:
+    """Judge each check on its own: a judgment that breaks a rule becomes `unreviewed`
+    (never a pass) and the reason is recorded, so one bad quote does not discard the
+    answer. Only the excerpts a rule relies on are checked: the answer excerpt and
+    inspected support of a passing coverage or example check, and the offending excerpt
+    of a grounding failure. One grounding error is counted under one check only."""
+    invalid: dict[str, str] = {}
+    given: dict[str, CheckJudgment] = {}
+    for item in response.judgments:
+        if item.id not in checks:
+            continue
+        if item.id in given:
+            invalid[item.id] = "judged twice"
+        given[item.id] = item
+    ratings = {}
     grounding_failures: set[str] = set()
-    for check_id, item in judgments.items():
-        check = checks[check_id]
-        if item.rating == "partial":
-            raise ValueError("checklist ratings are binary")
-        if item.answer_excerpt is not None and item.answer_excerpt not in payload["answer"]:
-            raise ValueError("grader answer excerpt is not exact")
-        for support in item.inspected_support:
-            passage = payload["inspected"].get(support.id)
-            if passage is None or support.excerpt not in passage["text"]:
-                raise ValueError("grader support is not an exact inspected excerpt")
-            if check["dimension"] == "grounding" and support.id not in payload["citations"]:
-                raise ValueError("grounding support was not cited by the answer")
-        if check["dimension"] == "grounding":
-            # Many grounding checks are prohibitions, so a pass may have nothing to quote.
-            # A failure must point at the offending claim, and one claim fails one check.
-            if item.rating == "fail":
-                if not item.answer_excerpt:
-                    raise ValueError("grounding failure needs the exact offending excerpt")
-                if item.answer_excerpt in grounding_failures:
-                    raise ValueError("one grounding error is counted under one check only")
-                grounding_failures.add(item.answer_excerpt)
-        elif item.rating == "pass" and (not item.answer_excerpt or not item.inspected_support):
-            raise ValueError("passing coverage or example check needs an answer excerpt and inspected support")
-    scores = score_checklist_ratings(list(checks.values()),
-                                     {check_id: item.rating for check_id, item in judgments.items()})
-    return {"status": "graded", "scores": scores, "out_of_scope_points": points,
-            "judgments": [item.model_dump(mode="json") for item in judgments.values()]}
+    for check_id, check in checks.items():
+        item = given.get(check_id)
+        if item is None:
+            invalid.setdefault(check_id, "not judged")
+            ratings[check_id] = "unreviewed"
+            continue
+        rating, problem = item.rating, None
+        if rating == "partial":
+            problem = "checklist ratings are binary"
+        elif check["dimension"] == "grounding" and rating == "fail":
+            excerpt = _normalized(item.answer_excerpt or "")
+            if not quoted(item.answer_excerpt, payload["answer"]):
+                problem = "grounding failure needs an exact offending excerpt"
+            elif excerpt in grounding_failures:
+                problem = "one grounding error is counted under one check only"
+            grounding_failures.add(excerpt)
+        elif check["dimension"] != "grounding" and rating == "pass":
+            if not quoted(item.answer_excerpt, payload["answer"]):
+                problem = "passing check needs an exact answer excerpt"
+            elif not item.inspected_support or any(
+                    support.id not in payload["inspected"]
+                    or not quoted(support.excerpt, payload["inspected"][support.id]["text"])
+                    for support in item.inspected_support):
+                problem = "passing check needs exact support from an inspected passage"
+        if rating == "not_applicable" and check["applicability"] == "required" and not check.get("parent_id"):
+            problem = "a required check cannot be not applicable"
+        if problem or check_id in invalid:
+            invalid.setdefault(check_id, problem)
+            rating = "unreviewed"
+        ratings[check_id] = rating
+    # Dependencies: a detail follows its primary unless the primary passed.
+    for check_id, check in checks.items():
+        parent = check.get("parent_id")
+        if parent is None:
+            continue
+        if ratings[parent] == "unreviewed":
+            ratings[check_id] = "unreviewed"
+        elif ratings[parent] != "pass":
+            ratings[check_id] = "not_applicable"
+        elif ratings[check_id] == "not_applicable" and check["applicability"] != "optional":
+            invalid.setdefault(check_id, "a detail of a passing primary needs a rating")
+            ratings[check_id] = "unreviewed"
+    points = [point.strip() for point in response.out_of_scope_points]
+    keep = [quoted(point, payload["answer"]) and _normalized(point) not in map(_normalized, points[:index])
+            for index, point in enumerate(points)]
+    kept = [point for point, ok in zip(points, keep) if ok]
+    scores = score_checklist_ratings(list(checks.values()), ratings)
+    judgments = []
+    for check_id in checks:
+        item = given.get(check_id)
+        record = item.model_dump(mode="json") if item else {"id": check_id, "reason": "not judged"}
+        record["rating"] = ratings[check_id]
+        if check_id in invalid:
+            record["validation"] = invalid[check_id]
+        judgments.append(record)
+    return {"status": "graded", "scores": scores, "out_of_scope_points": kept,
+            "dropped_out_of_scope_points": [point for point, ok in zip(points, keep) if not ok],
+            "unreviewed_by_validation": invalid, "judgments": judgments}
 
 
 def grade_answer(rubric: AnswerRubric | Checklist, question_id: str, answer_receipt: dict,
@@ -236,6 +301,7 @@ def grade_answer(rubric: AnswerRubric | Checklist, question_id: str, answer_rece
                 "model": model.model_id, "grader_prompt_version": schema_name,
                 "reasoning_effort": reasoning_effort,
                 "answer_sha256": hashlib.sha256(payload["answer"].encode("utf-8")).hexdigest()}
+    result = None
     try:
         result = client.generate_json(model=model, system_prompt=prompt,
             input_text=json.dumps(payload, ensure_ascii=False),
@@ -248,4 +314,7 @@ def grade_answer(rubric: AnswerRubric | Checklist, question_id: str, answer_rece
             raise ValueError("grader answered with the wrong response version")
         return {**identity, **validate_judgments(payload, response)}
     except (ModelClientError, ValidationError, ValueError) as exc:
-        return {**identity, "status": "ungraded", "reason": type(exc).__name__}
+        # The detail and the raw reply stay in the private grade receipt for diagnosis.
+        detail = (str(exc).splitlines() or [""])[0][:300]
+        return {**identity, "status": "ungraded", "reason": type(exc).__name__, "detail": detail,
+                "raw_output": result.data if result is not None else None}

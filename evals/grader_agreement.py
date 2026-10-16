@@ -52,7 +52,8 @@ def compare(checklist: Checklist, human: dict[str, dict], grades: list[dict],
             reviews[item["answer_sha256"]] = {**item, "ratings": ratings, "version": version}
     planted_labels = {case["label"] for case in planted or []}
     half = lambda question_id: "development" if question_id in dev else "held_out"  # noqa: E731
-    agreement = defaultdict(lambda: defaultdict(lambda: {"agree": 0, "total": 0, "false_pass": 0, "false_fail": 0}))
+    agreement = defaultdict(lambda: defaultdict(lambda: {"agree": 0, "total": 0, "false_pass": 0, "false_fail": 0,
+                                                         "grader_unreviewed": 0}))
     disagreements, ungraded, unmatched = [], [], []
     scores = defaultdict(lambda: defaultdict(lambda: [0, 0]))  # version -> source -> [passed, scored]
     off_scope = []
@@ -75,6 +76,9 @@ def compare(checklist: Checklist, human: dict[str, dict], grades: list[dict],
                 continue
             mine, theirs = review["ratings"][check["id"]], given[check["id"]]["rating"]
             cell = agreement[half(question_id)][check["dimension"]]
+            if theirs == "unreviewed":
+                cell["grader_unreviewed"] += 1  # reported apart, never counted as agreement
+                continue
             cell["total"] += 1
             if mine == theirs:
                 cell["agree"] += 1
@@ -87,8 +91,11 @@ def compare(checklist: Checklist, human: dict[str, dict], grades: list[dict],
                                   "check": check["id"], "dimension": check["dimension"], "kind": kind,
                                   "user": mine, "grader": theirs, "reason": given[check["id"]].get("reason")})
         theirs = {key: value["rating"] for key, value in given.items()}
+        # Checks the grader could not judge are left out of both scores.
+        mine_scored = {key: ("unreviewed" if theirs.get(key) == "unreviewed" else value)
+                       for key, value in review["ratings"].items()}
         points = grade.get("out_of_scope_points", [])
-        for source, ratings, count in (("user", review["ratings"], len(review.get("out_of_scope_points") or [])),
+        for source, ratings, count in (("user", mine_scored, len(review.get("out_of_scope_points") or [])),
                                        ("grader", theirs, len(points))):
             passed, scored = answer_score(checks, ratings, count)
             # The user's score is counted once per grade so both sides cover the same repeats.
@@ -105,8 +112,8 @@ def compare(checklist: Checklist, human: dict[str, dict], grades: list[dict],
     for case in planted or []:
         for grade in (g for g in grades if g.get("label") == case["label"]):
             if grade.get("status") != "graded":
-                planted_results.append({"label": case["label"], "repeat": grade.get("repeat"), "caught": False,
-                                        "missed": ["ungraded"]})
+                planted_results.append({"label": case["label"], "fault": case.get("fault"), "repeat": grade.get("repeat"),
+                                        "caught": False, "missed": ["ungraded"]})
                 continue
             given = {item["id"]: item["rating"] for item in grade["judgments"]}
             missed = [f"{check} expected {rating}, got {given.get(check)}"
