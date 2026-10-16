@@ -231,10 +231,11 @@ class OpenRouterClient:
             "minimal", "low", "medium", "high"
         ):
             raise ModelClientError("unsupported reasoning effort")
-        if reasoning_effort is not None and not model.model_id.startswith("openai/"):
-            raise ModelClientError("reasoning effort is unavailable for this model")
         if model.model_id in ("openai/gpt-5-mini", "openai/gpt-6-luna") or reasoning_effort:
-            payload["max_completion_tokens"] = completion_budget
+            # OpenRouter's unified reasoning setting; callers check that the pinned route
+            # lists "reasoning" before asking for an effort on a non-OpenAI model.
+            limit = "max_completion_tokens" if model.model_id.startswith("openai/") else "max_tokens"
+            payload[limit] = completion_budget
             payload["reasoning"] = {"effort": reasoning_effort or "minimal"}
         else:
             payload["temperature"] = 0
