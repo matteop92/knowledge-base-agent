@@ -28,6 +28,10 @@ from app.ingestion.chunking import STRUCTURAL_VERSION
 from app.ingestion.contracts import ChunkSet, ParsedDocument
 from app.ingestion.embeddings import EmbeddingSpec, embed_chunks
 from app.ingestion.preview import preview_markdown
+from app.ingestion.properties import (
+    PROMPT_PATH as PROPERTIES_PROMPT, PropertiesResult, TagList, classify_properties, missing_fields,
+    model_input, model_spec as properties_model, store_properties, worst_case_usd as properties_worst_case,
+)
 from app.ingestion.run_manifest import RunManifest
 from app.ingestion.source_reader import document_id_for
 from app.models.routes import (
@@ -235,6 +239,7 @@ class PreparedFile:
     run_dir: Path
     parsed: ParsedDocument
     chunks: ChunkSet
+    properties_usd: float = 0.0
 
     @property
     def input_bytes(self) -> int:
@@ -245,9 +250,13 @@ class PreparedFile:
         return math.ceil(len(self.chunks.chunks) / EMBEDDING_BATCH)
 
     @property
-    def worst_case_usd(self) -> float:
+    def embedding_usd(self) -> float:
         # UTF-8 bytes bound the token count from above.
         return price_usd(EMBEDDING_MODEL, self.input_bytes)
+
+    @property
+    def worst_case_usd(self) -> float:
+        return self.embedding_usd + self.properties_usd
 
     @property
     def projected_db_bytes(self) -> int:
@@ -308,28 +317,99 @@ def _select_live_manifest(run_dir: Path, client) -> RunManifest:
     return manifest
 
 
-def _live_client(prepared: list[PreparedFile]):
+def _live_client(prepared: list[PreparedFile], backfill: list[ParsedDocument], tag_list: TagList | None):
     from app.models.openrouter import OpenRouterClient
 
+    classify = ([item.parsed for item in prepared if missing_fields(item.parsed)] + backfill) if tag_list else []
+    models = [EMBEDDING_MODEL] + ([properties_model().model_id] if classify else [])
+    prompt_bytes = len(PROPERTIES_PROMPT.read_text(encoding="utf-8").encode("utf-8"))
     client = OpenRouterClient(
-        allow_live=True, request_budget=max(1, sum(item.requests for item in prepared)),
-        estimated_input_token_budget=max(1, sum(item.input_bytes for item in prepared)),
-        provider=PRIVACY, model_providers=provider_routes([EMBEDDING_MODEL]),
+        allow_live=True,
+        request_budget=max(1, sum(item.requests for item in prepared) + len(classify)),
+        estimated_input_token_budget=max(1, sum(item.input_bytes for item in prepared) + sum(
+            prompt_bytes + len(model_input(parsed, tag_list).encode("utf-8")) for parsed in classify)),
+        provider=PRIVACY, model_providers=provider_routes(models),
     )
-    verify_routes(client, [EMBEDDING_MODEL])
+    verify_routes(client, models, structured_ids=set(models[1:]))
     return client
+
+
+def _needs_properties(conn, profile_id: str, skip: set[str]) -> list[ParsedDocument]:
+    """Active files with no properties for their current revision, e.g. loaded before the tag list was approved."""
+    rows = conn.execute("""select r.parsed from knowledge.active_runs a
+        join knowledge.runs r on r.run_id=a.run_id
+        left join knowledge.document_properties p on p.document_id=r.document_id and p.source_sha256=r.source_sha256
+        where a.profile_id=%s and p.document_id is null order by r.document_id""", (profile_id,)).fetchall()
+    parsed = [ParsedDocument.model_validate(row[0]) for row in rows]
+    return [item for item in parsed if item.document_id not in skip and missing_fields(item)]
+
+
+def _classify_and_store(conn, parsed: ParsedDocument, client, tag_list: TagList, report: dict[str, Any]) -> None:
+    """A classifier failure is recorded for this revision; the file is still indexed."""
+    try:
+        result = classify_properties(parsed, tag_list, client)
+        store_properties(conn, parsed, status="ready", result=result)
+        report["properties_ready"] = report.get("properties_ready", 0) + 1
+        if result.proposed_tag:
+            report.setdefault("proposed_tags", {})
+            report["proposed_tags"][result.proposed_tag] = report["proposed_tags"].get(result.proposed_tag, 0) + 1
+    except Exception as exc:  # noqa: BLE001
+        store_properties(conn, parsed, status="failed", result=PropertiesResult({}, None, None),
+                         error=_failure_reason(exc))
+        report["properties_failed"] = report.get("properties_failed", 0) + 1
+
+
+def _backfill_properties(conn, backfill: list[ParsedDocument], report: dict[str, Any], client, tag_list: TagList,
+                         budget_left: float, spend_source: str, enforce_daily_cap: bool) -> None:
+    spent = 0.0
+    for parsed in backfill:
+        worst = properties_worst_case(parsed, tag_list)
+        if spent + worst > budget_left:
+            report["stopped"] = "pass spend limit reached during properties backfill"
+            break
+        if enforce_daily_cap:
+            try:
+                check_daily_cap(conn, Decimal(str(worst)))
+            except SpendCapError:
+                report["stopped"] = "daily spend cap reached during properties backfill"
+                break
+        start = len(getattr(client, "billable_requests", []) or [])
+        _classify_and_store(conn, parsed, client, tag_list, report)
+        cost = _measured_usd(client, start, worst)
+        if cost > 0:
+            record_spend(conn, "bulk_load" if spend_source == "bulk_load" else "properties", cost, parsed.run_id)
+        spent += cost
+    report["spent_usd"] = round(report.get("spent_usd", 0) + spent, 8)
+
+
+def _by_folder(prepared: list[PreparedFile]) -> dict[str, dict[str, Any]]:
+    folders: dict[str, dict[str, Any]] = {}
+    for item in prepared:
+        entry = folders.setdefault(PurePosixPath(item.vault_file.relative_path).parts[0],
+                                   {"files": 0, "chunks": 0, "worst_case_usd": 0.0})
+        entry["files"] += 1
+        entry["chunks"] += len(item.chunks.chunks)
+        entry["worst_case_usd"] = round(entry["worst_case_usd"] + item.worst_case_usd, 8)
+    return dict(sorted(folders.items()))
 
 
 def run_pass(settings: VaultSettings, *, conn=None, live: bool = False, max_usd: float | None = None,
              allow_mass_retire: bool = False, client=None, spend_source: str = "indexing",
-             enforce_daily_cap: bool = True) -> dict[str, Any]:
-    """One indexing pass. Without `live` it parses and estimates only."""
+             enforce_daily_cap: bool = True, tag_list: TagList | None = None) -> dict[str, Any]:
+    """One indexing pass. Without `live` it parses and estimates only.
+
+    Properties are generated only with an approved tag list; the estimate always includes them.
+    """
     if live and (max_usd is None or max_usd <= 0):
         raise VaultSyncError("a live pass needs a positive --max-usd")
     if live and conn is None:
         raise VaultSyncError("a live pass needs a database connection")
     report: dict[str, Any] = {"mode": "live" if live else "dry-run",
-                              "included_folders": list(settings.included_folders)}
+                              "included_folders": list(settings.included_folders),
+                              "properties": "on" if tag_list and tag_list.approved else "off: no approved tag list"}
+    estimate_tags = tag_list or TagList(tags=())
+    if tag_list is not None and not tag_list.approved:
+        tag_list = None
     if not settings.source_root.is_dir():
         report["guard"] = "vault root is missing; nothing was read or retired"
         return report
@@ -348,29 +428,44 @@ def run_pass(settings: VaultSettings, *, conn=None, live: bool = False, max_usd:
         scratch = Path(tempfile.mkdtemp(prefix="vault-dry-run-")) if not live else None
         runtime_dir = scratch or settings.runtime_dir
         prepared: list[PreparedFile] = []
-        parse_failures: dict[str, int] = {}
+        parse_failures: dict[str, list[str]] = {}
         try:
             for document_id, item in plan.to_ingest:
                 try:
-                    prepared.append(prepare_file(settings, document_id, item, runtime_dir))
+                    ready = prepare_file(settings, document_id, item, runtime_dir)
                 except Exception as exc:  # noqa: BLE001 - one broken file must not stop the pass
-                    reason = type(exc).__name__
-                    parse_failures[reason] = parse_failures.get(reason, 0) + 1
+                    parse_failures.setdefault(type(exc).__name__, []).append(item.relative_path)
                     if live:
                         failures.record(document_id, item.relative_path, item.sha256, _failure_reason(exc))
+                    continue
+                if missing_fields(ready.parsed):
+                    ready.properties_usd = properties_worst_case(ready.parsed, estimate_tags)
+                prepared.append(ready)
+            ingesting = {document_id for document_id, _ in plan.to_ingest}
+            backfill = _needs_properties(conn, profile_id, ingesting) if conn is not None and tag_list else []
+            backfill_usd = sum(properties_worst_case(parsed, tag_list) for parsed in backfill)
             report.update(
-                parse_failures=parse_failures, ready_to_embed=len(prepared),
+                parse_failures={reason: len(paths) for reason, paths in parse_failures.items()},
+                parse_failure_paths=parse_failures, ready_to_embed=len(prepared),
+                properties_backfill=len(backfill),
                 chunks=sum(len(item.chunks.chunks) for item in prepared),
                 chunk_tokens=sum(chunk.token_count for item in prepared for chunk in item.chunks.chunks),
                 embedding_input_bytes=sum(item.input_bytes for item in prepared),
                 requests=sum(item.requests for item in prepared),
-                worst_case_usd=round(sum(item.worst_case_usd for item in prepared), 8),
+                embedding_worst_case_usd=round(sum(item.embedding_usd for item in prepared), 8),
+                properties_worst_case_usd=round(sum(item.properties_usd for item in prepared) + backfill_usd, 8),
+                worst_case_usd=round(sum(item.worst_case_usd for item in prepared) + backfill_usd, 8),
                 projected_db_bytes=sum(item.projected_db_bytes for item in prepared),
+                by_folder=_by_folder(prepared),
             )
             if not live:
                 return report
+            client = client or _live_client(prepared, backfill, tag_list)
             _embed_and_publish(settings, conn, prepared, report, failures, spec, profile_id,
-                               client or _live_client(prepared), max_usd, spend_source, enforce_daily_cap)
+                               client, max_usd, spend_source, enforce_daily_cap, tag_list)
+            if tag_list and backfill and not report["stopped"]:
+                _backfill_properties(conn, backfill, report, client, tag_list, max_usd - report["spent_usd"],
+                                     spend_source, enforce_daily_cap)
             _retire(conn, plan, report, profile_id, allow_mass_retire)
             corpus = conn.execute("select profile_id from knowledge.corpus_state where singleton=true").fetchone()[0]
             if corpus is None and report["published"]:
@@ -386,7 +481,7 @@ def run_pass(settings: VaultSettings, *, conn=None, live: bool = False, max_usd:
 
 
 def _embed_and_publish(settings, conn, prepared, report, failures, spec, profile_id, client,
-                       max_usd, spend_source, enforce_daily_cap) -> None:
+                       max_usd, spend_source, enforce_daily_cap, tag_list=None) -> None:
     spent = 0.0
     published, failed = 0, {}
     report["stopped"] = None
@@ -410,6 +505,8 @@ def _embed_and_publish(settings, conn, prepared, report, failures, spec, profile
                 raise ValueError("embedding batch did not complete")
             validate_run(item.run_dir)
             load_run(conn, item.run_dir)
+            if tag_list and missing_fields(item.parsed):
+                _classify_and_store(conn, item.parsed, client, tag_list, report)
             if not profile_ready:
                 create_profile(conn, SearchProfile(profile_id=profile_id, variant="structural_raw",
                                                    chunking_version=spec.chunking_version,
@@ -439,6 +536,58 @@ def _retire(conn, plan: PassPlan, report: dict[str, Any], profile_id: str, allow
     if allow_mass_retire:
         targets += plan.retire_unselected
     report["retired"] = sum(retire_document(conn, profile_id, document_id) for document_id, _ in targets)
+
+
+def propose_tags(settings: VaultSettings, sample_size: int, *, max_usd: float, client=None,
+                 output: Path | None = None, seed: int = 17) -> dict[str, Any]:
+    """Draft config/tags.yaml from tags already in use plus model suggestions for a sample of files."""
+    import random
+    from collections import Counter
+
+    from app.ingestion.properties import TAGS_PATH, draft_tag_list, suggest_tags
+
+    if sample_size < 1 or max_usd <= 0:
+        raise VaultSyncError("--propose-tags needs a positive sample size and --max-usd")
+    scan = scan_vault(settings)
+    candidates = sorted((item for item in scan.files.items() if not item[1].empty), key=lambda pair: pair[1].relative_path)
+    sample = random.Random(seed).sample(candidates, min(sample_size, len(candidates)))
+    existing, suggested = Counter(), Counter()
+    open_list = TagList(tags=())
+    with tempfile.TemporaryDirectory(prefix="vault-tags-") as folder:
+        parsed_files = []
+        for document_id, item in candidates:
+            try:
+                parsed = prepare_file(settings, document_id, item, Path(folder)).parsed
+            except Exception:  # noqa: BLE001 - unparseable files are reported by the dry run
+                continue
+            existing.update(tag.strip().lower() for tag in parsed.metadata.tags if tag.strip())
+            if (document_id, item) in sample:
+                parsed_files.append(parsed)
+        worst = sum(properties_worst_case(parsed, open_list) for parsed in parsed_files)
+        if worst > max_usd:
+            raise VaultSyncError(f"tag proposal worst case ${worst:.4f} exceeds --max-usd")
+        if client is None:
+            from app.models.openrouter import OpenRouterClient
+
+            model_id = properties_model().model_id
+            prompt_bytes = len(PROPERTIES_PROMPT.read_text(encoding="utf-8").encode("utf-8"))
+            client = OpenRouterClient(
+                allow_live=True, request_budget=max(1, len(parsed_files)),
+                estimated_input_token_budget=max(1, sum(prompt_bytes + len(model_input(p, open_list).encode("utf-8"))
+                                                        for p in parsed_files)),
+                provider=PRIVACY, model_providers=provider_routes([model_id]))
+            verify_routes(client, [model_id], structured_ids={model_id})
+        failed = 0
+        for parsed in parsed_files:
+            try:
+                suggested.update(suggest_tags(parsed, client).properties["tags"])
+            except Exception:  # noqa: BLE001
+                failed += 1
+    spent = _measured_usd(client, 0, worst)
+    draft = draft_tag_list(existing, suggested, output or TAGS_PATH)
+    return {"sampled_files": len(parsed_files), "failed_calls": failed, "files_scanned": len(candidates),
+            "distinct_existing_tags": len(existing), "draft_tags": len(draft["tags"]),
+            "spent_usd": round(spent, 8), "tag_list_path": str(output or TAGS_PATH)}
 
 
 def load_env_file(path: Path = Path(".env")) -> None:
@@ -476,6 +625,8 @@ def main(argv: list[str] | None = None) -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="parse and estimate; no model calls or writes")
     mode.add_argument("--live", action="store_true", help="embed, load, publish and retire")
+    mode.add_argument("--propose-tags", type=int, metavar="N",
+                      help="draft config/tags.yaml from N sampled files (needs --max-usd); changes nothing else")
     parser.add_argument("--max-usd", type=float, help="spend limit for this pass (required with --live)")
     parser.add_argument("--allow-mass-retire", action="store_true")
     parser.add_argument("--bulk-load", action="store_true",
@@ -488,18 +639,21 @@ def main(argv: list[str] | None = None) -> int:
     load_env_file()
     try:
         settings = settings_from_env(args)
-        if args.dry_run and args.no_database:
-            report = run_pass(settings)
+        tag_list = TagList.load()
+        if args.propose_tags is not None:
+            report = propose_tags(settings, args.propose_tags, max_usd=args.max_usd or 0)
+        elif args.dry_run and args.no_database:
+            report = run_pass(settings, tag_list=tag_list)
         else:
             with connect_runtime() as conn:
                 report = run_pass(settings, conn=conn, live=args.live, max_usd=args.max_usd,
                                   allow_mass_retire=args.allow_mass_retire,
                                   spend_source="bulk_load" if args.bulk_load else "indexing",
-                                  enforce_daily_cap=not args.bulk_load)
+                                  enforce_daily_cap=not args.bulk_load, tag_list=tag_list)
     except VaultSyncError as exc:
         print(f"vault sync stopped: {exc}", file=sys.stderr)
         return 1
-    print(json.dumps(report, indent=2, ensure_ascii=False))
+    print(json.dumps(report, indent=2, ensure_ascii=True))
     return 0
 
 

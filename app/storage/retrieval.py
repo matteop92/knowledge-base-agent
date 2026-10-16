@@ -15,7 +15,7 @@ from app.models.client import EmbeddingResult, ModelClientError
 from app.models.openrouter import OpenRouterClient
 from app.storage import StorageError
 from app.storage.records import FusedHit, SearchHit, SourcePassage, spec_id as embedding_spec_id
-from app.storage.search import _check_k, _hits, _profile, search_text, search_vector, source_label
+from app.storage.search import LABEL_METADATA, _check_k, _hits, _profile, search_text, search_vector, source_label
 
 RRF_K = 60
 MAX_CHANNEL_K = 20
@@ -52,7 +52,7 @@ def named_sources(conn: psycopg.Connection, query: str) -> list[str]:
     """Select at most three published files whose stored label appears in the query."""
     with conn.cursor() as cur:
         profile = _profile(cur, None, None)
-        cur.execute("""select r.document_id,d.relative_path,r.parsed->'metadata'
+        cur.execute(f"""select r.document_id,d.relative_path,{LABEL_METADATA}
             from knowledge.active_runs ar
             join knowledge.runs r on r.run_id=ar.run_id and r.document_id=ar.document_id
             join knowledge.documents d on d.document_id=r.document_id
@@ -210,10 +210,10 @@ def find_in_document(conn: psycopg.Connection, reference: FusedHit,
                     (profile[0], lead.document_id, lead.run_id, lead.source_sha256))
         if cur.fetchone() is None:
             raise StorageError("document reference is not in the active published revision")
-        sql = """select ts_rank(to_tsvector('simple'::regconfig,c.raw_text),
+        sql = f"""select ts_rank(to_tsvector('simple'::regconfig,c.raw_text),
                     websearch_to_tsquery('simple'::regconfig,%s)) as score,
                 r.document_id,c.run_id,r.source_sha256,d.root_alias,d.relative_path,
-                c.chunk_id,c.source_spans,c.raw_text,r.parsed->'metadata'
+                c.chunk_id,c.source_spans,c.raw_text,{LABEL_METADATA}
             from knowledge.chunks c
             join knowledge.runs r on r.run_id=c.run_id
             join knowledge.documents d on d.document_id=r.document_id

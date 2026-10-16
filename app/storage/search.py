@@ -47,6 +47,12 @@ def _scope(historical_run_id: str | None) -> str:
     return "ar.run_id = c.run_id and ar.profile_id = p.profile_id and state.profile_id = p.profile_id"
 
 
+# Stored generated properties ride along with the run metadata; frontmatter still wins.
+LABEL_METADATA = ("(r.parsed->'metadata') || jsonb_build_object('generated', coalesce(("
+                  "select dp.properties from knowledge.document_properties dp where dp.status='ready' "
+                  "and dp.document_id=r.document_id and dp.source_sha256=r.source_sha256), '{}'::jsonb))")
+
+
 def _hits(rows) -> list[SearchHit]:
     result = []
     for index, row in enumerate(rows, 1):
@@ -74,7 +80,9 @@ def source_label(metadata: object, relative_path: str) -> tuple[str, list[str], 
     people = list(dict.fromkeys(names(data.get("authors")) + names(data.get("guests"))
                                 + names(frontmatter.get("guest"))))
     tags = names(data.get("tags"))
-    return str(title), people, tags
+    generated = data.get("generated") if isinstance(data.get("generated"), dict) else {}
+    # Generated properties fill only what the file does not set itself.
+    return str(title), people or names(generated.get("people")), tags or names(generated.get("tags"))
 
 
 def search_text(conn: psycopg.Connection, query: str, *, k: int = 10,
@@ -93,7 +101,7 @@ def search_text(conn: psycopg.Connection, query: str, *, k: int = 10,
         sql = f"""select ts_rank(to_tsvector('simple'::regconfig,c.raw_text),
                      websearch_to_tsquery('simple'::regconfig,%(query)s)) as score,
                 r.document_id,c.run_id,r.source_sha256,d.root_alias,d.relative_path,
-                c.chunk_id,c.source_spans,c.raw_text,r.parsed->'metadata'
+                c.chunk_id,c.source_spans,c.raw_text,{LABEL_METADATA}
             from knowledge.chunks c
             join knowledge.runs r on r.run_id=c.run_id
             join knowledge.documents d on d.document_id=r.document_id
@@ -142,7 +150,7 @@ def search_vector(conn: psycopg.Connection, vector: list[float], *, spec_id: str
         operator = OPERATORS[metric]
         sql = f"""select e.embedding OPERATOR(extensions.{operator}) %(vector)s::extensions.vector as distance,
                 r.document_id,c.run_id,r.source_sha256,d.root_alias,d.relative_path,
-                c.chunk_id,c.source_spans,c.raw_text,r.parsed->'metadata'
+                c.chunk_id,c.source_spans,c.raw_text,{LABEL_METADATA}
             from knowledge.embedding_vectors e
             join knowledge.chunks c on c.run_id=e.run_id and c.chunk_id=e.chunk_id
             join knowledge.runs r on r.run_id=c.run_id
