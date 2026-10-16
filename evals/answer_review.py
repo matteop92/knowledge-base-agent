@@ -131,7 +131,7 @@ def _percent(passed: int, scored: int) -> float | None:
     return round(100 * passed / scored, 1) if scored else None
 
 
-def _private_output(path: Path) -> Path:
+def private_output(path: Path) -> Path:
     resolved = path.resolve()
     if not resolved.is_relative_to((Path.cwd() / ".local").resolve()) or resolved.exists():
         raise ValueError("choose a new output path under .local/")
@@ -139,7 +139,7 @@ def _private_output(path: Path) -> Path:
     return resolved
 
 
-def _receipts(arguments: list[str]) -> list[tuple[str, str, dict]]:
+def load_receipts(arguments: list[str]) -> list[tuple[str, str, dict]]:
     """Accept `Q8=path/to/receipt.json` or a pilot manifest listing its completed attempts."""
     found = []
     for argument in arguments:
@@ -169,10 +169,10 @@ def main(argv: list[str] | None = None) -> int:
     checklist = load_rubric(args.checklist)
     if not isinstance(checklist, Checklist):
         parser.error("this command needs the three-dimension checklist")
-    target = _private_output(args.output)
+    target = private_output(args.output)
     if args.action == "build":
         earlier = json.loads(args.prefill.read_text(encoding="utf-8")) if args.prefill else None
-        data = build_review(checklist, _receipts(args.inputs), earlier)
+        data = build_review(checklist, load_receipts(args.inputs), earlier)
         target.write_text(render_html(data), encoding="utf-8")
         print(json.dumps({"page": str(args.output), "answers": len(data["entries"]),
                           "checklist_status": checklist.status}))
