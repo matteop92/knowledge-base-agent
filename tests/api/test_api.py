@@ -69,11 +69,11 @@ class FakeEngine:
         if self.mode == "error":
             raise RuntimeError("model failed")
         if self.mode == "gaps":
-            result = AnswerResult(answer="Partly.", completeness="partial", citations={"S1": passage()},
+            result = AnswerResult(answer="Partly.", completeness="partial", citations={"E1.1": passage()},
                                   gaps=["No source covers winter."], actions=[], model_calls=3, termination="exhausted")
         else:
-            result = AnswerResult(answer="The pear is ripe [S1].", completeness="complete",
-                                  citations={"S1": passage()}, inspected={"S1": passage()}, gaps=[], actions=[],
+            result = AnswerResult(answer="The pear is ripe [E1.1].", completeness="complete",
+                                  citations={"E1.1": passage()}, inspected={"E1.1": passage()}, gaps=[], actions=[],
                                   model_calls=2)
         return AnswerOutcome(result, 0.02)
 
@@ -165,7 +165,7 @@ class ApiTests(unittest.TestCase):
         self.engine.release.set()
         turn = self.finished(started["turn_id"])
         self.assertEqual(turn["status"], "done")
-        citation = turn["receipt"]["citations"]["S1"]
+        citation = turn["receipt"]["citations"]["E1.1"]
         self.assertEqual(citation["text"], "The pear is ripe.")
         self.assertEqual(citation["obsidian_url"], obsidian_link("New Vault", "Knowledge/Notes/pear tree.md"))
         self.assertIn("vault=New%20Vault&file=Knowledge%2FNotes%2Fpear%20tree.md", citation["obsidian_url"])

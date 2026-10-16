@@ -1,0 +1,381 @@
+"use strict";
+
+// Every piece of text from the server is inserted with textContent, never as HTML.
+const $ = (id) => document.getElementById(id);
+const DRAFT_KEY = "ka-draft";
+const CONVERSATION_KEY = "ka-conversation";
+const POLL_MS = 2000;
+
+const state = { conversationId: null, polling: new Map(), running: false, capReached: false };
+
+function store(key, value) {
+  try { value === null ? localStorage.removeItem(key) : localStorage.setItem(key, value); } catch (_) { /* private mode */ }
+}
+function load(key) {
+  try { return localStorage.getItem(key); } catch (_) { return null; }
+}
+
+class ApiError extends Error {
+  constructor(status, message, body) { super(message); this.status = status; this.body = body; }
+}
+
+async function api(method, path, body) {
+  const options = { method, credentials: "same-origin", headers: {} };
+  if (method !== "GET") {
+    options.headers["Content-Type"] = "application/json";
+    options.body = JSON.stringify(body || {});
+  }
+  const response = await fetch(path, options);
+  let data = {};
+  try { data = await response.json(); } catch (_) { /* empty body */ }
+  if (response.status === 401 && !path.startsWith("/auth/verify")) {
+    showSignIn("Please sign in again.");
+  }
+  if (!response.ok) throw new ApiError(response.status, data.error || "Something went wrong.", data);
+  return data;
+}
+
+// Sign-in ---------------------------------------------------------------------------------------
+function showSignIn(message) {
+  const draft = $("question").value.trim();
+  if (draft) store(DRAFT_KEY, draft);
+  if (state.conversationId) store(CONVERSATION_KEY, state.conversationId);
+  for (const timer of state.polling.values()) clearTimeout(timer);
+  state.polling.clear();
+  $("app").hidden = true;
+  $("signin").hidden = false;
+  $("signin-message").textContent = message || "";
+  $("email").focus();
+}
+
+async function sendCode() {
+  const email = $("email").value.trim();
+  if (!email) { $("signin-message").textContent = "Enter your email."; return; }
+  try {
+    await api("POST", "/auth/code", { email });
+    $("email-form").hidden = true;
+    $("code-form").hidden = false;
+    $("signin-message").textContent = "";
+    $("code").focus();
+  } catch (error) {
+    $("signin-message").textContent = error.status === 429 ? "Too many attempts. Wait a minute." : error.message;
+  }
+}
+
+async function verifyCode() {
+  const code = $("code").value.trim();
+  try {
+    await api("POST", "/auth/verify", { email: $("email").value.trim(), code });
+    $("code").value = "";
+    $("code-form").hidden = true;
+    $("email-form").hidden = false;
+    await startApp();
+  } catch (error) {
+    $("signin-message").textContent =
+      error.status === 403 ? "This account is not authorised." :
+      error.status === 429 ? "Too many attempts. Wait a minute." :
+      "That code expired or is wrong. Try again or send a new code.";
+  }
+}
+
+// Conversations -------------------------------------------------------------------------------
+async function startApp() {
+  $("signin").hidden = true;
+  $("app").hidden = false;
+  const draft = load(DRAFT_KEY);
+  if (draft) { $("question").value = draft; store(DRAFT_KEY, null); }
+  await refreshConversations();
+  const remembered = load(CONVERSATION_KEY);
+  store(CONVERSATION_KEY, null);
+  if (remembered) await openConversation(remembered); else newQuestion();
+}
+
+async function refreshConversations() {
+  const { conversations } = await api("GET", "/api/conversations");
+  const list = $("conversation-list");
+  list.replaceChildren();
+  for (const item of conversations) {
+    const li = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "conversation";
+    button.textContent = item.title;
+    if (item.id === state.conversationId) button.setAttribute("aria-current", "true");
+    button.addEventListener("click", () => { closeSidebar(); openConversation(item.id); });
+    li.append(button);
+    list.append(li);
+  }
+  $("conversation-empty").hidden = conversations.length > 0;
+}
+
+function newQuestion() {
+  state.conversationId = null;
+  $("turns").replaceChildren();
+  $("conversation-title").textContent = "New question";
+  $("empty-state").hidden = false;
+  $("follow-up-note").hidden = true;
+  setRunning(false);
+  closeSidebar();
+  $("question").focus();
+}
+
+async function openConversation(id) {
+  try {
+    const conversation = await api("GET", `/api/conversations/${encodeURIComponent(id)}`);
+    state.conversationId = conversation.id;
+    $("conversation-title").textContent = conversation.title;
+    $("empty-state").hidden = true;
+    $("turns").replaceChildren();
+    let running = false;
+    for (const turn of conversation.turns) {
+      renderTurn(turn);
+      if (turn.status === "running") { running = true; poll(turn.id); }
+    }
+    $("follow-up-note").hidden = conversation.turns.length === 0;
+    setRunning(running);
+    refreshConversations();
+  } catch (error) {
+    if (error.status !== 401) newQuestion();
+  }
+}
+
+// Asking --------------------------------------------------------------------------------------
+async function ask(question) {
+  if (!question || state.running || state.capReached) return;
+  setRunning(true);
+  try {
+    const path = state.conversationId
+      ? `/api/conversations/${encodeURIComponent(state.conversationId)}/turns` : "/api/conversations";
+    const started = await api("POST", path, { question });
+    $("question").value = "";
+    if (state.conversationId !== started.conversation_id) {
+      state.conversationId = started.conversation_id;
+      $("conversation-title").textContent = question;
+    }
+    $("empty-state").hidden = true;
+    renderTurn({ id: started.turn_id, question, status: "running", created_at: new Date().toISOString() });
+    $("follow-up-note").hidden = $("turns").children.length < 2;
+    poll(started.turn_id);
+    refreshConversations();
+  } catch (error) {
+    setRunning(false);
+    if (error.status === 429) showCap(error.body);
+    else if (error.status === 409) announce("An answer is still running in this conversation.");
+    else if (error.status !== 401) announce(error.message);
+  }
+}
+
+function poll(turnId) {
+  clearTimeout(state.polling.get(turnId));
+  const tick = async () => {
+    try {
+      const turn = await api("GET", `/api/turns/${encodeURIComponent(turnId)}`);
+      renderTurn(turn);
+      if (turn.status === "running") { state.polling.set(turnId, setTimeout(tick, POLL_MS)); return; }
+      state.polling.delete(turnId);
+      setRunning(false);
+      announce(turn.status === "failed" ? "The answer failed." : "The answer is ready.");
+    } catch (error) {
+      if (error.status !== 401) state.polling.set(turnId, setTimeout(tick, POLL_MS * 2));
+    }
+  };
+  state.polling.set(turnId, setTimeout(tick, POLL_MS));
+}
+
+function setRunning(running) {
+  state.running = running;
+  $("ask").disabled = running || state.capReached;
+  $("question").disabled = state.capReached;
+}
+
+function showCap(body) {
+  state.capReached = true;
+  setRunning(false);
+  const cap = body && body.cap_usd ? `$${body.cap_usd}` : "the daily limit";
+  announce(`Daily spending cap of ${cap} reached. It resets at ${body && body.resets ? body.resets : "midnight UTC"}.`, true);
+}
+
+function announce(message, visible) {
+  $("status").textContent = message;
+  if (visible) {
+    let banner = document.querySelector(".banner");
+    if (!banner) {
+      banner = document.createElement("p");
+      banner.className = "banner";
+      banner.setAttribute("role", "alert");
+      $("composer").before(banner);
+    }
+    banner.textContent = message;
+  }
+}
+
+// Rendering -----------------------------------------------------------------------------------
+function turnElement(turn) {
+  let element = document.querySelector(`.turn[data-id="${CSS.escape(turn.id)}"]`);
+  if (!element) {
+    element = $("turn-template").content.firstElementChild.cloneNode(true);
+    element.dataset.id = turn.id;
+    element.querySelector(".question").textContent = turn.question;
+    element.querySelector(".retry").addEventListener("click", () => ask(turn.question));
+    wireFeedback(element, turn.id);
+    $("turns").append(element);
+  }
+  return element;
+}
+
+function renderTurn(turn) {
+  const element = turnElement(turn);
+  const stateLine = element.querySelector(".turn-state");
+  const answer = element.querySelector(".answer");
+  const gaps = element.querySelector(".gaps");
+  element.dataset.status = turn.status;
+  element.querySelector(".retry").hidden = turn.status !== "failed";
+  element.querySelector(".thumbs").hidden = !["done", "done_with_gaps"].includes(turn.status);
+  if (turn.status === "running") {
+    const seconds = Math.max(0, Math.round((Date.now() - Date.parse(turn.created_at)) / 1000));
+    stateLine.textContent = `Answering… ${seconds}s`;
+    return;
+  }
+  if (turn.status === "failed") {
+    stateLine.textContent = turn.error || "The answer failed.";
+    answer.replaceChildren();
+    return;
+  }
+  stateLine.textContent = turn.status === "done_with_gaps" ? "Answered with gaps" : "";
+  renderAnswer(element, turn.receipt || {});
+  gaps.replaceChildren();
+  for (const gap of (turn.receipt && turn.receipt.gaps) || []) {
+    const li = document.createElement("li");
+    li.textContent = gap;
+    gaps.append(li);
+  }
+  const feedback = turn.feedback;
+  const thumbs = element.querySelector(".thumbs");
+  thumbs.setAttribute("aria-pressed", feedback ? "true" : "false");
+  element.querySelector(".feedback-form").hidden = !feedback;
+  if (feedback && feedback.note) element.querySelector(".feedback-form textarea").value = feedback.note;
+}
+
+function renderAnswer(element, receipt) {
+  const container = element.querySelector(".answer");
+  container.replaceChildren();
+  const citations = receipt.citations || {};
+  const numbers = new Map();
+  const paragraphs = String(receipt.answer || "").split(/\n{2,}/);
+  for (const text of paragraphs) {
+    const p = document.createElement("p");
+    for (const part of text.split(/(\[E\d+\.\d+(?:@\d+)?\])/)) {
+      const match = /^\[(E\d+\.\d+(?:@\d+)?)\]$/.exec(part);
+      if (match && citations[match[1]]) {
+        const ref = match[1];
+        // Passages from the same source file share one number.
+        const source = citations[ref].relative_path || ref;
+        if (!numbers.has(source)) numbers.set(source, numbers.size + 1);
+        const number = numbers.get(source);
+        const marker = document.createElement("button");
+        marker.type = "button";
+        marker.className = "marker";
+        marker.textContent = String(number);
+        marker.setAttribute("aria-expanded", "false");
+        marker.setAttribute("aria-label", `Show source ${number}`);
+        marker.addEventListener("click", () => toggleExcerpt(element, marker, citations[ref]));
+        p.append(marker);
+      } else {
+        p.append(document.createTextNode(part));
+      }
+    }
+    container.append(p);
+  }
+}
+
+function toggleExcerpt(element, marker, citation) {
+  const panel = element.querySelector(".excerpt");
+  const wasOpen = marker.getAttribute("aria-expanded") === "true";
+  for (const other of element.querySelectorAll(".marker")) other.setAttribute("aria-expanded", "false");
+  if (wasOpen) { panel.hidden = true; return; }
+  marker.setAttribute("aria-expanded", "true");
+  panel.querySelector(".excerpt-title").textContent = citation.title || citation.relative_path;
+  panel.querySelector(".excerpt-path").textContent = citation.relative_path;
+  panel.querySelector(".excerpt-text").textContent = citation.text;
+  const link = panel.querySelector(".open-obsidian");
+  const url = String(citation.obsidian_url || "");
+  if (url.startsWith("obsidian://")) { link.href = url; link.hidden = false; } else { link.removeAttribute("href"); link.hidden = true; }
+  panel.hidden = false;
+}
+
+function wireFeedback(element, turnId) {
+  const thumbs = element.querySelector(".thumbs");
+  const form = element.querySelector(".feedback-form");
+  thumbs.addEventListener("click", async () => {
+    const on = thumbs.getAttribute("aria-pressed") === "true";
+    try {
+      if (on) {
+        await api("DELETE", `/api/turns/${encodeURIComponent(turnId)}/feedback`);
+        thumbs.setAttribute("aria-pressed", "false");
+        form.hidden = true;
+      } else {
+        await api("POST", `/api/turns/${encodeURIComponent(turnId)}/feedback`, {});
+        thumbs.setAttribute("aria-pressed", "true");
+        form.hidden = false;
+        form.querySelector("textarea").focus();
+      }
+    } catch (error) { if (error.status !== 401) announce(error.message, true); }
+  });
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await api("POST", `/api/turns/${encodeURIComponent(turnId)}/feedback`, { note: form.querySelector("textarea").value });
+      announce("Note saved.");
+    } catch (error) { if (error.status !== 401) announce(error.message, true); }
+  });
+}
+
+// Layout --------------------------------------------------------------------------------------
+function openSidebar() {
+  document.body.classList.add("sidebar-open");
+  $("menu").setAttribute("aria-expanded", "true");
+  $("scrim").hidden = false;
+}
+function closeSidebar() {
+  document.body.classList.remove("sidebar-open");
+  $("menu").setAttribute("aria-expanded", "false");
+  $("scrim").hidden = true;
+}
+
+function autosize() {
+  const box = $("question");
+  box.style.height = "auto";
+  box.style.height = `${Math.min(box.scrollHeight, 200)}px`;
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
+  $("email-form").addEventListener("submit", (event) => { event.preventDefault(); sendCode(); });
+  $("code-form").addEventListener("submit", (event) => { event.preventDefault(); verifyCode(); });
+  $("resend").addEventListener("click", sendCode);
+  $("composer").addEventListener("submit", (event) => { event.preventDefault(); ask($("question").value.trim()); });
+  $("question").addEventListener("input", autosize);
+  $("question").addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey && window.matchMedia("(pointer: fine)").matches) {
+      event.preventDefault();
+      ask($("question").value.trim());
+    }
+  });
+  $("new-question").addEventListener("click", newQuestion);
+  $("sidebar-new").addEventListener("click", newQuestion);
+  $("menu").addEventListener("click", () =>
+    document.body.classList.contains("sidebar-open") ? closeSidebar() : openSidebar());
+  $("scrim").addEventListener("click", closeSidebar);
+  document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeSidebar(); });
+  $("sign-out").addEventListener("click", async () => { await api("POST", "/auth/sign-out").catch(() => {}); showSignIn(""); });
+  $("sign-out-everywhere").addEventListener("click", async () => {
+    await api("POST", "/auth/sign-out-everywhere").catch(() => {});
+    showSignIn("Signed out on every device.");
+  });
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+  try {
+    await api("GET", "/auth/me");
+    await startApp();
+  } catch (_) {
+    showSignIn("");
+  }
+});
