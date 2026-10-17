@@ -1,6 +1,6 @@
 """Incrementally index selected vault folders: ingest changed files, retire deleted ones.
 
-Only the folders named in KNOWLEDGE_INCLUDED_FOLDERS, plus Inbox, are read. A file
+Only the folders named in KNOWLEDGE_INCLUDED_FOLDERS are read. A file
 is ingested when its bytes differ from its active run; a file that disappears or is
 emptied stops being served. A dry run parses everything and makes no model calls.
 """
@@ -44,7 +44,6 @@ from app.storage.records import PublicationSelection, SearchProfile, spec_id
 from app.storage.spend import SpendCapError, check_daily_cap, record_spend
 
 
-INBOX = "Inbox"
 SKIPPED_DIRECTORIES = {".obsidian", ".trash"}
 # Obsidian Sync names a conflict copy "Note (Conflicted copy Device 202610161200).md".
 CONFLICT_COPY = re.compile(r"\((?:conflicted copy|conflict)\b", re.IGNORECASE)
@@ -72,10 +71,10 @@ class VaultSettings:
 
 
 def parse_folders(value: str | list[str] | None) -> tuple[str, ...]:
-    """Top-level folder names, deduplicated without regard to case; Inbox is always included."""
+    """Top-level folder names, deduplicated without regard to case."""
     items = value.split(",") if isinstance(value, str) else list(value or [])
     folders: dict[str, str] = {}
-    for item in [*items, INBOX]:
+    for item in items:
         name = unicodedata.normalize("NFC", item.strip().strip("/\\"))
         if not name:
             continue
@@ -110,8 +109,7 @@ def scan_vault(settings: VaultSettings) -> Scan:
     for folder in settings.included_folders:
         actual = present.get(folder.casefold())
         if actual is None:
-            if folder.casefold() != INBOX.casefold():
-                missing.append(folder)
+            missing.append(folder)
             continue
         for directory, subdirectories, names in os.walk(root / actual):
             relative_dir = Path(directory).relative_to(root).as_posix()
@@ -633,7 +631,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="record spend as the one-time bulk load, outside the daily cap")
     parser.add_argument("--no-database", action="store_true", help="dry run without comparing to the index")
     parser.add_argument("--source-root")
-    parser.add_argument("--folders", help="comma-separated top-level folders; Inbox is always added")
+    parser.add_argument("--folders", help="comma-separated top-level folders")
     parser.add_argument("--runtime-dir")
     args = parser.parse_args(argv)
     load_env_file()

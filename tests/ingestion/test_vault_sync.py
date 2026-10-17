@@ -52,9 +52,9 @@ class FolderAndScanTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.vault = VaultFixture(Path(self.temp.name), folders=("Knowledge", "Learnings"))
 
-    def test_inbox_is_always_included_once(self) -> None:
-        self.assertEqual(parse_folders("Knowledge, inbox ,Learnings"), ("Knowledge", "inbox", "Learnings"))
-        self.assertEqual(parse_folders("Knowledge"), ("Knowledge", "Inbox"))
+    def test_folders_are_deduplicated_and_only_named_folders_are_included(self) -> None:
+        self.assertEqual(parse_folders("Knowledge, knowledge ,Learnings"), ("Knowledge", "Learnings"))
+        self.assertEqual(parse_folders("Knowledge"), ("Knowledge",))
         with self.assertRaises(VaultSyncError):
             parse_folders("Knowledge/Notes")
 
@@ -69,7 +69,7 @@ class FolderAndScanTests(unittest.TestCase):
         self.vault.write("Knowledge/Notes/blank.md", "  \n")
         scan = scan_vault(self.vault.settings)
         paths = sorted(item.relative_path for item in scan.files.values())
-        self.assertEqual(paths, ["Inbox/new.md", "Knowledge/Notes/blank.md", "Knowledge/Notes/kept.md"])
+        self.assertEqual(paths, ["Knowledge/Notes/blank.md", "Knowledge/Notes/kept.md"])
         self.assertTrue(next(item for item in scan.files.values() if item.relative_path.endswith("blank.md")).empty)
         self.assertEqual(scan.missing_folders, ["Learnings"])
 
