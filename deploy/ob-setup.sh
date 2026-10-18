@@ -26,7 +26,7 @@ echo "Step 3 of 4: connect the vault (type the vault encryption password if it h
 as_agent ob sync-setup --vault "$VAULT_NAME" --path "$VAULT" --device-name kb-server
 
 echo
-echo "Step 4 of 4: settings (download only; skip every folder except Knowledge; no plugins or attachments)"
+echo "Step 4 of 4: settings (download only; skip every folder except Knowledge; plugins and settings are not synced)"
 # The folder names are typed here and kept only on the volume, so none of them are in the repository.
 EXTRA="${KNOWLEDGE_EXCLUDED_FILE:-/data/excluded-folders-extra.txt}"
 echo "Type or paste the names of your other top-level vault folders, one per line, then an empty line."
@@ -40,7 +40,7 @@ done
 chown agent:agent "$EXTRA" 2>/dev/null || true
 EXCLUDED="$(paste -sd, "$EXTRA")"
 as_agent ob sync-config --path "$VAULT" --mode pull-only --conflict-strategy conflict \
-  --excluded-folders "$EXCLUDED" --file-types "" --configs ""
+  --excluded-folders "$EXCLUDED"
 
 echo
 echo "The sync tool's settings (the mode must say pull-only):"
