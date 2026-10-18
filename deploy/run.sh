@@ -9,13 +9,8 @@ export HOME="${KNOWLEDGE_HOME:-/data/home}"
 mkdir -p "$HOME" "$VAULT"
 
 if [ "${KNOWLEDGE_SYNC_ENABLED:-false}" = "true" ]; then
-  # Keep the vault copy in step with Obsidian Sync; restart the tool if it ever stops.
-  (
-    while true; do
-      ob sync --continuous --path "$VAULT" || echo "obsidian sync stopped; restarting in 30 seconds" >&2
-      sleep 30
-    done
-  ) &
+  # Keep the vault copy in step with Obsidian Sync, and to the allowed folders only (see sync-loop.sh).
+  ./deploy/sync-loop.sh &
 fi
 
 exec uvicorn app.api.main:build --factory --host 0.0.0.0 --port "${PORT:-8000}" \
