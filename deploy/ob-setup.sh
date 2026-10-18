@@ -32,6 +32,10 @@ as_agent ob sync-config --path "$VAULT" --mode pull-only --conflict-strategy con
   --excluded-folders "$EXCLUDED" --file-types "" --configs ""
 
 echo
+echo "The sync tool's settings (the mode must say pull-only):"
+as_agent ob sync-config --path "$VAULT"
+
+echo
 echo "First download (this can take a minute)..."
 as_agent ob sync --path "$VAULT"
 
