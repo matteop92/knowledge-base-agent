@@ -1,8 +1,18 @@
-"""Pinned private routes for the agreed Stage 4 trial."""
+"""Pinned zero-retention OpenRouter routes and approved price ceilings.
+
+Production code and evals share these, so a route or price change is made once.
+"""
 
 from __future__ import annotations
 
 from app.models.openrouter import OpenRouterClient
+
+
+# Every private call must deny data collection and require zero data retention.
+PRIVACY = {"data_collection": "deny", "zdr": True}
+EMBEDDING_MODEL = "perplexity/pplx-embed-v1-0.6b"
+EMBEDDING_MODEL_VERSION = "accepted-2026-09-24"
+EMBEDDING_DIMENSIONS = 1024
 
 
 TAGS = {
@@ -60,3 +70,9 @@ def verify_routes(client: OpenRouterClient, model_ids: list[str],
                              "input_usd_per_million": actual[0],
                              "output_usd_per_million": actual[1]}
     return checked
+
+
+def price_usd(model_id: str, input_tokens: int, output_tokens: int = 0) -> float:
+    """Worst-case dollars for a call at the approved price ceiling."""
+    input_price, output_price = PRICE_CEILINGS[model_id]
+    return (input_tokens * input_price + output_tokens * output_price) / 1_000_000

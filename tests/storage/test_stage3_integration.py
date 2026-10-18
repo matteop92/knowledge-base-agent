@@ -24,6 +24,7 @@ from app.storage.loader import load_run
 from app.storage.publication import create_profile, publish_run, select_profile
 from app.storage.records import PublicationSelection, SearchProfile, spec_id
 from app.storage.search import search_text, search_vector
+from tests.storage.database import apply_migrations
 from app.storage.retrieval import DatabaseRetriever, find_in_document, hybrid_search, read_passage, selected_embedding_spec
 
 
@@ -68,9 +69,7 @@ class Stage3IntegrationTest(unittest.TestCase):
     def setUpClass(cls):
         cls.conn = psycopg.connect(os.environ["KNOWLEDGE_TEST_DATABASE_URL"], autocommit=True)
         with cls.conn.cursor() as cur:
-            for role in ("anon", "authenticated"):
-                cur.execute(f"do $$ begin if not exists (select 1 from pg_roles where rolname='{role}') then create role {role} nologin; end if; end $$")
-            cur.execute(Path("supabase/migrations/20260923152944_private_knowledge_index.sql").read_text(encoding="utf-8"))
+            apply_migrations(cur)
             cur.execute("set role knowledge_runtime")
 
     @classmethod
@@ -168,8 +167,7 @@ class Stage3IntegrationTest(unittest.TestCase):
             create_profile(self.conn, SearchProfile(profile_id=profile_id, variant="fixed_raw",
                 chunking_version=spec.chunking_version, embedding_spec_id=spec_id(spec)))
             publish_run(self.conn, PublicationSelection(run_id=run_dir.name, profile_id=profile_id))
-            self.assertEqual(self.conn.execute(
-                "select count(*) from knowledge.cards where run_id=%s", (run_dir.name,)).fetchone()[0], 0)
+            self.assertIsNone(self.conn.execute("select to_regclass('knowledge.cards')").fetchone()[0])
             self.assertEqual(self.conn.execute(
                 "select count(*) from knowledge.artifacts where run_id=%s and kind='cards'",
                 (run_dir.name,)).fetchone()[0], 0)
