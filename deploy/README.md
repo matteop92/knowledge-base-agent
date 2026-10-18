@@ -90,8 +90,8 @@ Variables (all optional except the switch):
 3. In that shell run `sh deploy/ob-setup.sh`. It asks for your Obsidian email, password (and a two-factor code), the vault name
    and the vault's encryption password if it has one. It then asks you to paste the names of your other top-level folders (kept
    only on the volume, never in the repository; later folders are handled automatically) so they are skipped from the first
-   download. It syncs download-only, prints the tool's settings (check that it says `pull-only` and that cleanup "will delete"),
-   and how many notes arrived.
+   download. It syncs download-only and notes only (`deploy/notes_only.py` empties the tool's attachment list, which its command line cannot do), prints the tool's settings (check that it says `pull-only` and that cleanup "will delete"),
+   how many notes arrived, and how many non-note files (should be 0).
 4. In Railway Variables set `KNOWLEDGE_SYNC_ENABLED` to `true`. Railway redeploys.
 5. Check: sign in to the app, open `/health` and look at `index`: `status` should read `ok`, and `last_result` shows
    `files_seen` equal to the number of `Knowledge` notes.
