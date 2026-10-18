@@ -36,6 +36,10 @@ echo "The sync tool's settings (the mode must say pull-only):"
 as_agent ob sync-config --path "$VAULT"
 
 echo
+echo "Will the cleanup delete anything? (it must say it will delete outside the allowed folders)"
+as_agent python -m app.ingestion.vault_allowlist --root "$VAULT" --check
+
+echo
 echo "First download (this can take a minute)..."
 as_agent ob sync --path "$VAULT"
 

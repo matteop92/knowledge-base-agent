@@ -53,6 +53,31 @@ class SchedulerTests(unittest.TestCase):
         scheduler.tick()
         self.assertEqual([call["retire"] for call in self.calls], [False, True])
 
+    def test_a_failed_first_pass_keeps_the_hold_on_retirement(self) -> None:
+        self.note()
+        attempts = []
+
+        def flaky(vault, **options):
+            attempts.append(options["retire"])
+            if len(attempts) == 1:
+                raise RuntimeError("x")
+            return {}
+        scheduler = self.scheduler(pass_fn=flaky)
+        scheduler.tick()
+        scheduler.tick()
+        scheduler.tick()
+        self.assertEqual(attempts, [False, False, True])
+
+    def test_an_unreadable_vault_is_recorded_and_the_next_tick_still_runs(self) -> None:
+        self.note()
+        scheduler = self.scheduler()
+        real = scheduler.vault_ready
+        scheduler.vault_ready = lambda: (_ for _ in ()).throw(OSError("x"))
+        self.assertFalse(scheduler.tick())
+        self.assertEqual((scheduler.status()["status"], scheduler.status()["last_error"]), ("failed", "OSError"))
+        scheduler.vault_ready = real
+        self.assertTrue(scheduler.tick())
+
     def test_a_tick_is_skipped_while_the_previous_pass_still_runs(self) -> None:
         self.note()
         entered, release = threading.Event(), threading.Event()

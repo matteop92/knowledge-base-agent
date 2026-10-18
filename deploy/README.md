@@ -63,6 +63,11 @@ How it fits together:
 - **Phase 2 (captures need two-way sync):** in a server shell run `ob sync-config --path /data/vault --mode bidirectional`
   and set the Railway variable `KNOWLEDGE_SYNC_MODE` to `bidirectional` in the same step. The sign-in and the volume stay as
   they are. From then on the cleanup stops deleting.
+  **Before switching, do both of these** (a review found the risk, not yet tested against the real tool): set
+  `KNOWLEDGE_SYNC_ENABLED` to `false` and redeploy, so no cleanup runs mid-switch; and test on a throwaway vault that
+  switching from download-only to two-way does not send the server's earlier deletions back to the real vault. If it does,
+  start the server copy from a fresh sync state (empty `/data/vault`, clear `/data/home`, run `ob-setup.sh` again).
+  The `(conflict)` copies that `--conflict-strategy conflict` can create also need handling by then.
 
 Variables (all optional except the switch):
 

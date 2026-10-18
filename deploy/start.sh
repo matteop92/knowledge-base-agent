@@ -4,4 +4,7 @@
 set -eu
 mkdir -p /data
 chown -R agent:agent /data
-exec runuser -u agent -- ./deploy/run.sh
+mkdir -p /data/home
+chmod 700 /data/home
+# setpriv replaces this process (runuser would stay as PID 1 and may cut shutdown short).
+exec setpriv --reuid=agent --regid=agent --init-groups ./deploy/run.sh
