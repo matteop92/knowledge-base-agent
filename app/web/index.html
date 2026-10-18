@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#1f2937">
+  <title>Knowledge Agent</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <!-- Sign-in -->
+  <main id="signin" class="signin" hidden>
+    <h1>Knowledge Agent</h1>
+    <form id="email-form" novalidate>
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="email" required>
+      <button type="submit">Send code</button>
+    </form>
+    <form id="code-form" hidden novalidate>
+      <p id="code-sent">We sent a six-digit code to your email.</p>
+      <label for="code">Code</label>
+      <input id="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required>
+      <button type="submit">Sign in</button>
+      <button type="button" id="resend" class="link">Send a new code</button>
+    </form>
+    <p id="signin-message" class="message" role="alert"></p>
+  </main>
+
+  <!-- App -->
+  <div id="app" class="app" hidden>
+    <header class="topbar">
+      <button type="button" id="menu" class="icon-button" aria-label="Show conversations" aria-expanded="false" aria-controls="sidebar">☰</button>
+      <h1 id="conversation-title">New question</h1>
+      <button type="button" id="new-question" class="pill">New question</button>
+    </header>
+    <nav id="sidebar" class="sidebar" aria-label="Conversations">
+      <button type="button" id="sidebar-new" class="pill wide">New question</button>
+      <ul id="conversation-list"></ul>
+      <p id="conversation-empty" class="muted" hidden>No conversations yet.</p>
+      <div class="sidebar-footer">
+        <button type="button" id="sign-out" class="link">Sign out</button>
+        <button type="button" id="sign-out-everywhere" class="link">Sign out everywhere</button>
+      </div>
+    </nav>
+    <div id="scrim" class="scrim" hidden></div>
+    <main class="thread">
+      <section id="empty-state" class="empty-state">
+        <h2>Ask your notes anything.</h2>
+        <p class="muted">Answers cite the exact passages they used.</p>
+      </section>
+      <ol id="turns" class="turns"></ol>
+      <p id="follow-up-note" class="muted small" hidden>Follow-ups are answered on their own for now; earlier questions in this conversation are not used yet.</p>
+      <div id="status" class="sr-only" aria-live="polite"></div>
+    </main>
+    <form id="composer" class="composer">
+      <label for="question" class="sr-only">Your question</label>
+      <textarea id="question" rows="1" placeholder="Ask a question" required></textarea>
+      <button type="submit" id="ask">Ask</button>
+    </form>
+  </div>
+
+  <template id="turn-template">
+    <li class="turn">
+      <p class="question"></p>
+      <div class="answer-block">
+        <p class="turn-state muted"></p>
+        <div class="answer"></div>
+        <ul class="gaps"></ul>
+        <div class="excerpt" hidden>
+          <p class="excerpt-title"></p>
+          <p class="excerpt-path muted small"></p>
+          <blockquote class="excerpt-text"></blockquote>
+          <a class="open-obsidian">Open in Obsidian</a>
+        </div>
+        <div class="turn-actions">
+          <button type="button" class="retry" hidden>Retry</button>
+          <button type="button" class="thumbs" aria-pressed="false" aria-label="Mark this answer as not good" hidden>👎</button>
+        </div>
+        <form class="feedback-form" hidden>
+          <label class="small">What was wrong? (optional)
+            <textarea rows="2" maxlength="2000"></textarea>
+          </label>
+          <button type="submit">Save note</button>
+        </form>
+      </div>
+    </li>
+  </template>
+</body>
+</html>

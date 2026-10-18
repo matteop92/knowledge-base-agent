@@ -24,6 +24,13 @@ class CapturedSource:
     run_dir: Path
 
 
+def document_id_for(root_alias: str, relative_path: str) -> str:
+    """Stable document ID for a locator; case-only path changes keep the same ID."""
+    locator_path = unicodedata.normalize("NFC", relative_path)
+    identity = f"knowledge-agent://{root_alias.casefold()}/{locator_path.casefold()}"
+    return str(uuid5(NAMESPACE_URL, identity))
+
+
 def capture_source(
     source_root: Path,
     relative_path: str,
@@ -58,9 +65,8 @@ def capture_source(
 
     locator_path = unicodedata.normalize("NFC", relative.as_posix())
     locator = SourceLocator(root_alias=root_alias, relative_path=locator_path)
-    identity = f"knowledge-agent://{root_alias.casefold()}/{locator_path.casefold()}"
     manifest = CaptureManifest(
-        document_id=str(uuid5(NAMESPACE_URL, identity)),
+        document_id=document_id_for(root_alias, locator_path),
         run_id=str(uuid4()),
         source_sha256=hashlib.sha256(original_bytes).hexdigest(),
         locator=locator,

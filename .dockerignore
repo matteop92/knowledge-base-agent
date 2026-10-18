@@ -1,0 +1,9 @@
+.git
+.env
+.local
+**/__pycache__
+evals
+tests
+docs
+sources
+supabase
