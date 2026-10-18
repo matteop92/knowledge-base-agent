@@ -34,3 +34,20 @@ tags:
   when: Getting work done, such as focus, workflows, tools or time management.
 - name: ai
   when: Artificial intelligence, such as models, agents, prompts or AI products.
+- name: agents
+  when: AI agents specifically, such as tool-using assistants, retrieval harnesses or agent design. Use ai for AI in general.
+- name: networking
+  when: Building and using relationships, such as asking for intros, helping others first or joining communities.
+- name: growth
+  when: Growing a business's customers or revenue, such as growth tactics or spending through a downturn.
+- name: positioning
+  when: How a product, book or person is framed to stand out, such as the premise, category or core message.
+- name: venture-capital
+  when: Investing in and funding companies, such as how investors spot trends, raise funds or pick founders.
+- name: education
+  when: Learning and teaching, such as how children learn, schooling or study methods.
+- name: volunteering
+  when: Giving time to organisations or causes, and what it brings back.
+# Never applied and never suggested again.
+blocked:
+- technology

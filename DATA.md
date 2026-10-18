@@ -1,6 +1,6 @@
 # Data and provenance
 
-The original Markdown vault remains authoritative. Local JSON artifacts under ignored `.local/ingestion-runs/<run_id>/` are validated before loading into the versioned private `knowledge` Postgres schema. The migration works locally and is applied to the hosted Knowledge Agent project. A restricted hosted login loaded and published one synthetic fixture; both vector and full-text search returned source-linked spans matching stored bytes. The hosted default profile was reset to null afterward, and no vault files have been loaded there.
+The original Markdown vault remains authoritative. Local JSON artifacts under ignored `.local/ingestion-runs/<run_id>/` are validated before loading into the versioned private `knowledge` Postgres schema. The migration works locally and is applied to the hosted Knowledge Agent project. A restricted hosted login loaded and published one synthetic fixture; both vector and full-text search returned source-linked spans matching stored bytes, and that fixture was deleted on 2026-10-18. The `Knowledge` folder of the vault (22 notes, 227 chunks) is now loaded there as the selected profile `vault-structural-raw-1be6e0931387`, with each note's generated properties (type, list tags, people, date, description) in `knowledge.document_properties` beside the unchanged source.
 
 | Object | What it represents | Key link |
 | --- | --- | --- |

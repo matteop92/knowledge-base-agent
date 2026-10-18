@@ -23,7 +23,7 @@ from app.models.client import ModelClient, ModelSpec, ModelUsage
 from app.models.routes import price_usd
 
 
-PROMPT_VERSION = "properties_v2"
+PROMPT_VERSION = "properties_v3"
 PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / f"{PROMPT_VERSION}.md"
 DEFAULT_MODEL = "openai/gpt-6-luna"
 MODEL_VERSION = "accepted-2026-10-17"
@@ -49,6 +49,8 @@ class TagList:
     approved: bool = False
     # One line per tag saying when it applies; the model sees these so overlapping tags are used consistently.
     definitions: tuple[tuple[str, str], ...] = ()
+    # Tags the user rejected: never applied and never suggested again.
+    blocked: tuple[str, ...] = ()
 
     @classmethod
     def load(cls, path: Path = TAGS_PATH) -> TagList | None:
@@ -60,8 +62,10 @@ class TagList:
         definitions = tuple((str(item["name"]).strip().lower(), str(item["when"]).strip())
                             for item in items if isinstance(item, dict) and item.get("when"))
         types = tuple(str(item).strip() for item in data.get("source_types") or DEFAULT_SOURCE_TYPES)
-        return cls(tags=tuple(dict.fromkeys(tag for tag in tags if tag)),
-                   source_types=types, approved=data.get("approved") is True, definitions=definitions)
+        blocked = tuple(str(item).strip().lower() for item in data.get("blocked") or [])
+        return cls(tags=tuple(dict.fromkeys(tag for tag in tags if tag and tag not in blocked)),
+                   source_types=types, approved=data.get("approved") is True, definitions=definitions,
+                   blocked=blocked)
 
 
 def model_spec() -> ModelSpec:
@@ -70,14 +74,15 @@ def model_spec() -> ModelSpec:
 
 
 def existing_properties(parsed: ParsedDocument) -> dict[str, Any]:
-    """Properties the file already sets; these are never overwritten."""
+    """Properties the file already sets; these are never overwritten.
+
+    Tags are not here: every note gets list tags next to its own tags, which stay in the file untouched.
+    """
     metadata, frontmatter = parsed.metadata, parsed.metadata.frontmatter
     found: dict[str, Any] = {}
     kind = frontmatter.get("type") or frontmatter.get("source_type")
     if isinstance(kind, str) and kind.strip():
         found["source_type"] = kind.strip()
-    if metadata.tags:
-        found["tags"] = list(metadata.tags)
     if metadata.authors or metadata.guests:
         found["people"] = list(dict.fromkeys([*metadata.authors, *metadata.guests]))
     when = metadata.published or metadata.date or metadata.created
@@ -131,7 +136,8 @@ def model_input(parsed: ParsedDocument, tag_list: TagList) -> str:
     lines = [f"Path: {parsed.locator.relative_path}", f"Title: {parsed.metadata.title}",
              f"Allowed types: {', '.join(tag_list.source_types)}",
              "Approved tags:", *_tag_lines(tag_list),
-             f"Existing properties: {existing or '(none)'}", "", "Text:", body]
+             f"Existing properties: {existing or '(none)'}",
+             f"The note's own tags (hints only): {', '.join(parsed.metadata.tags) or '(none)'}", "", "Text:", body]
     return "\n".join(lines)
 
 
@@ -164,7 +170,8 @@ def _clean_reply(data: dict[str, Any], tag_list: TagList) -> tuple[dict[str, Any
         if proposed in allowed:
             proposed = None
     tags = list(dict.fromkeys(tags))[:MAX_TAGS if tag_list.tags else MAX_SUGGESTED_TAGS]
-    if proposed is not None and not TAG.match(proposed):
+    tags = [tag for tag in tags if tag not in tag_list.blocked]
+    if proposed is not None and (not TAG.match(proposed) or proposed in tag_list.blocked):
         proposed = None
     people = [str(name).strip() for name in data["people"] if isinstance(name, str) and name.strip()][:10]
     when = data["date"]

@@ -60,21 +60,35 @@ class ClassifierTests(unittest.TestCase):
                                              "people": ["Derek Sivers"], "date": "2024-05-01",
                                              "description": "A note about leading teams.", "language": "en"})
 
-    def test_existing_frontmatter_is_kept_and_only_gaps_are_filled(self) -> None:
+    def test_existing_frontmatter_is_kept_and_list_tags_sit_next_to_own_tags(self) -> None:
         parsed = parse("---\ntags: [ops]\nauthor: Jane Doe\n---\n# Leading\n\nText.\n")
         self.assertEqual(existing_properties(parsed)["people"], ["Jane Doe"])
         result = classify_properties(parsed, TAGS, FakeClassifierClient())
-        self.assertNotIn("tags", result.properties)
+        # The user chose list tags on every note, beside the note's own tags (2026-10-18).
+        self.assertEqual(result.properties["tags"], ["leadership", "ai"])
         self.assertNotIn("people", result.properties)
         self.assertEqual(result.properties["source_type"], "note")
 
-    def test_a_complete_file_makes_no_model_call(self) -> None:
+    def test_a_file_with_every_property_still_gets_only_list_tags(self) -> None:
         parsed = parse("---\ntype: note\ntags: [ops]\nauthor: Jane Doe\ndate: 2024-01-02\n"
                        "description: Ops notes.\nlanguage: en\n---\n# Ops\n\nText.\n")
-        client = FakeClassifierClient()
-        self.assertEqual(missing_fields(parsed), [])
-        self.assertFalse(classify_properties(parsed, TAGS, client).called_model)
-        self.assertEqual(client.generations, 0)
+        self.assertEqual(missing_fields(parsed), ["tags"])
+        result = classify_properties(parsed, TAGS, FakeClassifierClient())
+        self.assertEqual(result.properties, {"tags": ["leadership", "ai"]})
+
+    def test_blocked_tags_are_never_applied_or_suggested(self) -> None:
+        tags = TagList(tags=("leadership", "ai"), approved=True, blocked=("technology",))
+        client = FakeClassifierClient(reply(tags=["leadership"], proposed_tag="technology"))
+        self.assertIsNone(classify_properties(parse("# X\n\nText.\n"), tags, client).proposed_tag)
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "tags.yaml"
+            path.write_text("approved: true\ntags:\n- ai\n- technology\nblocked:\n- Technology\n", encoding="utf-8")
+            self.assertEqual(TagList.load(path).tags, ("ai",))
+
+    def test_search_labels_show_own_and_list_tags_together(self) -> None:
+        from app.storage.search import source_label
+        _, _, tags = source_label({"tags": ["podcast"], "generated": {"tags": ["emotions", "podcast"]}}, "a.md")
+        self.assertEqual(tags, ["podcast", "emotions"])
 
     def test_unlisted_tags_are_dropped_and_one_is_kept_as_a_proposal(self) -> None:
         client = FakeClassifierClient(reply(tags=["leadership", "gardening", "cooking"], proposed_tag=None))
@@ -192,6 +206,9 @@ class LiveClassifierTests(unittest.TestCase):
         self.assertEqual(self.stored()[0][0], "failed")
 
     def test_files_loaded_before_approval_are_backfilled(self) -> None:
+        # Dates are stored as JSON strings; the backfill must read them back.
+        self.vault.write("Knowledge/Notes/lead.md",
+                         "---\npublished: 2026-09-11\ncreated: 2026-09-20\n---\n# Leading\n\nThe orchard team needs a lead.\n")
         self.live(FakeClassifierClient(), tag_list=TagList(tags=("ai",), approved=False))
         self.assertEqual(self.stored(), [])
         client = FakeClassifierClient()
