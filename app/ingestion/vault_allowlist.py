@@ -52,11 +52,11 @@ def enforce(root: Path, included: list[str], *, delete: bool) -> tuple[list[str]
     return outside, loose
 
 
-def merged_exclusions(baseline: Path, extra: Path, new: list[str], keep: list[str] = ()) -> list[str]:
-    """The baseline skip list plus every folder found since, remembered in `extra`."""
+def merged_exclusions(baseline: Path | None, extra: Path, new: list[str], keep: list[str] = ()) -> list[str]:
+    """The optional baseline skip list plus every folder found since, remembered in `extra`."""
     names: list[str] = []
     for path in (baseline, extra):
-        if path.is_file():
+        if path is not None and path.is_file():
             names += [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     # An allowed folder must never stay on the skip list, even if a mistake once put it there.
     names = [name for name in names if not any(_same(name, allowed) for allowed in keep)]
@@ -82,7 +82,7 @@ def tool_is_pull_only(root: Path) -> bool:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(os.getenv("KNOWLEDGE_SOURCE_ROOT", "/data/vault")))
-    parser.add_argument("--baseline", type=Path, default=Path(__file__).resolve().parents[2] / "deploy" / "excluded-folders.txt")
+    parser.add_argument("--baseline", type=Path, default=None, help="optional fixed list of folder names to skip")
     parser.add_argument("--extra", type=Path, default=Path("/data/excluded-folders-extra.txt"))
     parser.add_argument("--check", action="store_true", help="only say whether this run would delete")
     args = parser.parse_args(argv)

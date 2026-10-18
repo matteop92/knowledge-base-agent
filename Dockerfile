@@ -1,15 +1,20 @@
 # Obsidian's sync tool needs Node 22; build it in its own stage so Python's image stays clean.
-FROM node:22-slim AS obsidian
-RUN npm install -g obsidian-headless@0.0.14
+# Base images are pinned by digest so a rebuild cannot silently pick up a different image.
+FROM node:22-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS obsidian
+WORKDIR /opt/obsidian
+# The lock file pins the sync tool and everything it depends on.
+COPY deploy/obsidian/package.json deploy/obsidian/package-lock.json ./
+RUN npm ci --omit=dev
 
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /srv/knowledge-agent
 
 COPY --from=obsidian /usr/local/bin/node /usr/local/bin/node
-COPY --from=obsidian /usr/local/lib/node_modules/obsidian-headless /opt/obsidian-headless
-RUN ln -s /opt/obsidian-headless/cli.js /usr/local/bin/ob && chmod +x /opt/obsidian-headless/cli.js
+COPY --from=obsidian /opt/obsidian/node_modules /opt/obsidian/node_modules
+RUN ln -s /opt/obsidian/node_modules/obsidian-headless/cli.js /usr/local/bin/ob \
+    && chmod +x /opt/obsidian/node_modules/obsidian-headless/cli.js && ob --version
 
 COPY pyproject.toml ./
 COPY app ./app
