@@ -63,10 +63,11 @@ How it fits together:
 - **Phase 2 (captures need two-way sync):** in a server shell run `ob sync-config --path /data/vault --mode bidirectional`
   and set the Railway variable `KNOWLEDGE_SYNC_MODE` to `bidirectional` in the same step. The sign-in and the volume stay as
   they are. From then on the cleanup stops deleting.
-  **Before switching, do both of these** (a review found the risk, not yet tested against the real tool): set
-  `KNOWLEDGE_SYNC_ENABLED` to `false` and redeploy, so no cleanup runs mid-switch; and test on a throwaway vault that
-  switching from download-only to two-way does not send the server's earlier deletions back to the real vault. If it does,
-  start the server copy from a fresh sync state (empty `/data/vault`, clear `/data/home`, run `ob-setup.sh` again).
+  **Tested 2026-10-18 on a throwaway folder in the real vault:** after a folder was added to the skip list in two-way mode,
+  deleting its local copy and syncing three times did not delete it from the vault. So in Phase 2 the cleanup may delete in
+  two-way mode, but only folders already on the skip list, and the skip list must be updated first. Before switching, still
+  set `KNOWLEDGE_SYNC_ENABLED` to `false` and redeploy so no cleanup runs mid-switch. (Tested for one folder with the tool at
+  version 0.0.14; re-check after upgrading it.)
   The `(conflict)` copies that `--conflict-strategy conflict` can create also need handling by then.
 
 Variables (all optional except the switch):
