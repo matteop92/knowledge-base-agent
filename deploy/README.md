@@ -48,7 +48,7 @@ How it fits together:
 - **Only the allowed folders stay on the server.** Obsidian's tool can skip folders by name but cannot say "only this one", so
   a folder you create later in the vault would be copied. `app/ingestion/vault_allowlist.py` removes every folder and loose
   note outside `KNOWLEDGE_INCLUDED_FOLDERS` from the server's copy and adds the folder to the tool's skip list
-  (remembered in `/data/excluded-folders-extra.txt`). A new folder can therefore sit on the server for up to a minute.
+  (remembered in `/data/excluded-folders-extra.txt`, which also holds the names pasted at setup). A new folder can therefore sit on the server for up to a minute.
   Entries starting with a dot are left alone.
 - **Deleting is allowed only while the copy is download-only.** In two-way sync a delete on the server would reach the real
   vault. The cleanup deletes only when `KNOWLEDGE_SYNC_MODE` is `pull-only` (the default) **and** `ob sync-config` itself
@@ -87,9 +87,10 @@ Variables (all optional except the switch):
 2. Open a shell on the server: install the Railway CLI (`npm install -g @railway/cli`), then `railway login`, `railway link`
    (pick this project and service) and `railway ssh`.
 3. In that shell run `sh deploy/ob-setup.sh`. It asks for your Obsidian email, password (and a two-factor code), the vault name
-   and the vault's encryption password if it has one. It skips every top-level folder except `Knowledge` (the starting list is
-   in `deploy/excluded-folders.txt`; later folders are handled automatically), syncs download-only, prints the tool's
-   settings (check that it says `pull-only`) and how many notes arrived.
+   and the vault's encryption password if it has one. It then asks you to paste the names of your other top-level folders (kept
+   only on the volume, never in the repository; later folders are handled automatically) so they are skipped from the first
+   download. It syncs download-only, prints the tool's settings (check that it says `pull-only` and that cleanup "will delete"),
+   and how many notes arrived.
 4. In Railway Variables set `KNOWLEDGE_SYNC_ENABLED` to `true`. Railway redeploys.
 5. Check: sign in to the app, open `/health` and look at `index`: `status` should read `ok`, and `last_result` shows
    `files_seen` equal to the number of `Knowledge` notes.
