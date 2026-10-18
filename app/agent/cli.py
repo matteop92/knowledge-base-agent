@@ -18,7 +18,8 @@ from app.models.client import ModelClientError, ModelSpec
 from app.models.openrouter import OpenRouterClient
 from app.storage import StorageError
 from app.storage.loader import connect_runtime
-from app.storage.retrieval import DatabaseRetriever, _price_ok, selected_embedding_spec
+from app.agent.endpoints import check_answer_routes, measured_usd, private_routes, worst_case_usd
+from app.storage.retrieval import DatabaseRetriever, selected_embedding_spec
 
 
 def _positive_decimal(value: str) -> Decimal:
@@ -29,18 +30,6 @@ def _positive_decimal(value: str) -> Decimal:
     if not number.is_finite() or number <= 0:
         raise argparse.ArgumentTypeError("expected a positive decimal")
     return number
-
-
-def _check_generation_price(pricing: object, ceiling: Decimal) -> tuple[Decimal, Decimal]:
-    _price_ok(pricing, ceiling)
-    try:
-        output = Decimal(str(pricing["completion"]))
-        prompt = Decimal(str(pricing["prompt"]))
-    except (KeyError, TypeError, InvalidOperation):
-        raise ModelClientError("generation endpoint has no valid output price") from None
-    if not output.is_finite() or output < 0 or output * 1_000_000 > ceiling:
-        raise ModelClientError("generation endpoint exceeds price ceiling")
-    return prompt, output
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -87,28 +76,26 @@ def main(argv: list[str] | None = None) -> int:
         with connect_runtime() as conn, conn.transaction():
             conn.execute("set transaction isolation level repeatable read read only")
             sid, spec = selected_embedding_spec(conn)
-            private_route = {"only": [args.embedding_provider_tag], "allow_fallbacks": False,
-                             "data_collection": "deny", "zdr": True}
-            generation_route = {**private_route, "only": [args.generation_provider_tag], "require_parameters": True}
+            private_route, model_providers = private_routes(args.model, args.embedding_provider_tag,
+                                                            args.generation_provider_tag)
             client = OpenRouterClient(allow_live=args.live and not args.dry_run, request_budget=args.request_budget,
                                       estimated_input_token_budget=args.input_byte_budget,
                                       conservative_input_budget=True,
                                       capture_failed_outputs=args.report is not None,
                                       provider=private_route,
-                                      model_providers={args.model: generation_route})
-            embedding_endpoint = client.require_zdr_route(spec.model, args.embedding_provider_tag)
-            _price_ok(embedding_endpoint["pricing"], args.max_embedding_usd_per_million)
-            generation_endpoint = client.require_zdr_route(args.model, args.generation_provider_tag,
-                                                           structured=True)
-            prompt_price, completion_price = _check_generation_price(
-                generation_endpoint["pricing"], args.max_generation_usd_per_million)
-            if args.reasoning_effort != "none" and "reasoning" not in generation_endpoint["supported_parameters"]:
-                raise ModelClientError("generation endpoint lacks reasoning support")
-            # Charge the entire allowed input budget at the dearer input price,
-            # plus every allowed request at the completion-token bound.
-            upper_bound = (Decimal(args.input_byte_budget) * max(
-                prompt_price, Decimal(str(embedding_endpoint["pricing"]["prompt"])))
-                + Decimal(args.request_budget * limits.max_output_tokens * 4) * completion_price)
+                                      model_providers=model_providers)
+            routes = check_answer_routes(
+                client, embedding_model=spec.model, model=args.model,
+                embedding_tag=args.embedding_provider_tag, generation_tag=args.generation_provider_tag,
+                max_embedding_usd_per_million=args.max_embedding_usd_per_million,
+                max_generation_usd_per_million=args.max_generation_usd_per_million,
+                reasoning_effort=None if args.reasoning_effort == "none" else args.reasoning_effort)
+            embedding_endpoint, generation_endpoint = routes.embedding_endpoint, routes.generation_endpoint
+            upper_bound = worst_case_usd(
+                input_byte_budget=args.input_byte_budget, request_budget=args.request_budget,
+                max_output_tokens=limits.max_output_tokens,
+                input_usd_per_token=max(routes.prompt_price, routes.embedding_price),
+                completion_usd_per_token=routes.completion_price)
             if upper_bound > args.max_usd:
                 raise ModelClientError("configured worst-case spend exceeds --max-usd")
             hashes = dict(conn.execute("""select r.document_id,r.source_sha256 from knowledge.runs r
@@ -135,14 +122,7 @@ def main(argv: list[str] | None = None) -> int:
                                          model=ModelSpec(provider="openrouter", model_id=args.model,
                                                          model_version="current"),
                                          limits=limits, reasoning_effort=None if args.reasoning_effort == "none" else args.reasoning_effort)
-                prices = {args.model: (prompt_price, completion_price),
-                          spec.model: (Decimal(str(embedding_endpoint["pricing"]["prompt"])), Decimal(0))}
-                known_usage = len(client.request_timings) == len(client.billable_requests) and all(usage.input_tokens is not None and (
-                    model_id == spec.model or usage.output_tokens is not None)
-                    for model_id, usage in client.billable_requests)
-                measured = sum(Decimal(usage.input_tokens or 0) * prices[model_id][0]
-                               + Decimal(usage.output_tokens or 0) * prices[model_id][1]
-                               for model_id, usage in client.billable_requests)
+                measured, known_usage = measured_usd(client, routes, model=args.model, embedding_model=spec.model)
                 value = {"status": "completed" if result.termination == "completed" and known_usage else "failed", "configuration": metadata,
                          "result": result.model_dump(mode="json"), "usage_complete": known_usage,
                          "refused_actions": sum("rejected" in action or action.get("action") == "invalid"

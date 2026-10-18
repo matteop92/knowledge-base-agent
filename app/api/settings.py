@@ -6,6 +6,9 @@ import os
 from dataclasses import dataclass, field
 from decimal import Decimal
 
+from app.models.routes import EMBEDDING_MODEL, PRICE_CEILINGS, TAGS
+from app.storage.spend import daily_cap_usd
+
 
 def _required(name: str) -> str:
     value = os.getenv(name, "").strip()
@@ -14,16 +17,22 @@ def _required(name: str) -> str:
     return value
 
 
+ANSWER_MODEL = "openai/gpt-5-mini"
+
+
 @dataclass(frozen=True)
 class AnswerSettings:
-    """Mirrors the accepted CLI defaults: GPT-5 mini at medium reasoning on pinned private routes."""
+    """The accepted answer configuration: GPT-5 mini at medium reasoning on the pinned private routes.
 
-    model: str = "openai/gpt-5-mini"
+    Provider tags and price ceilings come from app.models.routes, so a route change reaches the web app too.
+    """
+
+    model: str = ANSWER_MODEL
     reasoning_effort: str | None = "medium"
-    generation_provider_tag: str = "azure"
-    embedding_provider_tag: str = "perplexity/int8"
-    max_generation_usd_per_million: Decimal = Decimal("2")
-    max_embedding_usd_per_million: Decimal = Decimal("0.004")
+    generation_provider_tag: str = TAGS[ANSWER_MODEL]
+    embedding_provider_tag: str = TAGS[EMBEDDING_MODEL]
+    max_generation_usd_per_million: Decimal = Decimal(str(PRICE_CEILINGS[ANSWER_MODEL][1]))
+    max_embedding_usd_per_million: Decimal = Decimal(str(PRICE_CEILINGS[EMBEDDING_MODEL][0]))
     max_usd_per_answer: Decimal = Decimal("0.40")
     request_budget: int = 18
     input_byte_budget: int = 800_000
@@ -54,6 +63,6 @@ class Settings:
             supabase_jwt_secret=os.getenv("SUPABASE_JWT_SECRET") or None,
             vault_name=os.getenv("KNOWLEDGE_VAULT_NAME", "New Vault"),
             cookie_secure=os.getenv("KNOWLEDGE_COOKIE_SECURE", "true").lower() != "false",
-            daily_cap_usd=Decimal(os.getenv("KNOWLEDGE_DAILY_CAP_USD", "2")),
+            daily_cap_usd=daily_cap_usd(),
             answer=AnswerSettings(max_usd_per_answer=Decimal(os.getenv("KNOWLEDGE_MAX_USD_PER_ANSWER", "0.40"))),
         )

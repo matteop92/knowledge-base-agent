@@ -11,5 +11,10 @@ do $$ declare item record; begin
     where n.nspname = 'public' and p.proname = 'rls_auto_enable'
   loop
     execute format('revoke execute on function %s from public, anon, authenticated', item.signature);
+    -- Fail the migration instead of silently leaving the function callable.
+    if has_function_privilege('anon', item.signature, 'execute')
+       or has_function_privilege('authenticated', item.signature, 'execute') then
+      raise exception 'revoke had no effect on %', item.signature;
+    end if;
   end loop;
 end $$;

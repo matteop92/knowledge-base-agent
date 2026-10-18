@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 import psycopg
 from fastapi import Depends, FastAPI, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -49,7 +50,9 @@ class FeedbackRequest(BaseModel):
 
 def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
                auth: SupabaseAuth | None = None, engine: AnswerEngine | None = None) -> FastAPI:
-    connect = connect or (lambda: psycopg.connect(settings.database_url, autocommit=True))
+    # A stalled database must fail the request, not hang it: 10 s to connect, 60 s per statement.
+    connect = connect or (lambda: psycopg.connect(settings.database_url, autocommit=True, connect_timeout=10,
+                                                  options="-c statement_timeout=60000"))
     auth = auth or SupabaseAuth(settings)
     sessions = SessionStore(connect, settings.session_days)
     engine = engine or OpenRouterAnswerEngine(settings, connect)
@@ -58,15 +61,28 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
     store = ConversationStore(connect, timedelta(seconds=engine.limits.max_seconds))
     jobs = AnswerJobs(store, engine, connect, settings)
     limiter = RateLimiter()
+    # Across all addresses, so spreading guesses over many addresses cannot brute-force a six-digit code.
+    verify_limiter = RateLimiter(limit=10, window_seconds=900)
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.jobs = jobs
 
     @app.on_event("startup")
     def interrupt_running_turns() -> None:
         # Only turns past the time limit: during a deploy the old server may still be answering newer ones.
-        count = store.interrupt_running()
+        count = jobs.expire_stale()
         if count:
             log.info("marked %d running turns as interrupted", count)
+
+    @app.on_event("shutdown")
+    def finish_running_answers() -> None:
+        # Give in-flight answers time to finish and record their spend before the process exits.
+        jobs.wait(engine.limits.max_seconds + 30)
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(_: Request, exc: RequestValidationError):
+        # Same {"error": ...} shape as every other failure; input values are never echoed back.
+        fields = sorted({".".join(str(part) for part in error["loc"][1:]) or "body" for error in exc.errors()})
+        return JSONResponse({"error": "invalid request: " + ", ".join(fields)}, status_code=422)
 
     @app.middleware("http")
     async def guard(request: Request, call_next):
@@ -134,8 +150,10 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
     @app.post("/auth/verify")
     def verify_code(body: VerifyRequest, request: Request, response: Response):
         limiter.check(client_key(request))
+        verify_limiter.check("verify")
         if body.email.strip().lower() != settings.allowed_email:
-            raise AuthError(403, "not authorised")
+            # Same reply as a wrong code, so the reply never reveals which address is allowed.
+            raise AuthError(401, "code expired or wrong")
         auth.verify_code(settings.allowed_email, body.code)
         token, _ = sessions.create()
         set_session_cookie(response, token)
@@ -176,6 +194,7 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
 
     @app.get("/api/conversations/{conversation_id}")
     def conversation(conversation_id: str, _: Session = Depends(session)):
+        jobs.expire_stale()
         return store.get(_uuid(conversation_id))
 
     @app.post("/api/conversations", status_code=202)
@@ -190,6 +209,7 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
 
     @app.get("/api/turns/{turn_id}")
     def turn(turn_id: str, _: Session = Depends(session)):
+        jobs.expire_stale()
         return store.turn(_uuid(turn_id))
 
     @app.post("/api/turns/{turn_id}/feedback")
@@ -240,7 +260,7 @@ def _security(response: Response) -> Response:
 
 def build() -> FastAPI:
     """Entry point for uvicorn: `uvicorn app.api.main:build --factory`."""
-    from app.ingestion.vault_sync import load_env_file
+    from app.env import load_env_file
 
     load_env_file()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")

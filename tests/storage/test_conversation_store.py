@@ -17,7 +17,8 @@ from app.storage.records import PublicationSelection, SearchProfile, spec_id
 from tests.storage.database import apply_migrations
 from tests.storage.test_stage3_integration import fixture_run
 
-NEW_TABLES = ("conversations", "turns", "capture_jobs", "sessions", "feedback", "spend")
+NEW_TABLES = ("conversations", "turns", "capture_jobs", "sessions", "feedback", "spend",
+              "document_properties")
 
 
 @unittest.skipUnless(os.getenv("KNOWLEDGE_TEST_DATABASE_URL"), "set disposable KNOWLEDGE_TEST_DATABASE_URL")
@@ -88,6 +89,32 @@ class ConversationStoreTest(unittest.TestCase):
             self.assertIsNone(self.conn.execute("select 1 from knowledge.active_runs where document_id=%s", (document,)).fetchone())
             self.assertIsNotNone(self.conn.execute("select 1 from knowledge.runs where run_id=%s", (run_dir.name,)).fetchone())
             self.assertEqual(self.conn.execute(count_chunks, (run_dir.name,)).fetchone()[0], before)
+
+    def test_rls_auto_enable_revoke_removes_api_access_and_keeps_the_trigger_working(self):
+        migration = Path("supabase/migrations/20261016180000_revoke_rls_auto_enable.sql").read_text(encoding="utf-8")
+        self.conn.execute("reset role")
+        try:
+            with self.conn.transaction(force_rollback=True):
+                # A stand-in for the hosted function, which local databases do not have.
+                self.conn.execute("""create function public.rls_auto_enable() returns event_trigger
+                    language plpgsql security definer as $f$ declare r record; begin
+                    for r in select * from pg_event_trigger_ddl_commands()
+                      where command_tag='CREATE TABLE' and schema_name='public' loop
+                      execute format('alter table %s enable row level security', r.object_identity);
+                    end loop; end $f$""")
+                self.conn.execute("grant execute on function public.rls_auto_enable() to anon, authenticated")
+                self.conn.execute("create event trigger ensure_rls_probe on ddl_command_end "
+                                  "execute function public.rls_auto_enable()")
+                self.conn.execute(migration)
+                for role in ("anon", "authenticated"):
+                    self.assertFalse(self.conn.execute(
+                        "select has_function_privilege(%s, 'public.rls_auto_enable()', 'execute')",
+                        (role,)).fetchone()[0])
+                self.conn.execute("create table public.rls_probe (id int)")
+                self.assertTrue(self.conn.execute(
+                    "select relrowsecurity from pg_class where relname='rls_probe'").fetchone()[0])
+        finally:
+            self.conn.execute("set role knowledge_runtime")
 
     def test_api_roles_cannot_read_the_new_tables(self):
         for role in ("anon", "authenticated"):

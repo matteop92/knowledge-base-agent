@@ -23,6 +23,18 @@ def _title(question: str) -> str:
     return text if len(text) <= TITLE_CHARS else text[:TITLE_CHARS - 1].rstrip() + "…"
 
 
+TURN_SELECT = """select t.turn_id, t.conversation_id, t.position, t.question, t.status, t.receipt,
+        t.cost_usd, t.error, t.created_at, t.finished_at, f.verdict, f.note
+    from knowledge.turns t left join knowledge.feedback f on f.turn_id=t.turn_id"""
+
+
+def _turn_dict(row) -> dict[str, Any]:
+    return {"id": str(row[0]), "conversation_id": str(row[1]), "position": row[2], "question": row[3],
+            "status": row[4], "receipt": row[5], "cost_usd": float(row[6]), "error": row[7],
+            "created_at": row[8].isoformat(), "finished_at": row[9].isoformat() if row[9] else None,
+            "feedback": {"verdict": row[10], "note": row[11]} if row[10] else None}
+
+
 class ConversationStore:
     def __init__(self, connect: Callable[[], Any], running_limit: timedelta) -> None:
         self.connect = connect
@@ -41,9 +53,9 @@ class ConversationStore:
                                (conversation_id,)).fetchone()
             if row is None:
                 raise ConversationError(404, "conversation not found")
-            turns = conn.execute("""select t.turn_id from knowledge.turns t
-                where t.conversation_id=%s order by t.position""", (conversation_id,)).fetchall()
-        return {"id": str(row[0]), "title": row[1], "turns": [self.turn(str(turn[0])) for turn in turns]}
+            turns = conn.execute(TURN_SELECT + " where t.conversation_id=%s order by t.position",
+                                 (conversation_id,)).fetchall()
+        return {"id": str(row[0]), "title": row[1], "turns": [_turn_dict(turn) for turn in turns]}
 
     def start_turn(self, conversation_id: str | None, question: str) -> tuple[str, str]:
         """Create the conversation if needed and a running turn; one running turn per conversation."""
@@ -79,12 +91,13 @@ class ConversationStore:
                 where turn_id=%s and status='running'""",
                          (status, Jsonb(receipt) if receipt is not None else None, round(cost_usd, 8), error, turn_id))
 
-    def interrupt_running(self) -> int:
+    def interrupt_running(self) -> list[str]:
         """Fail running turns past the time limit; no live server can still be answering them."""
         cutoff = datetime.now(timezone.utc) - self.running_limit
         with self.connect() as conn:
-            return conn.execute("""update knowledge.turns set status='failed', error=%s, finished_at=now()
-                where status='running' and created_at < %s""", (INTERRUPTED, cutoff)).rowcount
+            rows = conn.execute("""update knowledge.turns set status='failed', error=%s, finished_at=now()
+                where status='running' and created_at < %s returning turn_id""", (INTERRUPTED, cutoff)).fetchall()
+        return [str(row[0]) for row in rows]
 
     def running_count(self) -> int:
         cutoff = datetime.now(timezone.utc) - self.running_limit
@@ -93,18 +106,11 @@ class ConversationStore:
                                 (cutoff,)).fetchone()[0]
 
     def turn(self, turn_id: str) -> dict[str, Any]:
-        self.interrupt_running()
         with self.connect() as conn:
-            row = conn.execute("""select t.turn_id, t.conversation_id, t.position, t.question, t.status, t.receipt,
-                    t.cost_usd, t.error, t.created_at, t.finished_at, f.verdict, f.note
-                from knowledge.turns t left join knowledge.feedback f on f.turn_id=t.turn_id
-                where t.turn_id=%s""", (turn_id,)).fetchone()
+            row = conn.execute(TURN_SELECT + " where t.turn_id=%s", (turn_id,)).fetchone()
         if row is None:
             raise ConversationError(404, "turn not found")
-        return {"id": str(row[0]), "conversation_id": str(row[1]), "position": row[2], "question": row[3],
-                "status": row[4], "receipt": row[5], "cost_usd": float(row[6]), "error": row[7],
-                "created_at": row[8].isoformat(), "finished_at": row[9].isoformat() if row[9] else None,
-                "feedback": {"verdict": row[10], "note": row[11]} if row[10] else None}
+        return _turn_dict(row)
 
     def set_feedback(self, turn_id: str, note: str | None) -> None:
         note = (note or "").strip()[:2000] or None

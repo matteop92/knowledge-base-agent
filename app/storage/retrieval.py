@@ -121,7 +121,7 @@ def selected_embedding_spec(conn: psycopg.Connection) -> tuple[str, EmbeddingSpe
     return profile[3], spec
 
 
-def _price_ok(pricing: object, max_usd_per_million: Decimal) -> None:
+def price_ok(pricing: object, max_usd_per_million: Decimal) -> None:
     if not max_usd_per_million.is_finite() or max_usd_per_million < 0:
         raise ModelClientError("query embedding price ceiling is invalid")
     if not isinstance(pricing, dict) or pricing.get("prompt") is None:
@@ -142,7 +142,7 @@ def embed_queries(conn: psycopg.Connection, client: OpenRouterClient, queries: l
         raise StorageError("query embedding needs nonempty strings")
     spec_id, spec = selected_embedding_spec(conn)
     route = client.require_zdr_route(spec.model, provider_tag)
-    _price_ok(route.get("pricing"), max_embedding_usd_per_million)
+    price_ok(route.get("pricing"), max_embedding_usd_per_million)
     provider = client._model_providers.get(spec.model, client._provider)
     if (not isinstance(provider, dict) or provider.get("only") != [provider_tag]
             or provider.get("allow_fallbacks") is not False

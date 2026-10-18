@@ -15,7 +15,7 @@ from app.models.client import ModelClientError, ModelSpec
 from app.models.openrouter import OpenRouterClient
 from evals.compare_chunking import CONTEXT_PRICES, Prepared, _load_key, prepare
 from evals.compare_embeddings import PRIVACY, _select_live_manifest
-from evals.trial_routes import provider_routes, verify_routes
+from app.models.routes import provider_routes, verify_routes
 
 MODELS = (
     "openai/gpt-5-mini", "openai/gpt-6-luna", "qwen/qwen3.5-9b",
