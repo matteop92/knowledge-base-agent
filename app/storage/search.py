@@ -82,7 +82,9 @@ def source_label(metadata: object, relative_path: str) -> tuple[str, list[str], 
     tags = names(data.get("tags"))
     generated = data.get("generated") if isinstance(data.get("generated"), dict) else {}
     # Generated properties fill only what the file does not set itself.
-    return str(title), people or names(generated.get("people")), tags or names(generated.get("tags"))
+    # List tags sit next to the file's own tags; other generated fields only fill gaps.
+    return (str(title), people or names(generated.get("people")),
+            list(dict.fromkeys(tags + names(generated.get("tags")))))
 
 
 def search_text(conn: psycopg.Connection, query: str, *, k: int = 10,
