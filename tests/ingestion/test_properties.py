@@ -101,6 +101,16 @@ class ClassifierTests(unittest.TestCase):
             self.assertIsNone(TagList.load(Path(folder) / "absent.yaml"))
             self.assertFalse(TagList.load(path).approved)
 
+    def test_tag_definitions_reach_the_model(self) -> None:
+        from app.ingestion.properties import model_input
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "tags.yaml"
+            path.write_text("approved: true\ntags:\n- name: Emotions\n  when: Feelings and how to work with them.\n- ai\n",
+                            encoding="utf-8")
+            tags = TagList.load(path)
+            self.assertEqual((tags.tags, tags.approved), (("emotions", "ai"), True))
+            self.assertIn("- emotions: Feelings and how to work with them.", model_input(parse("# X\n\nText.\n"), tags))
+
     def test_propose_tags_writes_a_draft_and_nothing_else(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             vault = VaultFixture(Path(folder))

@@ -23,7 +23,7 @@ from app.models.client import ModelClient, ModelSpec, ModelUsage
 from app.models.routes import price_usd
 
 
-PROMPT_VERSION = "properties_v1"
+PROMPT_VERSION = "properties_v2"
 PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / f"{PROMPT_VERSION}.md"
 DEFAULT_MODEL = "openai/gpt-6-luna"
 MODEL_VERSION = "accepted-2026-10-17"
@@ -45,17 +45,21 @@ class TagList:
     tags: tuple[str, ...]
     source_types: tuple[str, ...] = DEFAULT_SOURCE_TYPES
     approved: bool = False
+    # One line per tag saying when it applies; the model sees these so overlapping tags are used consistently.
+    definitions: tuple[tuple[str, str], ...] = ()
 
     @classmethod
     def load(cls, path: Path = TAGS_PATH) -> TagList | None:
         if not path.is_file():
             return None
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        tags = tuple(str(item["name"] if isinstance(item, dict) else item).strip().lower()
-                     for item in data.get("tags") or [])
+        items = data.get("tags") or []
+        tags = tuple(str(item["name"] if isinstance(item, dict) else item).strip().lower() for item in items)
+        definitions = tuple((str(item["name"]).strip().lower(), str(item["when"]).strip())
+                            for item in items if isinstance(item, dict) and item.get("when"))
         types = tuple(str(item).strip() for item in data.get("source_types") or DEFAULT_SOURCE_TYPES)
         return cls(tags=tuple(dict.fromkeys(tag for tag in tags if tag)),
-                   source_types=types, approved=data.get("approved") is True)
+                   source_types=types, approved=data.get("approved") is True, definitions=definitions)
 
 
 def model_spec() -> ModelSpec:
@@ -116,7 +120,8 @@ def model_input(parsed: ParsedDocument, tag_list: TagList) -> str:
     existing = existing_properties(parsed)
     lines = [f"Path: {parsed.locator.relative_path}", f"Title: {parsed.metadata.title}",
              f"Allowed types: {', '.join(tag_list.source_types)}",
-             f"Approved tags: {', '.join(tag_list.tags) if tag_list.tags else '(none yet)'}",
+             "Approved tags:", *(f"- {name}: {when}" for name, when in tag_list.definitions),
+             *([] if tag_list.definitions else [", ".join(tag_list.tags) if tag_list.tags else "(none yet)"]),
              f"Existing properties: {existing or '(none)'}", "", "Text:", body]
     return "\n".join(lines)
 
