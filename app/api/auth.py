@@ -91,6 +91,7 @@ class SupabaseAuth:
 class Session:
     token_sha256: str
     expires_at: datetime
+    renewed: bool = False
 
 
 class SessionStore:
@@ -116,12 +117,12 @@ class SessionStore:
                                (digest,)).fetchone()
             if row is None or row[0] <= now:
                 raise AuthError(401, "sign in required")
-            expires = row[0]
+            expires, renewed = row[0], False
             if now - row[1] > RENEW_AFTER:
-                expires = now + self.lifetime
+                expires, renewed = now + self.lifetime, True
                 conn.execute("update knowledge.sessions set last_used_at=%s, expires_at=%s where token_sha256=%s",
                              (now, expires, digest))
-        return Session(digest, expires)
+        return Session(digest, expires, renewed)
 
     def delete(self, token_sha256: str) -> None:
         with self.connect() as conn:
@@ -135,14 +136,18 @@ class SessionStore:
 class RateLimiter:
     """A small in-memory limit per client address for the public sign-in routes."""
 
-    def __init__(self, limit: int = 5, window_seconds: float = 60) -> None:
-        self.limit, self.window = limit, window_seconds
+    def __init__(self, limit: int = 5, window_seconds: float = 60, max_keys: int = 10_000) -> None:
+        self.limit, self.window, self.max_keys = limit, window_seconds, max_keys
         self._hits: dict[str, deque[float]] = defaultdict(deque)
         self._lock = threading.Lock()
 
     def check(self, key: str) -> None:
         now = time.monotonic()
         with self._lock:
+            if len(self._hits) >= self.max_keys:
+                # Drop addresses with no recent attempts so the table cannot grow without bound.
+                for stale in [name for name, items in self._hits.items() if not items or now - items[-1] > self.window]:
+                    del self._hits[stale]
             hits = self._hits[key]
             while hits and now - hits[0] > self.window:
                 hits.popleft()

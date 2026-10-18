@@ -80,11 +80,20 @@ class ConversationStore:
                          (status, Jsonb(receipt) if receipt is not None else None, round(cost_usd, 8), error, turn_id))
 
     def interrupt_running(self) -> int:
+        """Fail running turns past the time limit; no live server can still be answering them."""
+        cutoff = datetime.now(timezone.utc) - self.running_limit
         with self.connect() as conn:
             return conn.execute("""update knowledge.turns set status='failed', error=%s, finished_at=now()
-                where status='running'""", (INTERRUPTED,)).rowcount
+                where status='running' and created_at < %s""", (INTERRUPTED, cutoff)).rowcount
+
+    def running_count(self) -> int:
+        cutoff = datetime.now(timezone.utc) - self.running_limit
+        with self.connect() as conn:
+            return conn.execute("select count(*) from knowledge.turns where status='running' and created_at >= %s",
+                                (cutoff,)).fetchone()[0]
 
     def turn(self, turn_id: str) -> dict[str, Any]:
+        self.interrupt_running()
         with self.connect() as conn:
             row = conn.execute("""select t.turn_id, t.conversation_id, t.position, t.question, t.status, t.receipt,
                     t.cost_usd, t.error, t.created_at, t.finished_at, f.verdict, f.note
