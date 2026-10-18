@@ -52,7 +52,7 @@ class AllowlistTests(unittest.TestCase):
         baseline.write_text("Career\nTasks\n", encoding="utf-8")
         names = allowlist.merged_exclusions(baseline, extra, ["Brand New Folder", "career"])
         self.assertEqual(names, ["Career", "Tasks", "Brand New Folder"])
-        self.assertEqual(extra.read_text(encoding="utf-8").split(), ["Brand", "New", "Folder"])
+        self.assertEqual(extra.read_text(encoding="utf-8").splitlines(), ["Brand New Folder"])
         self.assertEqual(allowlist.merged_exclusions(baseline, extra, [])[-1], "Brand New Folder")
 
     def run_main(self, config_output: str, mode: str | None, returncode=0):
@@ -89,6 +89,59 @@ class AllowlistTests(unittest.TestCase):
     def test_a_failed_skip_list_update_is_reported(self) -> None:
         code, _ = self.run_main("mode: pull-only\n", None, returncode=1)
         self.assertEqual(code, 1)
+
+    def main_with(self, run, *extra_args):
+        baseline, extra = Path(self.temp.name) / "b.txt", Path(self.temp.name) / "e.txt"
+        with patch("subprocess.run", run):
+            return allowlist.main(["--root", str(self.root), "--baseline", str(baseline), "--extra", str(extra), *extra_args])
+
+    def test_a_failed_skip_list_update_deletes_nothing(self) -> None:
+        def run(command, **kwargs):
+            return Result("", 1) if "--excluded-folders" in command else Result("mode: pull-only\n", 0)
+        self.assertEqual(self.main_with(run), 1)
+        self.assertTrue((self.root / "Career/private.md").is_file())
+
+    def test_a_folder_name_with_a_trailing_slash_still_protects_knowledge(self) -> None:
+        with patch.dict(os.environ, {"KNOWLEDGE_INCLUDED_FOLDERS": "Knowledge/"}):
+            self.assertEqual(self.main_with(lambda *a, **k: Result("mode: pull-only\n", 0)), 0)
+        self.assertTrue((self.root / "Knowledge/Notes/kept.md").is_file())
+
+    def test_a_mistyped_allowlist_changes_nothing(self) -> None:
+        with patch.dict(os.environ, {"KNOWLEDGE_INCLUDED_FOLDERS": "Knowlege"}):
+            self.assertEqual(self.main_with(lambda *a, **k: Result("mode: pull-only\n", 0)), 1)
+        self.assertTrue((self.root / "Career/private.md").is_file())
+        self.assertTrue((self.root / "Knowledge/Notes/kept.md").is_file())
+
+    def test_an_allowed_folder_is_dropped_from_the_skip_list(self) -> None:
+        baseline, extra = Path(self.temp.name) / "b.txt", Path(self.temp.name) / "e.txt"
+        extra.write_text("Knowledge\n", encoding="utf-8")
+        self.assertNotIn("Knowledge", allowlist.merged_exclusions(baseline, extra, [], ["Knowledge"]))
+
+    def test_check_reports_without_deleting(self) -> None:
+        self.assertEqual(self.main_with(lambda *a, **k: Result("mode: pull-only\n", 0), "--check"), 0)
+        self.assertTrue((self.root / "Career/private.md").is_file())
+
+    def test_the_pull_only_check_fails_safe(self) -> None:
+        for output, code in (("pull-only", 1), ("pull-only bidirectional", 0), ("", 0)):
+            with self.subTest(output=output, code=code), patch("subprocess.run", lambda *a, **k: Result(output, code)):
+                self.assertFalse(allowlist.tool_is_pull_only(self.root))
+        with patch("subprocess.run", side_effect=OSError):
+            self.assertFalse(allowlist.tool_is_pull_only(self.root))
+
+    def test_a_link_is_removed_but_what_it_points_to_is_not(self) -> None:
+        target = Path(self.temp.name) / "elsewhere"
+        target.mkdir()
+        (target / "keep.md").write_text("# Keep\n", encoding="utf-8")
+        link = self.root / "Linked"
+        try:
+            link.symlink_to(target, target_is_directory=True)
+        except OSError:
+            self.skipTest("symlinks not permitted here")
+        allowlist.enforce(self.root, ["Knowledge"], delete=False)
+        self.assertTrue(link.is_symlink())
+        allowlist.enforce(self.root, ["Knowledge"], delete=True)
+        self.assertFalse(link.is_symlink())
+        self.assertTrue((target / "keep.md").is_file())
 
 
 if __name__ == "__main__":

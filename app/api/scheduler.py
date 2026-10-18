@@ -20,7 +20,7 @@ from app.ingestion.vault_sync import VaultSettings, VaultSyncError, parse_folder
 log = logging.getLogger("knowledge.api.scheduler")
 
 SUMMARY_KEYS = ("files_seen", "to_ingest", "published", "retired", "unchanged", "skipped_failed",
-                "properties_ready", "properties_failed", "properties_retry", "spent_usd", "stopped", "guard")
+                "retire_held", "properties_ready", "properties_failed", "properties_retry", "spent_usd", "stopped", "guard")
 
 
 def vault_settings_from_env() -> VaultSettings:
@@ -59,7 +59,14 @@ class IndexScheduler:
         self._stop.set()
 
     def status(self) -> dict[str, Any]:
-        return dict(self.state)
+        state = dict(self.state)
+        # The sync loop touches this file after each successful download; its age shows a stalled sync.
+        marker = os.getenv("KNOWLEDGE_SYNC_MARKER", "/data/last-sync")
+        try:
+            state["last_sync_at"] = datetime.fromtimestamp(os.path.getmtime(marker), timezone.utc).isoformat(timespec="seconds")
+        except OSError:
+            state["last_sync_at"] = None
+        return state
 
     def _loop(self) -> None:
         if self._stop.wait(self.first_delay):
@@ -86,7 +93,13 @@ class IndexScheduler:
             self.state["status"] = "skipped: the previous pass is still running"
             return False
         try:
-            if not self.vault_ready():
+            try:
+                ready = self.vault_ready()
+            except OSError as exc:
+                log.warning("vault check failed error=%s", type(exc).__name__)
+                self.state.update(status="failed", last_error=type(exc).__name__)
+                return False
+            if not ready:
                 self.state["status"] = "waiting for the first vault sync"
                 return False
             self.state.update(status="running", last_started_at=_now())
@@ -97,11 +110,12 @@ class IndexScheduler:
                                           tag_list=self.load_tags(), retire=self.ticks > 0)
                 self.state.update(status="ok", last_error=None,
                                   last_result={key: report[key] for key in SUMMARY_KEYS if key in report})
-            except (Exception, VaultSyncError) as exc:  # noqa: BLE001 - the next tick must still run
+                # Only a finished pass ends the hold on retirement; a failed first pass leaves it in place.
+                self.ticks += 1
+            except Exception as exc:  # noqa: BLE001 - the next tick must still run
                 log.warning("index pass failed error=%s", type(exc).__name__)
                 self.state.update(status="failed", last_error=type(exc).__name__)
             finally:
-                self.ticks += 1
                 self.state["last_finished_at"] = _now()
                 log.info("index pass finished status=%s seconds=%.1f", self.state["status"], time.monotonic() - started)
             return True

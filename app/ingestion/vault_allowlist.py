@@ -18,6 +18,8 @@ import sys
 import unicodedata
 from pathlib import Path
 
+from app.ingestion.vault_sync import parse_folders
+
 
 def _same(a: str, b: str) -> bool:
     return unicodedata.normalize("NFC", a).casefold() == unicodedata.normalize("NFC", b).casefold()
@@ -50,12 +52,14 @@ def enforce(root: Path, included: list[str], *, delete: bool) -> tuple[list[str]
     return outside, loose
 
 
-def merged_exclusions(baseline: Path, extra: Path, new: list[str]) -> list[str]:
+def merged_exclusions(baseline: Path, extra: Path, new: list[str], keep: list[str] = ()) -> list[str]:
     """The baseline skip list plus every folder found since, remembered in `extra`."""
     names: list[str] = []
     for path in (baseline, extra):
         if path.is_file():
             names += [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    # An allowed folder must never stay on the skip list, even if a mistake once put it there.
+    names = [name for name in names if not any(_same(name, allowed) for allowed in keep)]
     for name in new:
         if not any(_same(name, existing) for existing in names):
             names.append(name)
@@ -78,21 +82,40 @@ def tool_is_pull_only(root: Path) -> bool:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(os.getenv("KNOWLEDGE_SOURCE_ROOT", "/data/vault")))
-    parser.add_argument("--baseline", type=Path, default=Path("deploy/excluded-folders.txt"))
+    parser.add_argument("--baseline", type=Path, default=Path(__file__).resolve().parents[2] / "deploy" / "excluded-folders.txt")
     parser.add_argument("--extra", type=Path, default=Path("/data/excluded-folders-extra.txt"))
+    parser.add_argument("--check", action="store_true", help="only say whether this run would delete")
     args = parser.parse_args(argv)
-    included = [name.strip() for name in os.getenv("KNOWLEDGE_INCLUDED_FOLDERS", "Knowledge").split(",") if name.strip()]
+    included = list(parse_folders(os.getenv("KNOWLEDGE_INCLUDED_FOLDERS", "Knowledge")))
     if not args.root.is_dir():
         return 0
     # Both the setting and the sync tool's own configuration must say download-only before anything is deleted.
     delete = os.getenv("KNOWLEDGE_SYNC_MODE", "pull-only") == "pull-only" and tool_is_pull_only(args.root)
-    outside, loose = enforce(args.root, included, delete=delete)
+    if args.check:
+        print("cleanup will delete outside the allowed folders" if delete else "cleanup will NOT delete (not verified download-only)")
+        return 0
+    outside, loose = enforce(args.root, included, delete=False)
+    # If no allowed folder exists at all, the setting is probably wrong: change nothing rather than remove everything.
+    if not any(entry.is_dir() and any(_same(entry.name, name) for name in included) for entry in args.root.iterdir()):
+        print("none of the allowed folders exist in the vault copy; leaving everything as it is", file=sys.stderr)
+        return 1
+    # Tell the sync tool to skip new folders first, so a failed cleanup never leaves them syncing.
     if outside:
-        names = merged_exclusions(args.baseline, args.extra, outside)
-        result = subprocess.run(["ob", "sync-config", "--path", str(args.root), "--excluded-folders", ",".join(names)],
-                                capture_output=True, text=True)
+        names = merged_exclusions(args.baseline, args.extra, outside, included)
+        try:
+            result = subprocess.run(["ob", "sync-config", "--path", str(args.root), "--excluded-folders", ",".join(names)],
+                                    capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.SubprocessError):
+            print("could not update the skip list", file=sys.stderr)
+            return 1
         if result.returncode != 0:
             print("could not update the skip list", file=sys.stderr)
+            return 1
+    if delete:
+        try:
+            enforce(args.root, included, delete=True)
+        except OSError as exc:
+            print(f"could not remove files outside the allowed folders ({type(exc).__name__})", file=sys.stderr)
             return 1
     if outside or loose:
         print(f"allowlist: {len(outside)} folders and {loose} loose notes outside {', '.join(included)}"
