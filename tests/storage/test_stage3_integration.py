@@ -167,8 +167,7 @@ class Stage3IntegrationTest(unittest.TestCase):
             create_profile(self.conn, SearchProfile(profile_id=profile_id, variant="fixed_raw",
                 chunking_version=spec.chunking_version, embedding_spec_id=spec_id(spec)))
             publish_run(self.conn, PublicationSelection(run_id=run_dir.name, profile_id=profile_id))
-            self.assertEqual(self.conn.execute(
-                "select count(*) from knowledge.cards where run_id=%s", (run_dir.name,)).fetchone()[0], 0)
+            self.assertIsNone(self.conn.execute("select to_regclass('knowledge.cards')").fetchone()[0])
             self.assertEqual(self.conn.execute(
                 "select count(*) from knowledge.artifacts where run_id=%s and kind='cards'",
                 (run_dir.name,)).fetchone()[0], 0)
