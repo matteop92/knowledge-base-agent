@@ -23,6 +23,15 @@ Section/document summaries remain a separate source-linked experiment. The prior
 
 The Stage 5 agent shows each candidate chunk's source title, people, rank, and preview, reads original source spans, and checks inline citations against inspected passages. Memory across turns and cross-source theme connections remain later work.
 
+## Open issues to tackle after the go-live phases
+
+Found on the first real question from a phone on 2026-10-18 (the Ferrari and Sivers hiring question, Q8). The user asked that these stay on record and be taken up once the phased go-live plan is done.
+
+- **Answer time.** The hosted answer took 107 seconds: 12 model calls, 42 passages inspected, $0.037. That matches the local command-line runs of prompt v13 (Q8 took 119 seconds with 7 calls; the eight questions ranged from 16 to 150 seconds), so the cause is the answer loop itself, not the hosting. Each round is a separate GPT-5 mini call at medium reasoning. Options to test against the frozen 85-check checklist: show progress or a partial answer while it works, lower the reasoning effort, cap the rounds, run searches in parallel, try a faster model. The plan's stop condition (a hosted answer slower than twice the local one) did not trigger.
+- **Web app design.** The user finds the layout messy on a phone and wants a proper design pass. Known detail: citation markers are numbered per source file, so an answer built from eight passages of one transcript shows eight markers that all say 1. Number each passage, or group them under their source.
+- **Partial answers.** Q8 finished as "done with gaps": Derek Sivers' notes held nothing on hiring, so the answer covers Ferrari only and says so. This is correct behaviour; the display could make the gap clearer.
+- **Suggested tags page.** One-tap approval that adds a suggested tag to the approved list and applies it to every note it fits (Phase 2).
+
 ## Outcome
 
 The agent should answer exploratory questions across a mixed personal knowledge base even when the question's wording does not appear in a source. It should find related concepts, inspect the strongest original passages, reason across sources, and cite the passages that support its answer.
