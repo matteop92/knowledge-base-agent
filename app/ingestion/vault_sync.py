@@ -31,7 +31,7 @@ from app.ingestion.contracts import ChunkSet, ParsedDocument
 from app.ingestion.embeddings import EmbeddingSpec, embed_chunks
 from app.ingestion.preview import preview_markdown
 from app.ingestion.properties import (
-    PROMPT_PATH as PROPERTIES_PROMPT, PropertiesResult, TagList, classify_properties, missing_fields,
+    PROMPT_PATH as PROPERTIES_PROMPT, PROMPT_VERSION as PROPERTIES_VERSION, PropertiesResult, TagList, classify_properties, missing_fields,
     model_input, model_spec as properties_model, store_properties, worst_case_usd as properties_worst_case,
 )
 from app.ingestion.run_manifest import RunManifest
@@ -355,12 +355,14 @@ def _live_client(prepared: list[PreparedFile], backfill: list[ParsedDocument], t
 
 
 def _needs_properties(conn, profile_id: str, skip: set[str]) -> list[ParsedDocument]:
-    """Active files with no properties for their current revision, e.g. loaded before the tag list was approved."""
+    """Active files with no current properties: loaded before the tag list was approved, or tagged by an older prompt."""
     rows = conn.execute("""select r.parsed from knowledge.active_runs a
         join knowledge.runs r on r.run_id=a.run_id
         left join knowledge.document_properties p on p.document_id=r.document_id and p.source_sha256=r.source_sha256
-        where a.profile_id=%s and p.document_id is null order by r.document_id""", (profile_id,)).fetchall()
-    parsed = [ParsedDocument.model_validate(row[0]) for row in rows]
+        where a.profile_id=%s and (p.document_id is null or p.prompt_version <> %s)
+        order by r.document_id""", (profile_id, PROPERTIES_VERSION)).fetchall()
+    # Stored as JSON, so parse it in JSON mode (dates arrive as ISO strings).
+    parsed = [ParsedDocument.model_validate_json(json.dumps(row[0])) for row in rows]
     return [item for item in parsed if item.document_id not in skip and missing_fields(item)]
 
 
