@@ -26,7 +26,7 @@ echo "Step 3 of 4: connect the vault (type the vault encryption password if it h
 as_agent ob sync-setup --vault "$VAULT_NAME" --path "$VAULT" --device-name kb-server
 
 echo
-echo "Step 4 of 4: settings (download only; skip every folder except Knowledge; plugins and settings are not synced)"
+echo "Step 4 of 4: settings (download only; skip every folder except Knowledge; notes only: no plugins, settings, images, audio, PDFs or video)"
 # The folder names are typed here and kept only on the volume, so none of them are in the repository.
 EXTRA="${KNOWLEDGE_EXCLUDED_FILE:-/data/excluded-folders-extra.txt}"
 echo "Type or paste the names of your other top-level vault folders, one per line, then an empty line."
@@ -41,6 +41,10 @@ chown agent:agent "$EXTRA" 2>/dev/null || true
 EXCLUDED="$(paste -sd, "$EXTRA")"
 as_agent ob sync-config --path "$VAULT" --mode pull-only --conflict-strategy conflict \
   --excluded-folders "$EXCLUDED"
+
+# The tool's command line cannot turn attachments (images, audio, PDFs, video) off, but its settings file can:
+# an empty list of allowed attachment types means notes only.
+as_agent python deploy/notes_only.py "$HOME/.config/obsidian-headless/sync"
 
 echo
 echo "The sync tool's settings (the mode must say pull-only):"
@@ -57,3 +61,5 @@ as_agent ob sync --path "$VAULT"
 echo
 echo "Done. Notes now in the Knowledge folder:"
 find "$VAULT/Knowledge" -name '*.md' | wc -l
+echo "Files that are not notes (this should be 0):"
+find "$VAULT/Knowledge" -type f ! -name '*.md' | wc -l
