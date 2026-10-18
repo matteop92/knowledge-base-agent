@@ -1,0 +1,36 @@
+# Tag list for the properties classifier. It may only pick tags from this list,
+# one to three per note, using each tag's "when" line. Edit freely, then set approved: true.
+approved: true
+source_types:
+- transcript
+- book
+- highlights
+- article
+- note
+- social_post
+- meeting
+- reference
+- other
+tags:
+- name: emotions
+  when: Feelings and how to work with them, such as anger, fear, shame, resentment, guilt or self-compassion.
+- name: relationships
+  when: How you deal with other people, such as conflict, boundaries, honest conversations, trust or drama.
+- name: self-development
+  when: Changing how you think and act, such as self-awareness, limiting beliefs, habits, rumination or responsibility.
+- name: wellbeing
+  when: Body and stress, such as the nervous system, calm, rest, energy or health.
+- name: career
+  when: Your own working life, such as job search, CVs, interviews, networking or career moves.
+- name: startups
+  when: Founding and growing a company, such as ideas, fundraising, early customers or founder decisions.
+- name: leadership
+  when: Leading and managing people or teams, such as hiring, feedback, culture or decisions.
+- name: marketing
+  when: Getting attention and selling, such as positioning, content, LinkedIn posts, messaging or sales.
+- name: product
+  when: Building and shaping products, such as product management, user needs or features.
+- name: productivity
+  when: Getting work done, such as focus, workflows, tools or time management.
+- name: ai
+  when: Artificial intelligence, such as models, agents, prompts or AI products.
