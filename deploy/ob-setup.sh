@@ -1,0 +1,40 @@
+#!/bin/sh
+# One-time sign-in and setup for Obsidian Sync on the server. Run it in a shell on the server:
+#   sh deploy/ob-setup.sh
+# Passwords are typed at the prompts here; they are never passed as arguments or stored in this repo.
+set -eu
+
+VAULT="${KNOWLEDGE_SOURCE_ROOT:-/data/vault}"
+export HOME="${KNOWLEDGE_HOME:-/data/home}"
+mkdir -p "$HOME" "$VAULT"
+chown -R agent:agent /data 2>/dev/null || true
+
+# Run as the app user so the sign-in files are owned by the account the app runs as.
+as_agent() { if [ "$(id -u)" = "0" ]; then runuser -u agent -- env HOME="$HOME" "$@"; else "$@"; fi; }
+
+echo "Step 1 of 4: sign in to Obsidian (email, password, and a code if you use two-factor sign-in)"
+as_agent ob login
+
+echo
+echo "Step 2 of 4: your synced vaults"
+as_agent ob sync-list-remote
+printf "Type the name of the vault to sync (for example: New Vault): "
+read -r VAULT_NAME
+
+echo
+echo "Step 3 of 4: connect the vault (type the vault encryption password if it has one)"
+as_agent ob sync-setup --vault "$VAULT_NAME" --path "$VAULT" --device-name kb-server
+
+echo
+echo "Step 4 of 4: settings (download only; skip every folder except Knowledge; no plugins or attachments)"
+EXCLUDED="$(paste -sd, "$(dirname "$0")/excluded-folders.txt")"
+as_agent ob sync-config --path "$VAULT" --mode pull-only --conflict-strategy conflict \
+  --excluded-folders "$EXCLUDED" --file-types "" --configs ""
+
+echo
+echo "First download (this can take a minute)..."
+as_agent ob sync --path "$VAULT"
+
+echo
+echo "Done. Notes now in the Knowledge folder:"
+find "$VAULT/Knowledge" -name '*.md' | wc -l

@@ -420,10 +420,12 @@ def _by_folder(prepared: list[PreparedFile]) -> dict[str, dict[str, Any]]:
 
 def run_pass(settings: VaultSettings, *, conn=None, live: bool = False, max_usd: float | None = None,
              allow_mass_retire: bool = False, client=None, bulk_load: bool = False,
-             tag_list: TagList | None = None) -> dict[str, Any]:
+             tag_list: TagList | None = None, retire: bool = True) -> dict[str, Any]:
     """One indexing pass. Without `live` it parses and estimates only.
 
     Properties are generated only with an approved tag list; the estimate always includes them.
+    With `retire=False` nothing is retired: the server's first pass after a start uses it, because the
+    vault copy may still be syncing and a half-downloaded folder must not look like deleted notes.
     """
     if live and (max_usd is None or max_usd <= 0):
         raise VaultSyncError("a live pass needs a positive --max-usd")
@@ -485,13 +487,18 @@ def run_pass(settings: VaultSettings, *, conn=None, live: bool = False, max_usd:
             )
             if not live:
                 return report
-            client = client or _live_client(prepared, backfill, tag_list)
+            # No model client, and no endpoint check, on a pass with nothing to embed or tag.
+            client = client or (_live_client(prepared, backfill, tag_list) if prepared or backfill else None)
             _embed_and_publish(settings, conn, prepared, report, failures, spec, profile_id,
                                client, max_usd, bulk_load, tag_list)
             if tag_list and backfill and not report["stopped"]:
                 _backfill_properties(conn, backfill, report, client, tag_list, max_usd - report["spent_usd"],
                                      bulk_load)
-            _retire(conn, plan, report, profile_id, allow_mass_retire)
+            if retire:
+                _retire(conn, plan, report, profile_id, allow_mass_retire)
+            else:
+                report["retired"] = 0
+                report["retire_held"] = "retirement skipped on the first pass after a start"
             corpus = conn.execute("select profile_id from knowledge.corpus_state where singleton=true").fetchone()[0]
             if corpus is None and report["published"]:
                 select_profile(conn, profile_id)

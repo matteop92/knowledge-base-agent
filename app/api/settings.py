@@ -50,6 +50,10 @@ class Settings:
     cookie_secure: bool = True
     session_days: int = 30
     daily_cap_usd: Decimal = Decimal("2")
+    # Index the synced vault copy in the background; off until the vault sync has been set up.
+    sync_enabled: bool = False
+    index_interval_seconds: int = 300
+    index_max_usd_per_pass: Decimal = Decimal("0.10")
     answer: AnswerSettings = field(default_factory=AnswerSettings)
 
     @classmethod
@@ -64,5 +68,8 @@ class Settings:
             vault_name=os.getenv("KNOWLEDGE_VAULT_NAME", "New Vault"),
             cookie_secure=os.getenv("KNOWLEDGE_COOKIE_SECURE", "true").lower() != "false",
             daily_cap_usd=daily_cap_usd(),
+            sync_enabled=os.getenv("KNOWLEDGE_SYNC_ENABLED", "false").lower() == "true",
+            index_interval_seconds=int(os.getenv("KNOWLEDGE_INDEX_INTERVAL_SECONDS", "300")),
+            index_max_usd_per_pass=Decimal(os.getenv("KNOWLEDGE_INDEX_MAX_USD_PER_PASS", "0.10")),
             answer=AnswerSettings(max_usd_per_answer=Decimal(os.getenv("KNOWLEDGE_MAX_USD_PER_ANSWER", "0.40"))),
         )
