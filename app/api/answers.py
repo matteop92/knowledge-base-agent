@@ -10,10 +10,12 @@ from decimal import Decimal
 from typing import Any, Callable, Protocol
 from urllib.parse import quote
 
+from app.agent.endpoints import check_answer_routes, measured_usd, private_routes, worst_case_usd
 from app.agent.records import AnswerLimits, AnswerResult
 from app.api.conversations import ConversationStore
 from app.api.settings import Settings
 from app.storage.search import LABEL_METADATA, source_label
+from app.models.routes import PRICE_CEILINGS
 from app.storage.spend import SpendCapError, check_daily_cap, record_spend
 
 log = logging.getLogger("knowledge.api.answers")
@@ -23,6 +25,14 @@ log = logging.getLogger("knowledge.api.answers")
 class AnswerOutcome:
     result: AnswerResult
     cost_usd: float
+
+
+class AnswerFailed(Exception):
+    """An answer failed after it may already have been billed; carries what it cost."""
+
+    def __init__(self, cost_usd: float) -> None:
+        super().__init__("answer failed")
+        self.cost_usd = cost_usd
 
 
 class AnswerEngine(Protocol):
@@ -42,54 +52,60 @@ class OpenRouterAnswerEngine:
         self.limits = AnswerLimits()
 
     def worst_case_usd(self) -> Decimal:
-        # Same bound as the CLI: the whole input allowance at the dearer input price
-        # plus every allowed request at the completion-token bound.
-        from app.models.routes import PRICE_CEILINGS
-
+        # The CLI bound, priced at the approved ceilings because no endpoint has been checked yet.
         answer = self.settings
-        input_ceiling, output_ceiling = (Decimal(str(value)) for value in PRICE_CEILINGS[answer.model])
-        input_price = max(input_ceiling, answer.max_embedding_usd_per_million)
-        output_price = max(output_ceiling, answer.max_generation_usd_per_million)
-        return (Decimal(answer.input_byte_budget) * input_price
-                + Decimal(answer.request_budget * self.limits.max_output_tokens * 4) * output_price) / Decimal(1_000_000)
+        input_ceiling = Decimal(str(PRICE_CEILINGS[answer.model][0])) / Decimal(1_000_000)
+        return worst_case_usd(
+            input_byte_budget=answer.input_byte_budget, request_budget=answer.request_budget,
+            max_output_tokens=self.limits.max_output_tokens,
+            input_usd_per_token=max(input_ceiling, answer.max_embedding_usd_per_million / Decimal(1_000_000)),
+            completion_usd_per_token=answer.max_generation_usd_per_million / Decimal(1_000_000))
 
     def answer(self, question: str) -> AnswerOutcome:
-        from app.agent.cli import _check_generation_price
         from app.agent.harness import answer_question
         from app.models.client import ModelSpec
         from app.models.openrouter import OpenRouterClient
-        from app.storage.retrieval import DatabaseRetriever, _price_ok, selected_embedding_spec
+        from app.storage.retrieval import DatabaseRetriever, selected_embedding_spec
 
         answer = self.settings
-        private_route = {"only": [answer.embedding_provider_tag], "allow_fallbacks": False,
-                         "data_collection": "deny", "zdr": True}
-        generation_route = {**private_route, "only": [answer.generation_provider_tag], "require_parameters": True}
-        with self.connect() as conn, conn.transaction():
-            conn.execute("set transaction isolation level repeatable read read only")
-            _, spec = selected_embedding_spec(conn)
-            client = OpenRouterClient(allow_live=True, request_budget=answer.request_budget,
-                                      estimated_input_token_budget=answer.input_byte_budget,
-                                      conservative_input_budget=True, provider=private_route,
-                                      model_providers={answer.model: generation_route})
-            embedding_endpoint = client.require_zdr_route(spec.model, answer.embedding_provider_tag)
-            _price_ok(embedding_endpoint["pricing"], answer.max_embedding_usd_per_million)
-            generation_endpoint = client.require_zdr_route(answer.model, answer.generation_provider_tag, structured=True)
-            prompt_price, completion_price = _check_generation_price(
-                generation_endpoint["pricing"], answer.max_generation_usd_per_million)
-            retriever = DatabaseRetriever(conn, client, provider_tag=answer.embedding_provider_tag,
-                                          max_embedding_usd_per_million=answer.max_embedding_usd_per_million)
-            result = answer_question(question, retriever=retriever, client=client,
-                                     model=ModelSpec(provider="openrouter", model_id=answer.model,
-                                                     model_version="current"),
-                                     limits=self.limits, reasoning_effort=answer.reasoning_effort)
-        prices = {answer.model: (prompt_price, completion_price),
-                  spec.model: (Decimal(str(embedding_endpoint["pricing"]["prompt"])), Decimal(0))}
-        known = all(usage.input_tokens is not None for _, usage in client.billable_requests)
-        measured = sum(Decimal(usage.input_tokens or 0) * prices[model_id][0]
-                       + Decimal(usage.output_tokens or 0) * prices[model_id][1]
-                       for model_id, usage in client.billable_requests)
-        # Unknown usage is charged at the job's worst-case bound.
-        return AnswerOutcome(result, float(measured if known else self.worst_case_usd()))
+        private_route, model_providers = private_routes(answer.model, answer.embedding_provider_tag,
+                                                        answer.generation_provider_tag)
+        client = OpenRouterClient(allow_live=True, request_budget=answer.request_budget,
+                                  estimated_input_token_budget=answer.input_byte_budget,
+                                  conservative_input_budget=True, provider=private_route,
+                                  model_providers=model_providers)
+        routes, embedding_model = None, None
+        try:
+            # The deadline covers the endpoint checks too, so a slow preflight cannot outlive the turn.
+            client.set_deadline(time.monotonic() + self.limits.max_seconds)
+            with self.connect() as conn, conn.transaction():
+                conn.execute("set transaction isolation level repeatable read read only")
+                _, spec = selected_embedding_spec(conn)
+                embedding_model = spec.model
+                routes = check_answer_routes(
+                    client, embedding_model=embedding_model, model=answer.model,
+                    embedding_tag=answer.embedding_provider_tag, generation_tag=answer.generation_provider_tag,
+                    max_embedding_usd_per_million=answer.max_embedding_usd_per_million,
+                    max_generation_usd_per_million=answer.max_generation_usd_per_million,
+                    reasoning_effort=answer.reasoning_effort)
+                retriever = DatabaseRetriever(conn, client, provider_tag=answer.embedding_provider_tag,
+                                              max_embedding_usd_per_million=answer.max_embedding_usd_per_million)
+                result = answer_question(question, retriever=retriever, client=client,
+                                         model=ModelSpec(provider="openrouter", model_id=answer.model,
+                                                         model_version="current"),
+                                         limits=self.limits, reasoning_effort=answer.reasoning_effort)
+        except Exception as exc:
+            raise AnswerFailed(self._cost(client, routes, answer.model, embedding_model)) from exc
+        return AnswerOutcome(result, self._cost(client, routes, answer.model, embedding_model))
+
+    def _cost(self, client, routes, model: str, embedding_model: str | None = None) -> float:
+        """Measured cost, or the worst case when any request's usage is unknown."""
+        if not client.request_timings:
+            return 0.0
+        if routes is None or embedding_model is None:
+            return float(self.worst_case_usd())
+        measured, known = measured_usd(client, routes, model=model, embedding_model=embedding_model)
+        return float(measured if known else self.worst_case_usd())
 
 
 def obsidian_link(vault_name: str, relative_path: str) -> str:
@@ -133,19 +149,26 @@ class AnswerJobs:
         with self.connect() as conn:
             check_daily_cap(conn, reserved, self.settings.daily_cap_usd)
 
+    def expire_stale(self) -> int:
+        """Fail turns past the time limit; their answer may have been billed, so charge the worst case."""
+        expired = self.store.interrupt_running()
+        for turn_id in expired:
+            self._record_spend(turn_id, float(self.engine.worst_case_usd()))
+        return len(expired)
+
     def start(self, conversation_id: str | None, question: str) -> tuple[str, str]:
         with self._start_lock:
             self.check_cap()
             conversation_id, turn_id = self.store.start_turn(conversation_id, question)
         thread = threading.Thread(target=self._run, args=(turn_id, question), daemon=True, name=f"answer-{turn_id}")
-        self._threads.append(thread)
+        self._threads = [item for item in self._threads if item.is_alive()] + [thread]
         thread.start()
         return conversation_id, turn_id
 
     def wait(self, timeout: float = 10) -> None:
-        """Tests use this to let worker threads finish."""
+        """Let running answers finish: used at shutdown and by tests."""
         deadline = time.monotonic() + timeout
-        for thread in self._threads:
+        for thread in list(self._threads):
             thread.join(max(0, deadline - time.monotonic()))
 
     def _labels(self, result: AnswerResult) -> dict[str, str]:
@@ -161,25 +184,34 @@ class AnswerJobs:
                 where r.document_id = any(%s)""", (list(documents),)).fetchall()
         return {row[0]: source_label(row[2], row[1])[0] for row in rows}
 
+    def _record_spend(self, turn_id: str, cost: float) -> None:
+        if not cost:
+            return
+        try:
+            with self.connect() as conn:
+                record_spend(conn, "answer", cost, turn_id)
+        except Exception as exc:  # noqa: BLE001 - never leave the turn running because the ledger failed
+            log.error("spend not recorded turn=%s cost_usd=%.6f error=%s", turn_id, cost, type(exc).__name__)
+
     def _run(self, turn_id: str, question: str) -> None:
         started = time.monotonic()
         cost = 0.0
+        status, receipt, error = "failed", None, "the answer could not be completed; try again"
         try:
             outcome = self.engine.answer(question)
             cost = outcome.cost_usd
             status, error = turn_status(outcome.result)
             receipt = build_receipt(outcome.result, self._labels(outcome.result), self.settings.vault_name)
-            self.store.finish_turn(turn_id, status=status, receipt=receipt, cost_usd=cost, error=error)
         except SpendCapError:
-            self.store.finish_turn(turn_id, status="failed", receipt=None, cost_usd=cost,
-                                   error="the daily spending cap was reached")
+            error = "the daily spending cap was reached"
+        except AnswerFailed as exc:
+            cost = exc.cost_usd
+            log.warning("answer failed turn=%s error=%s", turn_id, type(exc.__cause__).__name__)
         except Exception as exc:  # noqa: BLE001 - the turn must always leave the running state
             log.warning("answer failed turn=%s error=%s", turn_id, type(exc).__name__)
-            self.store.finish_turn(turn_id, status="failed", receipt=None, cost_usd=cost,
-                                   error="the answer could not be completed; try again")
         finally:
-            if cost:
-                with self.connect() as conn:
-                    record_spend(conn, "answer", cost, turn_id)
+            # Spend goes in the ledger before the turn stops counting as running for the cap check.
+            self._record_spend(turn_id, cost)
+            self.store.finish_turn(turn_id, status=status, receipt=receipt, cost_usd=cost, error=error)
             # Ids, timing and cost only; never question, answer or excerpt text.
             log.info("answer finished turn=%s seconds=%.1f cost_usd=%.6f", turn_id, time.monotonic() - started, cost)

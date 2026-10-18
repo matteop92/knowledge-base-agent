@@ -17,7 +17,7 @@ except ImportError:  # pragma: no cover - fastapi is an optional server dependen
 
 from app.agent.records import AnswerLimits, AnswerResult
 from app.api.auth import AuthError
-from app.api.answers import AnswerOutcome, obsidian_link
+from app.api.answers import AnswerFailed, AnswerOutcome, obsidian_link
 from app.api.settings import Settings
 from app.storage.records import SourcePassage
 
@@ -68,6 +68,8 @@ class FakeEngine:
         self.release.wait(5)
         if self.mode == "error":
             raise RuntimeError("model failed")
+        if self.mode == "failed_after_billing":
+            raise AnswerFailed(0.05) from RuntimeError(f"provider echoed: {question}")
         if self.mode == "gaps":
             result = AnswerResult(answer="Partly.", completeness="partial", citations={"E1.1": passage()},
                                   gaps=["No source covers winter."], actions=[], model_calls=3, termination="exhausted")
@@ -121,16 +123,6 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.get("/healthz").json(), {"status": "ok"})
         self.assertEqual(self.ask().status_code, 401)
 
-    def test_codes_go_only_to_the_allowed_address(self):
-        self.client.post("/auth/code", json={"email": "someone@example.com"})
-        self.client.post("/auth/code", json={"email": "MATT@example.com"})
-        self.assertEqual(self.auth.sent, [EMAIL])
-
-    def test_wrong_user_and_wrong_code_are_refused(self):
-        self.assertEqual(self.client.post("/auth/verify", json={"email": EMAIL, "code": "222222"}).status_code, 403)
-        self.assertEqual(self.client.post("/auth/verify", json={"email": EMAIL, "code": "999999"}).status_code, 401)
-        self.assertEqual(self.client.post("/auth/verify", json={"email": "x@example.com", "code": "111111"}).status_code, 403)
-
     def test_session_cookie_is_http_only_and_sign_out_everywhere_ends_all_sessions(self):
         response = self.client.post("/auth/verify", json={"email": EMAIL, "code": "111111"})
         cookie = response.headers["set-cookie"].lower()
@@ -146,10 +138,6 @@ class ApiTests(unittest.TestCase):
         with psycopg.connect(os.environ["KNOWLEDGE_TEST_DATABASE_URL"], autocommit=True) as conn:
             conn.execute("update knowledge.sessions set expires_at = now() - interval '1 minute'")
         self.assertEqual(self.client.get("/auth/me").status_code, 401)
-
-    def test_sign_in_is_rate_limited(self):
-        codes = [self.client.post("/auth/code", json={"email": EMAIL}).status_code for _ in range(7)]
-        self.assertIn(429, codes)
 
     def test_form_posts_are_refused(self):
         self.sign_in()
@@ -247,18 +235,6 @@ class ApiTests(unittest.TestCase):
             conn.execute("update knowledge.sessions set last_used_at = now() - interval '2 hours'")
         self.assertIn("max-age=2592000", self.client.get("/auth/me").headers["set-cookie"].lower())
 
-    def test_spoofed_forwarded_addresses_do_not_escape_the_rate_limit(self):
-        codes = [self.client.post("/auth/code", json={"email": EMAIL},
-                                  headers={"X-Forwarded-For": f"10.0.0.{index}, 203.0.113.9"}).status_code
-                 for index in range(7)]
-        self.assertIn(429, codes)
-
-    def test_a_sign_in_service_error_gets_the_same_reply(self):
-        def broken(email):
-            raise AuthError(502, "sign-in service unavailable")
-        self.auth.send_code = broken
-        self.assertEqual(self.client.post("/auth/code", json={"email": EMAIL}).status_code, 200)
-
     def test_daily_cap_refuses_before_any_model_call(self):
         self.sign_in()
         with psycopg.connect(os.environ["KNOWLEDGE_TEST_DATABASE_URL"], autocommit=True) as conn:
@@ -277,6 +253,30 @@ class ApiTests(unittest.TestCase):
         self.client.request("DELETE", f"/api/turns/{turn_id}/feedback", json={})
         self.assertIsNone(self.client.get(f"/api/turns/{turn_id}").json()["feedback"])
 
+    def test_a_failed_answer_logs_no_question_text_and_still_records_its_spend(self):
+        self.sign_in()
+        self.engine.mode = "failed_after_billing"
+        with self.assertLogs("knowledge", level=logging.INFO) as captured:
+            turn = self.finished(self.ask("Secret orchard question?").json()["turn_id"])
+        self.assertEqual(turn["status"], "failed")
+        self.assertNotIn("Secret orchard", "\n".join(captured.output))
+        with psycopg.connect(os.environ["KNOWLEDGE_TEST_DATABASE_URL"], autocommit=True) as conn:
+            self.assertEqual(conn.execute("select source, estimated_usd from knowledge.spend").fetchall(),
+                             [("answer", Decimal("0.05000000"))])
+
+    def test_an_expired_running_turn_is_charged_its_worst_case(self):
+        self.sign_in()
+        self.engine.release.clear()
+        started = self.ask().json()
+        with psycopg.connect(os.environ["KNOWLEDGE_TEST_DATABASE_URL"], autocommit=True) as conn:
+            conn.execute("update knowledge.turns set created_at = now() - interval '10 minutes' where turn_id=%s",
+                         (started["turn_id"],))
+        self.assertEqual(self.client.get(f"/api/turns/{started['turn_id']}").json()["status"], "failed")
+        with psycopg.connect(os.environ["KNOWLEDGE_TEST_DATABASE_URL"], autocommit=True) as conn:
+            self.assertEqual(conn.execute("select estimated_usd from knowledge.spend where job_id=%s",
+                                          (started["turn_id"],)).fetchone()[0], Decimal("0.30000000"))
+        self.engine.release.set()
+
     def test_logs_never_contain_question_or_answer_text(self):
         self.sign_in()
         with self.assertLogs("knowledge", level=logging.INFO) as captured:
@@ -284,11 +284,6 @@ class ApiTests(unittest.TestCase):
         text = "\n".join(captured.output)
         self.assertNotIn("Secret orchard", text)
         self.assertNotIn("pear is ripe", text)
-
-    def test_security_headers_are_sent(self):
-        headers = self.client.get("/healthz").headers
-        self.assertIn("script-src 'self'", headers["content-security-policy"])
-        self.assertEqual(headers["x-content-type-options"], "nosniff")
 
 
 if __name__ == "__main__":

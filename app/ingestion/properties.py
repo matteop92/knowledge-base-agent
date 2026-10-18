@@ -30,6 +30,8 @@ MODEL_VERSION = "accepted-2026-10-17"
 TAGS_PATH = Path(__file__).resolve().parents[2] / "config" / "tags.yaml"
 INPUT_CHARS = 8000  # about 2,000 tokens of the note
 MAX_OUTPUT_TOKENS = 400
+MAX_TAGS = 3  # per note, from the approved list
+MAX_SUGGESTED_TAGS = 5  # free suggestions while drafting the list
 FIELDS = ("source_type", "tags", "people", "date", "description", "language")
 DEFAULT_SOURCE_TYPES = ("transcript", "book", "highlights", "article", "note", "social_post",
                         "meeting", "reference", "other")
@@ -103,7 +105,7 @@ def json_schema(tag_list: TagList) -> dict[str, Any]:
         "required": ["source_type", "tags", "proposed_tag", "people", "date", "description", "language"],
         "properties": {
             "source_type": {"type": "string", "enum": list(tag_list.source_types)},
-            "tags": {"type": "array", "items": tag_item, "maxItems": 5},
+            "tags": {"type": "array", "items": tag_item, "maxItems": MAX_TAGS if tag_list.tags else MAX_SUGGESTED_TAGS},
             "proposed_tag": {"type": ["string", "null"]},
             "people": {"type": "array", "items": {"type": "string"}, "maxItems": 10},
             "date": {"type": ["string", "null"]},
@@ -113,6 +115,14 @@ def json_schema(tag_list: TagList) -> dict[str, Any]:
     }
 
 
+def _tag_lines(tag_list: TagList) -> list[str]:
+    """Every approved tag, with its rule when it has one."""
+    if not tag_list.tags:
+        return ["(none yet)"]
+    rules = dict(tag_list.definitions)
+    return [f"- {name}: {rules[name]}" if name in rules else f"- {name}" for name in tag_list.tags]
+
+
 def model_input(parsed: ParsedDocument, tag_list: TagList) -> str:
     raw = parsed.metadata.frontmatter_raw
     text = parsed.source_text
@@ -120,8 +130,7 @@ def model_input(parsed: ParsedDocument, tag_list: TagList) -> str:
     existing = existing_properties(parsed)
     lines = [f"Path: {parsed.locator.relative_path}", f"Title: {parsed.metadata.title}",
              f"Allowed types: {', '.join(tag_list.source_types)}",
-             "Approved tags:", *(f"- {name}: {when}" for name, when in tag_list.definitions),
-             *([] if tag_list.definitions else [", ".join(tag_list.tags) if tag_list.tags else "(none yet)"]),
+             "Approved tags:", *_tag_lines(tag_list),
              f"Existing properties: {existing or '(none)'}", "", "Text:", body]
     return "\n".join(lines)
 
@@ -154,7 +163,7 @@ def _clean_reply(data: dict[str, Any], tag_list: TagList) -> tuple[dict[str, Any
             proposed = outside[0]
         if proposed in allowed:
             proposed = None
-    tags = list(dict.fromkeys(tags))[:5]
+    tags = list(dict.fromkeys(tags))[:MAX_TAGS if tag_list.tags else MAX_SUGGESTED_TAGS]
     if proposed is not None and not TAG.match(proposed):
         proposed = None
     people = [str(name).strip() for name in data["people"] if isinstance(name, str) and name.strip()][:10]
@@ -210,19 +219,19 @@ def suggest_tags(parsed: ParsedDocument, client: ModelClient, model: ModelSpec |
 
 
 def store_properties(conn, parsed: ParsedDocument, *, status: str, result: PropertiesResult | None = None,
-                     error: str | None = None, cost_usd: float = 0.0) -> None:
+                     error: str | None = None) -> None:
     from psycopg.types.json import Jsonb
 
     conn.execute("""insert into knowledge.document_properties
-        (document_id, source_sha256, status, properties, proposed_tag, model, prompt_version, error, cost_usd)
-        values (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        (document_id, source_sha256, status, properties, proposed_tag, model, prompt_version, error)
+        values (%s,%s,%s,%s,%s,%s,%s,%s)
         on conflict (document_id, source_sha256) do update set status=excluded.status,
           properties=excluded.properties, proposed_tag=excluded.proposed_tag, model=excluded.model,
-          prompt_version=excluded.prompt_version, error=excluded.error, cost_usd=excluded.cost_usd""",
+          prompt_version=excluded.prompt_version, error=excluded.error""",
                  (parsed.document_id, parsed.source_sha256, status,
                   Jsonb(result.properties if result else {}), result.proposed_tag if result else None,
                   Jsonb(result.model.model_dump(mode="json")) if result and result.model else None,
-                  PROMPT_VERSION, error, round(cost_usd, 8)))
+                  PROMPT_VERSION, error))
 
 
 def draft_tag_list(existing_tags: Counter, suggested_tags: Counter, path: Path = TAGS_PATH,

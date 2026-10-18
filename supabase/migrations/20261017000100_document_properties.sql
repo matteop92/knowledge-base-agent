@@ -9,7 +9,6 @@ create table knowledge.document_properties (
   model jsonb,
   prompt_version text not null,
   error text,
-  cost_usd numeric(14, 8) not null default 0 check (cost_usd >= 0),
   created_at timestamptz not null default now(),
   primary key (document_id, source_sha256)
 );

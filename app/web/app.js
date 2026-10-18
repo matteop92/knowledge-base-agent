@@ -40,8 +40,7 @@ function showSignIn(message) {
   const draft = $("question").value.trim();
   if (draft) store(DRAFT_KEY, draft);
   if (state.conversationId) store(CONVERSATION_KEY, state.conversationId);
-  for (const timer of state.polling.values()) clearTimeout(timer);
-  state.polling.clear();
+  stopPolling();
   $("app").hidden = true;
   $("signin").hidden = false;
   $("signin-message").textContent = message || "";
@@ -74,6 +73,7 @@ async function verifyCode() {
     $("signin-message").textContent =
       error.status === 403 ? "This account is not authorised." :
       error.status === 429 ? "Too many attempts. Wait a minute." :
+      error.status === 502 ? "Sign-in is unavailable right now. Try again shortly." :
       "That code expired or is wrong. Try again or send a new code.";
   }
 }
@@ -108,7 +108,13 @@ async function refreshConversations() {
   $("conversation-empty").hidden = conversations.length > 0;
 }
 
+function stopPolling() {
+  for (const timer of state.polling.values()) clearTimeout(timer);
+  state.polling.clear();
+}
+
 function newQuestion() {
+  stopPolling();
   state.conversationId = null;
   $("turns").replaceChildren();
   $("conversation-title").textContent = "New question";
@@ -120,6 +126,7 @@ function newQuestion() {
 }
 
 async function openConversation(id) {
+  stopPolling();
   try {
     const conversation = await api("GET", `/api/conversations/${encodeURIComponent(id)}`);
     state.conversationId = conversation.id;
@@ -170,6 +177,8 @@ function poll(turnId) {
   const tick = async () => {
     try {
       const turn = await api("GET", `/api/turns/${encodeURIComponent(turnId)}`);
+      // The user may have switched conversations while this answer was running.
+      if (turn.conversation_id !== state.conversationId) { state.polling.delete(turnId); return; }
       renderTurn(turn);
       if (turn.status === "running") { state.polling.set(turnId, setTimeout(tick, POLL_MS)); return; }
       state.polling.delete(turnId);

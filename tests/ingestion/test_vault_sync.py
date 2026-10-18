@@ -73,6 +73,17 @@ class FolderAndScanTests(unittest.TestCase):
         self.assertTrue(next(item for item in scan.files.values() if item.relative_path.endswith("blank.md")).empty)
         self.assertEqual(scan.missing_folders, ["Learnings"])
 
+    def test_excluded_subfolders_are_never_read(self) -> None:
+        self.vault.write("Knowledge/Private/secret.md", "# Secret\n\nKeep off the server.\n")
+        self.vault.write("Knowledge/Private/Deeper/also.md", "# Also\n\nKeep off the server.\n")
+        self.vault.write("Knowledge/Notes/ok.md", "# Ok\n\nIndex me.\n")
+        for excluded in ("knowledge/private", "Knowledge/Private/"):
+            with self.subTest(excluded=excluded):
+                settings = VaultSettings(self.vault.root, "primary", parse_folders("Knowledge"),
+                                         self.vault.settings.runtime_dir, excluded_folders=(excluded,))
+                paths = [item.relative_path for item in scan_vault(settings).files.values()]
+                self.assertEqual(paths, ["Knowledge/Notes/ok.md"])
+
     def test_missing_included_folder_trips_the_guard(self) -> None:
         self.vault.write("Knowledge/a.md", "# A\n\nText.\n")
         plan = plan_pass(self.vault.settings, scan_vault(self.vault.settings), {}, FailureLog(Path(self.temp.name) / "f.json"))
@@ -209,6 +220,23 @@ class LivePassTests(unittest.TestCase):
         after = dict(self.conn.execute("select document_id, run_id from knowledge.active_runs").fetchall())
         self.assertEqual(sum(before[key] != after[key] for key in before), 1)
         self.assertEqual(len(after), 3)
+
+    def test_an_outage_is_retried_on_the_next_pass(self) -> None:
+        self.vault.write("Knowledge/Notes/flaky.md", "# flaky\n\nThe outage hits this one.\n")
+        report, _ = self.live(FakeEmbeddingClient(fail_on="outage"))
+        self.assertEqual(report["ingest_failures"], {"ModelClientError": 1})
+        second, client = self.live()
+        self.assertEqual((second["skipped_failed"], second["to_ingest"], second["published"]), (0, 1, 1))
+
+    def test_bulk_load_is_ledgered_separately_and_skips_the_daily_cap(self) -> None:
+        from app.storage.spend import spent_today
+        self.conn.execute("insert into knowledge.spend (source, estimated_usd) values ('answer', 2)")
+        report, _ = self.live(bulk_load=True)
+        self.assertEqual(report["published"], 3)
+        sources = {row[0] for row in self.conn.execute("select source from knowledge.spend").fetchall()}
+        self.assertEqual(sources, {"answer", "bulk_load"})
+        # The bulk load never counts toward the daily total.
+        self.assertEqual(spent_today(self.conn), 2)
 
     def test_spend_limit_stops_before_the_next_file(self) -> None:
         report = run_pass(self.vault.settings, conn=self.conn, live=True, max_usd=1e-9,

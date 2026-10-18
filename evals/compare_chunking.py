@@ -36,7 +36,7 @@ from app.storage.search import search_vector
 from evals.compare_embeddings import (
     Candidate, PRIVACY, _coverage, _embed_batch, _select_live_manifest, discover,
 )
-from evals.trial_routes import PRICE_CEILINGS, provider_routes, verify_routes
+from app.models.routes import PRICE_CEILINGS, provider_routes, verify_routes
 
 
 EMBEDDING = Candidate("perplexity/pplx-embed-v1-0.6b", 1024, 0.004,

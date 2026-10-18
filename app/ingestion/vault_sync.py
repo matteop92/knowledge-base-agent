@@ -24,6 +24,8 @@ from decimal import Decimal
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+import psycopg
+
 from app.ingestion.chunking import STRUCTURAL_VERSION
 from app.ingestion.contracts import ChunkSet, ParsedDocument
 from app.ingestion.embeddings import EmbeddingSpec, embed_chunks
@@ -33,7 +35,9 @@ from app.ingestion.properties import (
     model_input, model_spec as properties_model, store_properties, worst_case_usd as properties_worst_case,
 )
 from app.ingestion.run_manifest import RunManifest
+from app.env import load_env_file
 from app.ingestion.source_reader import document_id_for
+from app.models.client import ModelClientError
 from app.models.routes import (
     EMBEDDING_DIMENSIONS, EMBEDDING_MODEL, EMBEDDING_MODEL_VERSION, PRIVACY,
     price_usd, provider_routes, verify_routes,
@@ -51,6 +55,8 @@ GUARD_FRACTION = 0.10
 GUARD_COUNT = 20
 EMBEDDING_BATCH = 16
 VECTOR_BYTES = EMBEDDING_DIMENSIONS * 4
+# Outages and network or database errors say nothing about the file, so its next pass retries it.
+TRANSIENT_ERRORS = (ModelClientError, psycopg.Error, OSError)
 
 
 class VaultSyncError(RuntimeError):
@@ -293,13 +299,20 @@ def _pass_lock(settings: VaultSettings):
         path.unlink(missing_ok=True)
 
 
-def _measured_usd(client, start: int, worst_case: float) -> float:
-    """Measured embedding cost since `start`; unknown usage counts at its worst-case bound."""
+def _usage_mark(client) -> tuple[int, int]:
+    return (len(getattr(client, "request_timings", []) or []), len(getattr(client, "billable_requests", []) or []))
+
+
+def _measured_usd(client, mark: tuple[int, int], worst_case: float) -> float:
+    """Measured cost since the mark; a request with no usage record (timeout, error) counts at the worst case."""
     requests = getattr(client, "billable_requests", None)
     if requests is None:
         return worst_case
+    timings = getattr(client, "request_timings", None)
+    if timings is not None and len(timings) - mark[0] > len(requests) - mark[1]:
+        return worst_case
     total = 0.0
-    for model_id, usage in requests[start:]:
+    for model_id, usage in requests[mark[1]:]:
         if usage.input_tokens is None:
             return worst_case
         total += price_usd(model_id, usage.input_tokens, usage.output_tokens or 0)
@@ -315,21 +328,30 @@ def _select_live_manifest(run_dir: Path, client) -> RunManifest:
     return manifest
 
 
-def _live_client(prepared: list[PreparedFile], backfill: list[ParsedDocument], tag_list: TagList | None):
+def _openrouter_client(models: list[str], *, requests: int, input_bytes: int, structured: set[str]):
+    """One live client pinned to zero-retention routes; fails closed if a route changed."""
     from app.models.openrouter import OpenRouterClient
 
-    classify = ([item.parsed for item in prepared if missing_fields(item.parsed)] + backfill) if tag_list else []
-    models = [EMBEDDING_MODEL] + ([properties_model().model_id] if classify else [])
-    prompt_bytes = len(PROPERTIES_PROMPT.read_text(encoding="utf-8").encode("utf-8"))
-    client = OpenRouterClient(
-        allow_live=True,
-        request_budget=max(1, sum(item.requests for item in prepared) + len(classify)),
-        estimated_input_token_budget=max(1, sum(item.input_bytes for item in prepared) + sum(
-            prompt_bytes + len(model_input(parsed, tag_list).encode("utf-8")) for parsed in classify)),
-        provider=PRIVACY, model_providers=provider_routes(models),
-    )
-    verify_routes(client, models, structured_ids=set(models[1:]))
+    client = OpenRouterClient(allow_live=True, request_budget=max(1, requests),
+                              estimated_input_token_budget=max(1, input_bytes),
+                              provider=PRIVACY, model_providers=provider_routes(models))
+    verify_routes(client, models, structured_ids=structured)
     return client
+
+
+def _classifier_input_bytes(parsed: ParsedDocument, tag_list: TagList) -> int:
+    return len(PROPERTIES_PROMPT.read_text(encoding="utf-8").encode("utf-8")) + len(
+        model_input(parsed, tag_list).encode("utf-8"))
+
+
+def _live_client(prepared: list[PreparedFile], backfill: list[ParsedDocument], tag_list: TagList | None):
+    classify = ([item.parsed for item in prepared if missing_fields(item.parsed)] + backfill) if tag_list else []
+    properties = [properties_model().model_id] if classify else []
+    return _openrouter_client(
+        [EMBEDDING_MODEL, *properties], requests=sum(item.requests for item in prepared) + len(classify),
+        input_bytes=sum(item.input_bytes for item in prepared)
+        + sum(_classifier_input_bytes(parsed, tag_list) for parsed in classify),
+        structured=set(properties))
 
 
 def _needs_properties(conn, profile_id: str, skip: set[str]) -> list[ParsedDocument]:
@@ -351,6 +373,9 @@ def _classify_and_store(conn, parsed: ParsedDocument, client, tag_list: TagList,
         if result.proposed_tag:
             report.setdefault("proposed_tags", {})
             report["proposed_tags"][result.proposed_tag] = report["proposed_tags"].get(result.proposed_tag, 0) + 1
+    except TRANSIENT_ERRORS:
+        # An outage is not a fact about this file: store nothing so the next pass tries again.
+        report["properties_retry"] = report.get("properties_retry", 0) + 1
     except Exception as exc:  # noqa: BLE001
         store_properties(conn, parsed, status="failed", result=PropertiesResult({}, None, None),
                          error=_failure_reason(exc))
@@ -358,24 +383,24 @@ def _classify_and_store(conn, parsed: ParsedDocument, client, tag_list: TagList,
 
 
 def _backfill_properties(conn, backfill: list[ParsedDocument], report: dict[str, Any], client, tag_list: TagList,
-                         budget_left: float, spend_source: str, enforce_daily_cap: bool) -> None:
+                         budget_left: float, bulk_load: bool) -> None:
     spent = 0.0
     for parsed in backfill:
         worst = properties_worst_case(parsed, tag_list)
         if spent + worst > budget_left:
             report["stopped"] = "pass spend limit reached during properties backfill"
             break
-        if enforce_daily_cap:
+        if not bulk_load:
             try:
                 check_daily_cap(conn, Decimal(str(worst)))
             except SpendCapError:
                 report["stopped"] = "daily spend cap reached during properties backfill"
                 break
-        start = len(getattr(client, "billable_requests", []) or [])
+        mark = _usage_mark(client)
         _classify_and_store(conn, parsed, client, tag_list, report)
-        cost = _measured_usd(client, start, worst)
+        cost = _measured_usd(client, mark, worst)
         if cost > 0:
-            record_spend(conn, "bulk_load" if spend_source == "bulk_load" else "properties", cost, parsed.run_id)
+            record_spend(conn, "bulk_load" if bulk_load else "properties", cost, parsed.run_id)
         spent += cost
     report["spent_usd"] = round(report.get("spent_usd", 0) + spent, 8)
 
@@ -392,8 +417,8 @@ def _by_folder(prepared: list[PreparedFile]) -> dict[str, dict[str, Any]]:
 
 
 def run_pass(settings: VaultSettings, *, conn=None, live: bool = False, max_usd: float | None = None,
-             allow_mass_retire: bool = False, client=None, spend_source: str = "indexing",
-             enforce_daily_cap: bool = True, tag_list: TagList | None = None) -> dict[str, Any]:
+             allow_mass_retire: bool = False, client=None, bulk_load: bool = False,
+             tag_list: TagList | None = None) -> dict[str, Any]:
     """One indexing pass. Without `live` it parses and estimates only.
 
     Properties are generated only with an approved tag list; the estimate always includes them.
@@ -460,10 +485,10 @@ def run_pass(settings: VaultSettings, *, conn=None, live: bool = False, max_usd:
                 return report
             client = client or _live_client(prepared, backfill, tag_list)
             _embed_and_publish(settings, conn, prepared, report, failures, spec, profile_id,
-                               client, max_usd, spend_source, enforce_daily_cap, tag_list)
+                               client, max_usd, bulk_load, tag_list)
             if tag_list and backfill and not report["stopped"]:
                 _backfill_properties(conn, backfill, report, client, tag_list, max_usd - report["spent_usd"],
-                                     spend_source, enforce_daily_cap)
+                                     bulk_load)
             _retire(conn, plan, report, profile_id, allow_mass_retire)
             corpus = conn.execute("select profile_id from knowledge.corpus_state where singleton=true").fetchone()[0]
             if corpus is None and report["published"]:
@@ -479,7 +504,8 @@ def run_pass(settings: VaultSettings, *, conn=None, live: bool = False, max_usd:
 
 
 def _embed_and_publish(settings, conn, prepared, report, failures, spec, profile_id, client,
-                       max_usd, spend_source, enforce_daily_cap, tag_list=None) -> None:
+                       max_usd, bulk_load, tag_list=None) -> None:
+    """The one-time bulk load is recorded as such and runs under its own limit instead of the daily cap."""
     spent = 0.0
     published, failed = 0, {}
     report["stopped"] = None
@@ -488,13 +514,13 @@ def _embed_and_publish(settings, conn, prepared, report, failures, spec, profile
         if spent + item.worst_case_usd > max_usd:
             report["stopped"] = "pass spend limit reached"
             break
-        if enforce_daily_cap:
+        if not bulk_load:
             try:
                 check_daily_cap(conn, Decimal(str(item.worst_case_usd)))
             except SpendCapError:
                 report["stopped"] = "daily spend cap reached"
                 break
-        start = len(getattr(client, "billable_requests", []) or [])
+        mark = _usage_mark(client)
         try:
             manifest = _select_live_manifest(item.run_dir, client)
             progress = embed_chunks(item.parsed, item.chunks, client, spec.model_copy(), manifest, item.run_dir,
@@ -514,13 +540,15 @@ def _embed_and_publish(settings, conn, prepared, report, failures, spec, profile
             failures.clear(item.document_id)
             published += 1
         except Exception as exc:  # noqa: BLE001 - the previous active run keeps serving
-            failures.record(item.document_id, item.vault_file.relative_path, item.vault_file.sha256,
-                            _failure_reason(exc))
+            # Remember only failures about the file itself; an outage must not freeze the file until it changes.
+            if not isinstance(exc, TRANSIENT_ERRORS):
+                failures.record(item.document_id, item.vault_file.relative_path, item.vault_file.sha256,
+                                _failure_reason(exc))
             failed[type(exc).__name__] = failed.get(type(exc).__name__, 0) + 1
         finally:
-            cost = _measured_usd(client, start, item.worst_case_usd)
+            cost = _measured_usd(client, mark, item.worst_case_usd)
             if cost > 0:
-                record_spend(conn, spend_source, cost, item.parsed.run_id)
+                record_spend(conn, "bulk_load" if bulk_load else "indexing", cost, item.parsed.run_id)
             spent += cost
     report.update(published=published, ingest_failures=failed, spent_usd=round(spent, 8))
 
@@ -565,41 +593,21 @@ def propose_tags(settings: VaultSettings, sample_size: int, *, max_usd: float, c
         if worst > max_usd:
             raise VaultSyncError(f"tag proposal worst case ${worst:.4f} exceeds --max-usd")
         if client is None:
-            from app.models.openrouter import OpenRouterClient
-
             model_id = properties_model().model_id
-            prompt_bytes = len(PROPERTIES_PROMPT.read_text(encoding="utf-8").encode("utf-8"))
-            client = OpenRouterClient(
-                allow_live=True, request_budget=max(1, len(parsed_files)),
-                estimated_input_token_budget=max(1, sum(prompt_bytes + len(model_input(p, open_list).encode("utf-8"))
-                                                        for p in parsed_files)),
-                provider=PRIVACY, model_providers=provider_routes([model_id]))
-            verify_routes(client, [model_id], structured_ids={model_id})
+            client = _openrouter_client([model_id], requests=len(parsed_files),
+                                        input_bytes=sum(_classifier_input_bytes(p, open_list) for p in parsed_files),
+                                        structured={model_id})
         failed = 0
         for parsed in parsed_files:
             try:
                 suggested.update(suggest_tags(parsed, client).properties["tags"])
             except Exception:  # noqa: BLE001
                 failed += 1
-    spent = _measured_usd(client, 0, worst)
+    spent = _measured_usd(client, (0, 0), worst)
     draft = draft_tag_list(existing, suggested, output or TAGS_PATH)
     return {"sampled_files": len(parsed_files), "failed_calls": failed, "files_scanned": len(candidates),
             "distinct_existing_tags": len(existing), "draft_tags": len(draft["tags"]),
             "spent_usd": round(spent, 8), "tag_list_path": str(output or TAGS_PATH)}
-
-
-def load_env_file(path: Path = Path(".env")) -> None:
-    """Fill unset variables from a local .env; the last non-empty value wins."""
-    if not path.is_file():
-        return
-    values: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        key, sep, value = line.partition("=")
-        value = value.strip().strip("'\"")
-        if sep and key.strip() and not key.lstrip().startswith("#") and value:
-            values[key.strip()] = value
-    for key, value in values.items():
-        os.environ.setdefault(key, value)
 
 
 def settings_from_env(args: argparse.Namespace) -> VaultSettings:
@@ -646,8 +654,7 @@ def main(argv: list[str] | None = None) -> int:
             with connect_runtime() as conn:
                 report = run_pass(settings, conn=conn, live=args.live, max_usd=args.max_usd,
                                   allow_mass_retire=args.allow_mass_retire,
-                                  spend_source="bulk_load" if args.bulk_load else "indexing",
-                                  enforce_daily_cap=not args.bulk_load, tag_list=tag_list)
+                                  bulk_load=args.bulk_load, tag_list=tag_list)
     except VaultSyncError as exc:
         print(f"vault sync stopped: {exc}", file=sys.stderr)
         return 1

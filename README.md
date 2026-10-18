@@ -23,7 +23,7 @@ Human output includes the answer, cited locators, bounded excerpts, and evidence
 
 Search can recognize a named source from its title, author, guest, or tag even when those words are absent from the chunk text. The agent sees each candidate's title and people with its rank and short preview.
 
-The current Stage 5 reservation ceiling is $9 and the cumulative ceiling is $11; measured calls are recorded in `.local/stage5-budget.json`. A CLI call enforces its own conservative cost bound; the operator must account for previous reports before selecting a new per-call cap. No answer API or deployment is included yet; `docs/plans/2026-10-16-002-feat-go-live-web-app-plan.md` plans them.
+The current Stage 5 reservation ceiling is $9 and the cumulative ceiling is $11; measured calls are recorded in `.local/stage5-budget.json`. A CLI call enforces its own conservative cost bound; the operator must account for previous reports before selecting a new per-call cap. The web server and app in `app/api/` and `app/web/` run the same answer path; see [deploy/README.md](deploy/README.md) for hosting and `docs/plans/2026-10-16-002-feat-go-live-web-app-plan.md` for the go-live plan.
 
 ## Preview a source
 
@@ -99,6 +99,8 @@ The first six-file trial selected `perplexity/pplx-embed-v1-0.6b` with fixed 800
 python -m unittest discover -s tests/ingestion -p 'test_*.py' -v
 python -m unittest discover -s tests/models -p 'test_*.py' -v
 python -m unittest discover -s tests/storage -p 'test_*.py' -v
+python -m unittest discover -s tests/agent -p 'test_*.py' -v
+python -m unittest discover -s tests/api -p 'test_*.py' -v
 ```
 
 Tests use short synthetic fixtures. Storage integration tests need a fresh disposable pgvector/Supabase database named by `KNOWLEDGE_TEST_DATABASE_URL`; the test applies the migration and creates test roles, so do not point it at a hosted project. Optional read-only ingestion acceptance against the external vault is controlled by `KNOWLEDGE_SOURCE_ROOT`.

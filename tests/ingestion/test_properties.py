@@ -101,6 +101,19 @@ class ClassifierTests(unittest.TestCase):
             self.assertIsNone(TagList.load(Path(folder) / "absent.yaml"))
             self.assertFalse(TagList.load(path).approved)
 
+    def test_a_note_gets_at_most_three_list_tags(self) -> None:
+        tags = TagList(tags=("leadership", "marketing", "ai", "career"), approved=True)
+        client = FakeClassifierClient(reply(tags=["leadership", "marketing", "ai", "career"]))
+        self.assertEqual(classify_properties(parse("# X\n\nText.\n"), tags, client).properties["tags"],
+                         ["leadership", "marketing", "ai"])
+
+    def test_tags_without_a_rule_are_still_offered(self) -> None:
+        from app.ingestion.properties import model_input
+        tags = TagList(tags=("emotions", "ai"), approved=True, definitions=(("emotions", "Feelings."),))
+        text = model_input(parse("# X\n\nText.\n"), tags)
+        self.assertIn("- emotions: Feelings.", text)
+        self.assertIn("- ai\n", text)
+
     def test_tag_definitions_reach_the_model(self) -> None:
         from app.ingestion.properties import model_input
         with tempfile.TemporaryDirectory() as folder:

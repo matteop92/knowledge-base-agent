@@ -14,7 +14,7 @@ from app.ingestion.run_manifest import RunManifest
 from app.ingestion.summary import summarize_document
 from app.models.client import ModelSpec
 from app.models.openrouter import OpenRouterClient
-from app.models.routes import PRIVACY, provider_routes, verify_routes
+from app.models.routes import EMBEDDING_MODEL, PRIVACY, provider_routes, verify_routes
 from app.storage.loader import connect_runtime, load_run, validate_run
 from app.storage.publication import create_profile, publish_run, select_profile
 from app.storage.records import PublicationSelection, SearchProfile, spec_id
@@ -23,7 +23,6 @@ from evals.compare_chunking import CONTEXT_PRICES, Prepared, _load_database_url,
 from evals.compare_embeddings import _select_live_manifest
 
 
-EMBEDDING_MODEL = "perplexity/pplx-embed-v1-0.6b"
 EMBEDDING_PRICE = 0.004
 CONTEXT_PROMPT = "chunk_context_v2"
 
