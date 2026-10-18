@@ -53,6 +53,8 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
     auth = auth or SupabaseAuth(settings)
     sessions = SessionStore(connect, settings.session_days)
     engine = engine or OpenRouterAnswerEngine(settings, connect)
+    if engine.worst_case_usd() > settings.answer.max_usd_per_answer:
+        raise RuntimeError("the answer budgets allow more than KNOWLEDGE_MAX_USD_PER_ANSWER; lower them or raise the limit")
     store = ConversationStore(connect, timedelta(seconds=engine.limits.max_seconds))
     jobs = AnswerJobs(store, engine, connect, settings)
     limiter = RateLimiter()
@@ -61,6 +63,7 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
 
     @app.on_event("startup")
     def interrupt_running_turns() -> None:
+        # Only turns past the time limit: during a deploy the old server may still be answering newer ones.
         count = store.interrupt_running()
         if count:
             log.info("marked %d running turns as interrupted", count)
@@ -89,12 +92,22 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
         return JSONResponse({"error": "daily spending cap reached", "cap_usd": str(settings.daily_cap_usd),
                              "resets": "midnight UTC"}, status_code=429)
 
-    def session(request: Request) -> Session:
-        return sessions.check(request.cookies.get(COOKIE_NAME))
+    def set_session_cookie(response: Response, token: str) -> None:
+        response.set_cookie(COOKIE_NAME, token, max_age=settings.session_days * 86400, path="/",
+                            httponly=True, secure=settings.cookie_secure, samesite="lax")
+
+    def session(request: Request, response: Response) -> Session:
+        token = request.cookies.get(COOKIE_NAME)
+        current = sessions.check(token)
+        if current.renewed:
+            # Renewal must reach the browser too, or the cookie still expires 30 days after sign-in.
+            set_session_cookie(response, token)
+        return current
 
     def client_key(request: Request) -> str:
-        forwarded = request.headers.get("x-forwarded-for", "")
-        return forwarded.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+        # The proxy appends the real address last; earlier entries are whatever the client sent.
+        forwarded = [item.strip() for item in request.headers.get("x-forwarded-for", "").split(",") if item.strip()]
+        return forwarded[-1] if forwarded else (request.client.host if request.client else "unknown")
 
     # Public routes ---------------------------------------------------------------------------
     @app.get("/healthz")
@@ -111,7 +124,11 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
         limiter.check(client_key(request))
         # Only the allowed address gets a code; every caller sees the same reply.
         if body.email.strip().lower() == settings.allowed_email:
-            auth.send_code(settings.allowed_email)
+            try:
+                auth.send_code(settings.allowed_email)
+            except AuthError as exc:
+                # Same reply either way, so an outage cannot reveal which address is allowed.
+                log.warning("sign-in code request failed status=%s", exc.status)
         return {"status": "code sent if the address is allowed"}
 
     @app.post("/auth/verify")
@@ -120,9 +137,8 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
         if body.email.strip().lower() != settings.allowed_email:
             raise AuthError(403, "not authorised")
         auth.verify_code(settings.allowed_email, body.code)
-        token, expires = sessions.create()
-        response.set_cookie(COOKIE_NAME, token, max_age=settings.session_days * 86400, path="/",
-                            httponly=True, secure=settings.cookie_secure, samesite="lax")
+        token, _ = sessions.create()
+        set_session_cookie(response, token)
         return {"status": "signed in"}
 
     # Signed-in routes ------------------------------------------------------------------------

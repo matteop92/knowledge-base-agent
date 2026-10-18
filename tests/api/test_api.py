@@ -207,14 +207,57 @@ class ApiTests(unittest.TestCase):
         self.sign_in()
         self.engine.release.clear()
         started = self.ask().json()
+        fresh = self.ask("A newer question?").json()
+        with psycopg.connect(os.environ["KNOWLEDGE_TEST_DATABASE_URL"], autocommit=True) as conn:
+            # Older than the answer time limit: no live server can still be answering it.
+            conn.execute("update knowledge.turns set created_at = now() - interval '10 minutes' where turn_id=%s",
+                         (started["turn_id"],))
         with TestClient(create_app(settings(), connect=self.connect, auth=self.auth, engine=FakeEngine())) as restarted:
             self.sign_in(restarted)
             turn = restarted.get(f"/api/turns/{started['turn_id']}").json()
             self.assertEqual(turn["status"], "failed")
             self.assertIn("interrupted", turn["error"])
+            # A turn another server may still be answering during a deploy is left alone.
+            self.assertEqual(restarted.get(f"/api/turns/{fresh['turn_id']}").json()["status"], "running")
             self.assertEqual(restarted.post(f"/api/conversations/{started['conversation_id']}/turns",
                                             json={"question": "Again?"}).status_code, 202)
         self.engine.release.set()
+
+    def test_running_answers_count_against_the_daily_cap(self):
+        self.sign_in()
+        self.engine.release.clear()
+        # Worst case is $0.30 each and the cap is $2, so six may run at once and the seventh is refused.
+        codes = [self.ask(f"Question {index}?").status_code for index in range(7)]
+        self.engine.release.set()
+        self.app.state.jobs.wait()
+        self.assertEqual(codes, [202] * 6 + [429])
+
+    def test_an_answer_budget_over_the_per_answer_limit_stops_the_server_starting(self):
+        from dataclasses import replace
+        from app.api.main import create_app
+        from app.api.settings import AnswerSettings
+        strict = replace(settings(), answer=AnswerSettings(max_usd_per_answer=Decimal("0.10")))
+        with self.assertRaises(RuntimeError):
+            create_app(strict, connect=self.connect, auth=self.auth, engine=FakeEngine())
+
+    def test_a_renewed_session_refreshes_the_cookie(self):
+        self.sign_in()
+        self.assertNotIn("set-cookie", self.client.get("/auth/me").headers)
+        with psycopg.connect(os.environ["KNOWLEDGE_TEST_DATABASE_URL"], autocommit=True) as conn:
+            conn.execute("update knowledge.sessions set last_used_at = now() - interval '2 hours'")
+        self.assertIn("max-age=2592000", self.client.get("/auth/me").headers["set-cookie"].lower())
+
+    def test_spoofed_forwarded_addresses_do_not_escape_the_rate_limit(self):
+        codes = [self.client.post("/auth/code", json={"email": EMAIL},
+                                  headers={"X-Forwarded-For": f"10.0.0.{index}, 203.0.113.9"}).status_code
+                 for index in range(7)]
+        self.assertIn(429, codes)
+
+    def test_a_sign_in_service_error_gets_the_same_reply(self):
+        def broken(email):
+            raise AuthError(502, "sign-in service unavailable")
+        self.auth.send_code = broken
+        self.assertEqual(self.client.post("/auth/code", json={"email": EMAIL}).status_code, 200)
 
     def test_daily_cap_refuses_before_any_model_call(self):
         self.sign_in()

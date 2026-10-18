@@ -125,14 +125,18 @@ class AnswerJobs:
                  settings: Settings) -> None:
         self.store, self.engine, self.connect, self.settings = store, engine, connect, settings
         self._threads: list[threading.Thread] = []
+        self._start_lock = threading.Lock()
 
     def check_cap(self) -> None:
+        # Answers still running have recorded nothing yet, so count each at its worst case.
+        reserved = self.engine.worst_case_usd() * (self.store.running_count() + 1)
         with self.connect() as conn:
-            check_daily_cap(conn, self.engine.worst_case_usd(), self.settings.daily_cap_usd)
+            check_daily_cap(conn, reserved, self.settings.daily_cap_usd)
 
     def start(self, conversation_id: str | None, question: str) -> tuple[str, str]:
-        self.check_cap()
-        conversation_id, turn_id = self.store.start_turn(conversation_id, question)
+        with self._start_lock:
+            self.check_cap()
+            conversation_id, turn_id = self.store.start_turn(conversation_id, question)
         thread = threading.Thread(target=self._run, args=(turn_id, question), daemon=True, name=f"answer-{turn_id}")
         self._threads.append(thread)
         thread.start()
