@@ -100,8 +100,10 @@ echo "Step 6 of 6: first two-way sync (it must change nothing)"
 STATUS=0
 OUTPUT="$(as_agent ob sync --path "$VAULT" 2>&1)" || STATUS=$?
 echo "$OUTPUT"
-# Folder names on the skip-list line are not changes, so that line is left out of the check.
-if [ "$STATUS" -ne 0 ] || echo "$OUTPUT" | grep -v "Excluded folders:" | grep -Eiq "push:|upload|delet|accepted|renam|conflict|creat"; then
+# Only what the tool prints after "Detecting changes" counts: a clean sync prints nothing there but "Fully synced"
+# and "Disconnected". The header above it (settings, skipped folder names) is not a change.
+AFTER="$(echo "$OUTPUT" | sed -n '/Detecting changes/,$p' | sed 1d | grep -v '^ *$' | grep -Ev '^(Fully synced|Disconnected from server)$' || true)"
+if [ "$STATUS" -ne 0 ] || ! echo "$OUTPUT" | grep -q "^Fully synced" || [ -n "$AFTER" ]; then
   as_agent ob sync-config --path "$VAULT" --mode pull-only
   stop "the first two-way sync failed or reported changes (listed above). The copy is back to download-only; tell Claude what it printed."
 fi
