@@ -138,6 +138,13 @@ def note_properties(draft: Draft, generated: dict[str, Any], today: date) -> dic
             props[name] = generated[name]
     props["capture"] = draft.kind
     merged = dict(draft.own)
+    if draft.kind == "youtube" and generated.get("people") and "guest" not in merged:
+        # `author` is the channel (the publisher); the people in the video go in `guest`, the field the parser reads
+        # for interviews, so source labels and name searches find them.
+        channel = str(merged.get("author") or "").casefold()
+        people = [name for name in generated["people"] if name.casefold() != channel]
+        if people:
+            merged["guest"] = people
     if "tags" in merged and tags:
         own_tags = merged["tags"] if isinstance(merged["tags"], list) else [merged["tags"]]
         merged["tags"] = list(dict.fromkeys([*[str(tag) for tag in own_tags], *tags]))
@@ -168,6 +175,10 @@ def parse_draft(draft: Draft, today: date) -> ParsedDocument:
         (root / "Knowledge" / "Captured").mkdir(parents=True)
         # Without `created`, so a missing publication date still counts as missing for the classifier.
         properties = {name: value for name, value in note_properties(draft, {}, today).items() if name != "created"}
+        if draft.kind == "youtube":
+            # The channel is the publisher, not the people speaking; hide it so the classifier looks for the people.
+            properties.pop("author", None)
+            properties.pop("authors", None)
         (root / "Knowledge" / "Captured" / "draft.md").write_text(render(draft, properties), encoding="utf-8")
         captured = capture_source(root, "Knowledge/Captured/draft.md", Path(scratch) / "runs")
         return route_source(captured)
