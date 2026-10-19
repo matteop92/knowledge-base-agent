@@ -45,6 +45,7 @@ function showSignIn(message) {
   closeSheet();
   window.captureScreen.reset();
   $("app").hidden = true;
+  document.title = "Knowledge";
   $("signin").hidden = false;
   $("signin-message").textContent = message || "";
   $("email").focus();
@@ -97,21 +98,20 @@ async function startApp() {
 
 async function refreshConversations() {
   const { conversations } = await api("GET", "/api/conversations");
-  for (const list of [$("sheet-conversation-list")]) {
-    list.replaceChildren();
-    for (const item of conversations) {
-      const li = document.createElement("li");
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "conversation";
-      button.textContent = item.title;
-      if (item.id === state.conversationId) button.setAttribute("aria-current", "true");
-      button.addEventListener("click", () => closeSheet(() => openConversation(item.id)));
-      li.append(button);
-      list.append(li);
-    }
+  const list = $("sheet-conversation-list");
+  list.replaceChildren();
+  for (const item of conversations) {
+    const li = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "conversation";
+    button.textContent = item.title;
+    if (item.id === state.conversationId) button.setAttribute("aria-current", "true");
+    button.addEventListener("click", () => closeSheet(() => openConversation(item.id)));
+    li.append(button);
+    list.append(li);
   }
-  for (const empty of document.querySelectorAll(".conversation-empty")) empty.hidden = conversations.length > 0;
+  document.querySelector(".conversation-empty").hidden = conversations.length > 0;
 }
 
 function stopPolling() {
@@ -354,6 +354,7 @@ function wireFeedback(element, turnId) {
 function applyView(view) {
   const changed = state.view !== view;
   state.view = view;
+  $("app").dataset.view = view;
   $("view-ask").hidden = view !== "ask";
   $("capture").hidden = view !== "add";
   for (const tab of document.querySelectorAll("[data-tab]")) {
