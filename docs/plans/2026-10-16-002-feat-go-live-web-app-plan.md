@@ -16,6 +16,7 @@ execution: code
 - **Authority:** KTD1-KTD8 are Matt's settled decisions of 2026-10-16 and are not reopened by executors. KTD9 onward are planning decisions an executor may revisit only with evidence and a note in this plan. The vault on Obsidian Sync is the home of every file; Supabase holds only the search copy, conversation history and spend records. Existing contracts in `SYSTEM.md`, `FOUNDATION.md` and `DATA.md` (source hashes, active runs, span provenance) still hold.
 - **Execution profile:** Four phases. Phase 0 clears blockers. Phase 1 has two milestones: first Matt can ask a question on the hosted web app over the bulk-loaded vault (U8), then the vault keeps itself up to date (U16). Phase 2 adds follow-up memory and capture. Phase 3 is quality work driven by real use.
 - **Stop conditions:** Stop and ask Matt when Obsidian Headless cannot hold a stable sync on the server (switch to the GitHub fallback only with his OK); when the bulk-load dry run's worst case exceeds the `--max-usd` he approved in U5; when full-vault retrieval recall in U5 falls more than 10 required spans below the six-file baseline at K=20; when the `rls_auto_enable()` review finds private tables reachable from the Data API; or when a hosted answer takes more than twice the local CLI's time or cost for the same question.
+- **Status (2026-10-19):** Phase 0, Phase 1a (U8) and Phase 1b (U16) are built, reviewed, merged and live. Phase 2 and Phase 3 remain. Matt's decisions of 2026-10-17/18 override the original text below wherever they differ: there is no `Inbox/` folder (captures go straight into a `Knowledge` subfolder chosen by capture type), only the `Knowledge` folder is synced and indexed, and the server's sync starts download-only and is switched to two-way for Phase 2.
 - **Tail ownership:** Each phase ends with `$finish-task`, which updates `FOUNDATION.md#current-progress` and the one relevant system doc.
 
 ---
@@ -24,7 +25,7 @@ execution: code
 
 ### Summary
 
-Build one small always-on Python server that serves a private installable web app, answers questions over the existing Supabase search store, keeps a synced copy of Matt's Obsidian vault, and indexes new and changed files every few minutes. In the web app Matt asks a question, gets an answer with citations and expandable source excerpts, and replies with follow-ups in the same conversation. Later the same app accepts shared screenshots, YouTube links, pasted text and markdown files, turns each into a markdown note with properties in the vault Inbox, and indexes it.
+Build one small always-on Python server that serves a private installable web app, answers questions over the existing Supabase search store, keeps a synced copy of Matt's Obsidian vault, and indexes new and changed files every few minutes. In the web app Matt asks a question, gets an answer with citations and expandable source excerpts, and replies with follow-ups in the same conversation. Later the same app accepts shared screenshots, YouTube links, pasted text and markdown files, turns each into a markdown note with properties in a `Knowledge` subfolder chosen by capture type, and indexes it.
 
 ### Problem Frame
 
@@ -42,7 +43,7 @@ The agent works today only as a local command-line tool over six checked files (
 
 **Vault index**
 
-- R6. Files in the vault folders Matt selects (plus `Inbox/`) are searchable after a one-time bulk load whose cost was checked by a dry run first. Other folders are never synced to the server, read or indexed.
+- R6. Files in the vault folders Matt selects (the `Knowledge` folder, decided 2026-10-18) are searchable after a one-time bulk load whose cost was checked by a dry run first. Other folders are never synced to the server, read or indexed.
 - R6b. Every indexed file has a consistent set of properties (type, tags from an approved list, people, date, one-line description). Properties Matt already set are never overwritten. New captures get the same properties from the same step.
 - R7. A file Matt adds or edits in Obsidian becomes searchable within a few minutes; a file he deletes or empties stops appearing in answers.
 - R8. Files stay in the Obsidian vault on Obsidian Sync; Supabase stores only text, chunks, embeddings, conversation history and spend records.
@@ -53,7 +54,7 @@ The agent works today only as a local command-line tool over six checked files (
 - R10. A screenshot (including tweets and LinkedIn posts) becomes a markdown note with the extracted text and properties.
 - R11. A YouTube link becomes a markdown note with a transcript and properties.
 - R12. Pasted text and markdown files become notes with properties.
-- R13. Every capture lands in the vault Inbox folder, syncs to Matt's devices, and is normally searchable within a minute, without waiting for the next scheduled index job.
+- R13. Every capture lands in a `Knowledge` subfolder chosen by capture type (no Inbox), syncs to Matt's devices, and is normally searchable within a minute, without waiting for the next scheduled index job.
 
 **Operation**
 
@@ -74,7 +75,7 @@ The agent works today only as a local command-line tool over six checked files (
 
 **Outside this product's identity**
 
-- Editing or reorganising Matt's existing notes. The agent only adds new files to Inbox.
+- Editing or reorganising Matt's existing notes. The agent only adds new files, in a `Knowledge` subfolder by capture type.
 - A native Android app. The installable web app with Share Target is the phone client.
 
 ### Open Questions
@@ -84,7 +85,7 @@ None block Phase 0 or the start of Phase 1. Each has a default the executor uses
 - Q1. Sign-in method: settled by Matt on 2026-10-16 as Supabase Auth with a six-digit email code typed into the app (see KTD10).
 - Q2. Host: settled by Matt on 2026-10-16 as Railway (Hobby plan, about $5-8/month with a persistent volume). Fly only if Railway cannot give a persistent volume, a shell and Supabase access.
 - Q3. Daily spend cap (needed by U6). Default: $2 for all model spend, adjustable by environment variable.
-- Q4. Which vault folders to index (needed by U4b and U5). Matt names them before the dry run. Default if he has not: the folders the six checked files come from (`Transcripts/`, `Notes/`, `Articles/`, `Books/`, `Book Highlights/`) plus `Inbox/`.
+- Q4. Which vault folders to index (needed by U4b and U5). Matt names them before the dry run. Settled 2026-10-18: the `Knowledge` folder only (22 notes then, 23 now); there is no Inbox.
 - Q5. The tag list (needed by U4b). Default: the classifier proposes a list from a sample of about 50 selected files plus the tags already in use; Matt edits and approves it before the full run.
 - Q6. Writing properties back into existing vault files. Default: no. Properties for existing files live in Supabase only (see the non-goal on editing existing notes); new captures carry them in the file. A later opt-in command can write them into files after Matt reviews a sample.
 
@@ -96,7 +97,7 @@ None block Phase 0 or the start of Phase 1. Each has a default the executor uses
 
 - KTD1. Interface is a small private installable web app (PWA) with Android Web Share Target and desktop drag-and-drop/paste, a conversation sidebar, and citations with expandable excerpts. (session-settled: user-directed — chosen over a chat-bot or native app: one client covers Android and desktop with share support.)
 - KTD2. Hosting is one always-on Python server on Railway (~$5-8/month) running FastAPI, the sync job, ingestion and the answer agent. (session-settled: user-directed — chosen over Vercel functions: serverless functions cannot hold a synced vault copy.)
-- KTD3. The vault stays on Obsidian Sync. The server runs Obsidian Headless (`ob sync --continuous`) to write into Inbox and pick up Matt's edits; the fallback is a private GitHub copy of the vault with the Obsidian Git plugin. Supabase project `ielkvsfcnwtaljnemxua` keeps the search copy and conversation history only. (session-settled: user-directed — chosen over moving files into Supabase storage: the vault remains Matt's home for files.)
+- KTD3. The vault stays on Obsidian Sync. The server runs Obsidian Headless as a one-shot `ob sync` every minute (so its settings are re-read each cycle), download-only and notes only at first; Phase 2 switches it to two-way so captures written into a `Knowledge` subfolder reach Matt's devices; the fallback is a private GitHub copy of the vault with the Obsidian Git plugin. Supabase project `ielkvsfcnwtaljnemxua` keeps the search copy and conversation history only. (session-settled: user-directed — chosen over moving files into Supabase storage: the vault remains Matt's home for files.)
 - KTD4. A job every few minutes indexes new or changed vault files by comparing the source byte hash with the active run, and retires deleted files. A one-time bulk load runs after a cost dry run. (session-settled: user-directed — chosen over manual uploads: edits made in Obsidian must reach the index on their own.)
 - KTD5. Capture inputs v1 are markdown, pasted text, screenshots through a cheap vision model, and YouTube through the Gemini API with the public URL as input; a paid transcript API is the backup. (session-settled: user-directed — chosen over self-hosted transcription: no audio pipeline to run.)
 - KTD6. Memory is per conversation only: resend recent turns, rewrite a follow-up into a standalone search query, and carry the evidence ledger forward; summarise only when a conversation gets long; use provider prompt caching where it applies. (session-settled: user-directed — chosen over long-term memory: smallest change that makes follow-ups work.)
@@ -111,7 +112,7 @@ None block Phase 0 or the start of Phase 1. Each has a default the executor uses
 - KTD15. Phase 2 builds memory before capture. Once vault sync runs, Matt can already add notes by writing them in Obsidian on his phone, while follow-ups happen in every conversation. Capture still covers all four inputs: screenshots, YouTube, pasted text and markdown files. This adjusts the brief's order inside Phase 2 only.
 - KTD16. Citations link to originals with an `obsidian://open?vault=<name>&file=<path>` URL built from the stored relative path, both parts URL-encoded. This closes the open question in `FOUNDATION.md` "Choices still open" about how the UI opens an original file; KTD3 closes the sync-provider question there.
 - KTD17. Phase 1 ships in two steps: deploy the API and web app over the bulk-loaded index (U8), then add Headless sync and the scheduled index job (U16). The beta dependency then cannot hold back the first usable release.
-- KTD19. Indexing covers an allowlist of vault folders (`KNOWLEDGE_INCLUDED_FOLDERS`); `Inbox/` is always included. Headless sync excludes every other top-level folder (`ob sync-config --excluded-folders`), so unselected notes never reach the server. Removing a folder from the list retires its documents only with `--allow-mass-retire`, so a typo cannot wipe the index. (session-settled: user-directed — chosen over the whole vault: Matt wants only selected folders.)
+- KTD19. Indexing covers an allowlist of vault folders (`KNOWLEDGE_INCLUDED_FOLDERS`, default `Knowledge`); there is no Inbox. The sync tool cannot say "only this folder", so a skip list (`ob sync-config --excluded-folders`, names typed at setup and kept on the volume) keeps known folders off the server, and `app/ingestion/vault_allowlist.py` runs before every download: it adds any new top-level folder to the skip list and, while the sync is download-only and the tool's own settings say so, deletes it from the server copy. In two-way mode (Phase 2) it deletes only folders already on the skip list; a 2026-10-18 test showed that deleting the local copy of a skipped folder does not delete it from the vault. Removing a folder from the list retires its documents only with `--allow-mass-retire`, so a typo cannot wipe the index. (session-settled: user-directed — chosen over the whole vault: Matt wants only selected folders.)
 - KTD20. A properties classifier runs once per new or changed file before chunking: one cheap zero-retention model call reads the existing frontmatter and the first part of the text and returns a fixed schema (`source_type`, `tags` chosen from the approved list, up to five, plus at most one proposed new tag held for Matt's review, `people`, `date`, `description` of one line, `language`). It only fills properties that are missing. Results are stored per document and source hash in `knowledge.document_properties` and feed the source labels that named-source search and candidate previews already use. The same function sets properties on captures (U10). It is metadata, not chunk text, so embeddings and the measured recall baseline are unchanged; earlier card and summary experiments showed generated text inside the index did not earn its cost, so this layer is for consistent organisation and filtering. (session-settled: user-directed — chosen over hand-tagging: one process for the existing files and every future input.)
 - KTD18. Every model-calling path (answers, rewrites, indexing, vision, transcripts) writes its cost to one `knowledge.spend` ledger and checks the day's total plus the job's worst-case bound against the daily cap before calling. A call with unknown usage is recorded at its worst-case bound.
 
@@ -129,7 +130,7 @@ flowchart TB
         API["FastAPI: sessions, conversations,<br/>ask jobs, feedback, capture"]
         JOB["Index job every few minutes<br/>hash compare, ingest, retire"]
         AGENT["Answer agent<br/>prompt v13 + DatabaseRetriever"]
-        CAP["Capture: vision, Gemini YouTube,<br/>paste and markdown to Inbox"]
+        CAP["Capture: vision, Gemini YouTube,<br/>paste and markdown to Knowledge"]
     end
     SUPA["Supabase Postgres, knowledge schema<br/>chunks, vectors, conversations,<br/>sessions, feedback, spend"]
     AUTH["Supabase Auth<br/>one allowed user"]
@@ -182,7 +183,7 @@ stateDiagram-v2
 
 | Risk | Mitigation |
 | --- | --- |
-| Obsidian Headless is an open beta; sync may stall or conflict | KTD17 keeps it off the first release; run it supervised with health reporting; `--conflict-strategy conflict` so nothing is silently merged, and the indexer skips conflict-copy files; the agent writes only new files in Inbox; GitHub fallback behind the same vault-folder interface. |
+| Obsidian Headless is an open beta; sync may stall or conflict | KTD17 keeps it off the first release; run it supervised with health reporting; `--conflict-strategy conflict` so nothing is silently merged, and the indexer skips conflict-copy files; the agent writes only new files in a `Knowledge` subfolder; GitHub fallback behind the same vault-folder interface. |
 | An empty or partial vault copy retires the whole index and forces a paid re-embed | U4 mass-retire guard; U16 waits for Headless's first complete sync before the first tick. |
 | Full-vault retrieval is worse than the six-file result | U5 reruns the recall questions on the hosted index; stop condition in the Goal Capsule. |
 | Search slows at full-vault scale | U5 times named-source lookup, vector search and text search separately; HNSW or a metadata index is a measured follow-up. |
@@ -194,13 +195,13 @@ stateDiagram-v2
 
 ### Sources and Research
 
-- Obsidian Headless: `npm install -g obsidian-headless`, Node 22+, `ob login`, `ob sync-setup --vault --path --device-name`, `ob sync --continuous`, `ob sync-config --mode --conflict-strategy --excluded-folders`, `ob sync-status`; requires an active Sync subscription; do not run desktop Sync and Headless on the same device (https://obsidian.md/help/headless, https://obsidian.md/help/sync/headless, read 2026-10-16).
+- Obsidian Headless: `npm install -g obsidian-headless`, Node 22+, `ob login`, `ob sync-setup --vault --path --device-name`, `ob sync` (one shot; `--continuous` is not used), `ob sync-config --mode --conflict-strategy --excluded-folders`, `ob sync-status`; requires an active Sync subscription; do not run desktop Sync and Headless on the same device (https://obsidian.md/help/headless, https://obsidian.md/help/sync/headless, read 2026-10-16).
 - Stateless harness entry point: `answer_question` in `app/agent/harness.py`; the ledger (`candidates`, `inspected`, `needs`) is local to each call.
 - Retrieval: `DatabaseRetriever`, `hybrid_search`, `named_sources` and `read_passage` in `app/storage/retrieval.py`; reads are bound to the active run.
 - Load and publish: `load_run` in `app/storage/loader.py`, `create_profile` and `publish_run` in `app/storage/publication.py` (the profile must exist before any publish).
 - Schema and grants: `supabase/migrations/20260923152944_private_knowledge_index.sql` (runtime role has select/insert and narrow updates, no deletes).
 - Source identity and strictness: `capture_source` in `app/ingestion/source_reader.py` builds the document id from the root alias and casefolded relative path and rejects empty, whitespace-only and non-UTF-8 files; `app/ingestion/markdown_parser.py` reads `title`, `url`/`source`, `author`/`authors`/`guest`, `published`/`created`/`date` and `tags`, and raises on invalid frontmatter.
-- Routing and generic fallback: `choose_route` in `app/ingestion/router.py` routes by top folder; Inbox files fall to `generic` unless their text matches a transcript or highlight signature.
+- Routing and generic fallback: `choose_route` in `app/ingestion/router.py` routes by top folder; captured files in a `Knowledge` subfolder fall to `generic` unless their text matches a transcript or highlight signature.
 - Grader status: `docs/plans/2026-10-16-001-grader-calibration-plan.md`, `evals/answer_grader.py`, `evals/grade_answers.py`.
 
 ---
@@ -253,7 +254,7 @@ stateDiagram-v2
 - **Requirements:** R6, R7, R8, R14.
 - **Dependencies:** U3.
 - **Files:** `app/ingestion/vault_sync.py`, `app/models/routes.py`, `app/ingestion/live_run.py`, `evals/compare_embeddings.py`, `evals/trial_routes.py`, `app/storage/publication.py`, `tests/ingestion/test_vault_sync.py`, `tests/models/test_routes.py`, `tests/storage/test_retirement.py`.
-- **Approach:** Walk only the folders in `KNOWLEDGE_INCLUDED_FOLDERS` plus `Inbox/` under `KNOWLEDGE_SOURCE_ROOT` (the vault root, fixed root alias; KTD19) for `.md` files, skipping `.obsidian/`, `.trash/`, configured excluded folders and Obsidian conflict-copy files. Treat empty or whitespace-only files as absent. Compare each file's byte hash with the active run's `source_sha256` for its locator; only differing files go through source capture, routing, structural chunking, raw embeddings with the selected spec, `load_run` and `publish_run`. Retire locators with an active run but no file. Record failures by (locator, hash) and skip a hash that already failed until its bytes change. Mass-retire guard: when one pass would retire more than 10% of active documents or more than 20 files, or the vault root is missing, retire nothing and report it unless `--allow-mass-retire` is given. `--dry-run` parses every file and reports counts, parse failures by reason, chunk and token estimates, worst-case cost and projected database size, with no model calls. `--live` needs `--max-usd` and writes spend to the ledger (KTD18). A lock prevents overlapping runs. Move route and price handling into `app/models/routes.py` per KTD14.
+- **Approach:** Walk only the folders in `KNOWLEDGE_INCLUDED_FOLDERS` under `KNOWLEDGE_SOURCE_ROOT` (the vault root, fixed root alias; KTD19) for `.md` files, skipping `.obsidian/`, `.trash/`, configured excluded folders and Obsidian conflict-copy files. Treat empty or whitespace-only files as absent. Compare each file's byte hash with the active run's `source_sha256` for its locator; only differing files go through source capture, routing, structural chunking, raw embeddings with the selected spec, `load_run` and `publish_run`. Retire locators with an active run but no file. Record failures by (locator, hash) and skip a hash that already failed until its bytes change. Mass-retire guard: when one pass would retire more than 10% of active documents or more than 20 files, or the vault root is missing, retire nothing and report it unless `--allow-mass-retire` is given. `--dry-run` parses every file and reports counts, parse failures by reason, chunk and token estimates, worst-case cost and projected database size, with no model calls. `--live` needs `--max-usd` and writes spend to the ledger (KTD18). A lock prevents overlapping runs. Move route and price handling into `app/models/routes.py` per KTD14.
 - **Patterns to follow:** `preview_markdown` and the run directory layout in `app/ingestion/preview.py`; `embed_chunks` in `app/ingestion/embeddings.py`; budget guards in `app/ingestion/live_run.py`.
 - **Test scenarios:**
   - Three new fixture files: dry run reports three to ingest and a cost; live run with a fake client publishes three active runs.
@@ -357,6 +358,17 @@ stateDiagram-v2
 - **Requirements:** R7, R8.
 - **Dependencies:** U4, U8.
 - **Files:** `Dockerfile`, `deploy/start.sh`, `deploy/README.md`, `app/api/scheduler.py`, `tests/api/test_scheduler.py`.
+- **Approach (built and live 2026-10-19):** The image installs `obsidian-headless` from a lock file (`deploy/obsidian/`) with pinned base images; a Railway volume at `/data` holds the vault copy and Headless's sign-in. `deploy/start.sh` fixes volume ownership and drops to an app user; `deploy/run.sh` starts `deploy/sync-loop.sh` (cleanup, then one `ob sync`, every minute) beside uvicorn when `KNOWLEDGE_SYNC_ENABLED=true`. `app/api/scheduler.py` runs U4's indexer every five minutes with U4's lock, holds retirement on the first pass after a start, and reports the last result and last download in `/health`. `deploy/ob-setup.sh` is the one-time sign-in and setup (download-only, notes only, folder skip list); `deploy/README.md` documents it and the Phase 2 two-way switch.
+- **Execution note:** Prove with a smoke check on the deployed host.
+- **Test expectation:** none -- packaging and deployment; behaviour is covered by U6 and U7 tests.
+- **Verification:** On the deployed app from Matt's phone, Q8 is answered with both named sources cited; `/healthz` is ok after a restart.
+
+### U16. Vault sync and scheduled indexing on the server
+
+- **Goal:** The deployed vault copy follows Obsidian Sync and indexes itself.
+- **Requirements:** R7, R8.
+- **Dependencies:** U4, U8.
+- **Files:** `Dockerfile`, `deploy/start.sh`, `deploy/README.md`, `app/api/scheduler.py`, `tests/api/test_scheduler.py`.
 - **Approach:** Add Node 22 and `obsidian-headless` to the image and a persistent volume for the vault copy and Headless config. Headless sync excludes every top-level folder outside the KTD19 allowlist. The start script supervises `ob sync --continuous` and uvicorn, restarting either if it exits. The FastAPI process runs U4's indexer every five minutes in a background thread with U4's lock, and records the last result for `/health`. The first tick waits until `ob sync-status` reports a completed initial sync. `deploy/README.md` documents the one-time `ob login`, `ob sync-setup --device-name kb-server` (vault password typed at the prompt, not passed as an argument) and `ob sync-config --conflict-strategy conflict`.
 - **Execution note:** Prove with a smoke check on the deployed host beyond the scheduler tests.
 - **Test scenarios:**
@@ -383,18 +395,18 @@ stateDiagram-v2
   - With no prior ledger, behaviour matches v13 on the existing harness tests.
 - **Verification:** Agent tests pass; three real follow-up chains on the hosted app read naturally to Matt.
 
-### U10. Capture core: notes into Inbox
+### U10. Capture core: notes into a Knowledge subfolder
 
-- **Goal:** Any captured input becomes a markdown file with properties in the vault Inbox and is indexed at once.
+- **Goal:** Any captured input becomes a markdown file with properties in a `Knowledge` subfolder chosen by capture type and is indexed at once.
 - **Requirements:** R12, R13.
 - **Dependencies:** U4b, U16.
 - **Files:** `app/capture/notes.py`, `app/api/capture.py`, `tests/capture/test_notes.py`, `tests/api/test_capture.py`.
-- **Approach:** Fill properties through U4b's `classify_properties`, written into the new file's frontmatter. Build YAML properties with the names the parser reads: `title`, `url`, `author` (post author or YouTube channel), `created` (capture date), `tags`, plus `source_type` (screenshot, youtube, text, markdown). Ignore client-supplied file names; build the name from a slug of `[a-z0-9-]` plus date, resolve the final path, refuse anything outside `Inbox/`, and never overwrite. Uploaded markdown keeps its own properties and gains missing ones. Captures run as `capture_jobs` per KTD11, write spend per KTD18, and enforce a 20 MB upload limit. After writing, the capture waits up to 30 seconds for U4's lock and indexes that one file; on timeout it reports "saved, indexing queued" and the next tick picks it up.
+- **Approach:** First switch the server's sync to two-way as `deploy/README.md` describes (turn the sync loop off, switch the tool and `KNOWLEDGE_SYNC_MODE` together, turn it back on) and change the cleanup so it deletes only folders already on the skip list. Then fill properties through U4b's `classify_properties`, written into the new file's frontmatter. Build YAML properties with the names the parser reads: `title`, `url`, `author` (post author or YouTube channel), `created` (capture date), `tags`, plus `source_type` (screenshot, youtube, text, markdown). Ignore client-supplied file names; build the name from a slug of `[a-z0-9-]` plus date, resolve the final path, refuse anything outside the capture subfolders of `Knowledge/`, and never overwrite; Matt and the executor settle the subfolder names at the start of Phase 2. Uploaded markdown keeps its own properties and gains missing ones. Captures run as `capture_jobs` per KTD11, write spend per KTD18, and enforce a 20 MB upload limit. After writing, the capture waits up to 30 seconds for U4's lock and indexes that one file; on timeout it reports "saved, indexing queued" and the next tick picks it up.
 - **Test scenarios:**
-  - Pasted text produces one Inbox note with properties and becomes searchable.
+  - Pasted text produces one new note with properties and becomes searchable.
   - A captured note's `author` appears as a person in the source label used by named-source search.
   - Two captures with the same title produce two distinct files.
-  - An upload named `../Projects/x.md` lands in `Inbox/` under a safe name.
+  - An upload named `../Projects/x.md` lands in a capture subfolder under a safe name.
   - An uploaded markdown file with existing `tags` keeps them and gains `created`.
   - A capture arriving while the index lock is held reports "saved, indexing queued" and is indexed on the next tick.
   - A capture whose indexing fails keeps the file and reports the failure.
@@ -435,7 +447,7 @@ stateDiagram-v2
 - **Requirements:** R9.
 - **Dependencies:** U10, U11, U12.
 - **Files:** `app/web/manifest.webmanifest`, `app/web/sw.js`, `app/web/app.js`, `app/web/capture.html`, `tests/api/test_capture.py`.
-- **Approach:** Add `share_target` to the manifest (POST, multipart, accepting images, text, URLs and `.md`). The service worker intercepts the share POST, holds the payload, and opens the capture screen, which uploads it with the session cookie. If the session has expired, the payload is kept until sign-in completes. An "Add" button in the sidebar header opens the same screen on desktop, which accepts drag-and-drop, paste and a text field. The screen detects the input type, lets Matt add tags, and shows each item as queued, extracting, saved and indexed, or failed with a reason and Retry. On success it shows the note title, its Inbox path and "Open in Obsidian". A recent-captures list for the session makes a repeated share recognisable.
+- **Approach:** Add `share_target` to the manifest (POST, multipart, accepting images, text, URLs and `.md`). The service worker intercepts the share POST, holds the payload, and opens the capture screen, which uploads it with the session cookie. If the session has expired, the payload is kept until sign-in completes. An "Add" button in the sidebar header opens the same screen on desktop, which accepts drag-and-drop, paste and a text field. The screen detects the input type, lets Matt add tags, and shows each item as queued, extracting, saved and indexed, or failed with a reason and Retry. On success it shows the note title, its path and "Open in Obsidian". A recent-captures list for the session makes a repeated share recognisable.
 - **Test scenarios:**
   - Sharing an image, a YouTube link, a text snippet and a `.md` file each routes to the right capture type.
   - A share while signed out prompts sign-in and then completes the capture.
@@ -480,7 +492,7 @@ Tests use fake model clients; no unit test makes a live model call or touches th
 
 - Phase 1 first release (U8): Matt asks a question on the deployed app from his Android phone and desktop, sees citations with excerpts and Obsidian links, and can give thumbs-down.
 - Phase 1 complete (U16): a note Matt writes in Obsidian is answerable within ten minutes, and a deleted note stops appearing.
-- Phase 2 done: follow-ups build on earlier turns; screenshots, YouTube links, pasted text and markdown files shared from Android or dropped on desktop land in Inbox, sync to his devices and are answerable.
+- Phase 2 done: follow-ups build on earlier turns; screenshots, YouTube links, pasted text and markdown files shared from Android or dropped on desktop land in a `Knowledge` subfolder, sync to his devices and are answerable.
 - Phase 3 done when Matt decides; each quality change shows a measured gain over v13.
 - Every phase: listed tests pass, `FOUNDATION.md#current-progress` and the relevant system doc are updated through `$finish-task`, no vault content or model output is committed, and no abandoned experimental code is left in the diff.
 
