@@ -79,7 +79,8 @@ Variables (all optional except the switch):
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `KNOWLEDGE_SYNC_ENABLED` | `false` | Turn on the sync loop and the scheduler. Set to `true` only after the one-time setup below. |
-| `KNOWLEDGE_SYNC_MODE` | `pull-only` | `pull-only` or `bidirectional`; must match the sync tool's mode. |
+| `KNOWLEDGE_SYNC_MODE` | `pull-only` | `pull-only` or `bidirectional`; must match the sync tool's mode. Captures are refused unless it is `bidirectional`. |
+| `KNOWLEDGE_CAPTURE_FOLDER` | `Knowledge` | Folder whose `Transcripts`, `Articles`, `Book Highlights` and `Notes` subfolders receive new capture notes (new files only). |
 | `KNOWLEDGE_SOURCE_ROOT` | `/data/vault` | Where the vault copy lives. |
 | `KNOWLEDGE_INCLUDED_FOLDERS` | `Knowledge` | Top-level vault folders to index and keep on the server. |
 | `KNOWLEDGE_INDEX_INTERVAL_SECONDS` | `300` | Time between index passes. |
