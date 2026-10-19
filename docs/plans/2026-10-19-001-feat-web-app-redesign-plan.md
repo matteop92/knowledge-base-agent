@@ -16,7 +16,7 @@ execution: code
 - **Authority:** KTD1-KTD9 are Matt's settled decisions and are not reopened by executors. KTD10 onward are planning decisions an executor may revisit with evidence and a note in this plan. The design reference is a Claude Design canvas ("Paper" boards: Ask, Source, Add, Desktop, Feedback, Gaps) and two mock pages that live in the project thread, not in this repo; the executor asks Matt for them when a measurement is missing. Existing contracts in `SYSTEM.md` and `FOUNDATION.md` still hold: no API, schema or agent change.
 - **Execution profile:** Three releases, each its own PR to `main`. Release A is the look and navigation shell (U1-U4). Release B is the Add screen, answers, sources, gaps and feedback (U5-U9). Release C is an accessibility and polish pass (U10). Each release leaves a working app.
 - **Stop conditions:** Stop and ask Matt when a design measurement needed for a unit is missing from the canvas; when a font cannot be self-hosted under its licence; when the gap sentences the agent returns cannot be shown in plain words without losing meaning; or when a change would need a server or database change.
-- **Process rule:** Matt does the visual and device checks himself, on his phone and desktop. The executor runs only the automated tests and static checks, never opens or screenshots the app on his behalf, and hands him each release and waits. The manual checks below are Matt's.
+- **Process rule:** Matt does the visual and device checks himself, on his phone and desktop. The executor runs only the automated tests and static checks, never opens or screenshots the app on his behalf, and hands him each release and waits. The manual checks below are Matt's. The executor opens each release PR but does not merge it, or start the next release, until Matt has checked the branch and accepted it; if a check fails after merge, revert the PR.
 - **Tail ownership:** Each release ends with `$finish-task`, which reconciles `FOUNDATION.md#current-progress` and the one relevant system doc.
 
 ---
@@ -37,21 +37,21 @@ Matt finds the current UI "a mess". The Add screen replaces the thread but keeps
 
 - R1. Ask and Add are two top-level tabs: a bottom bar on phone, entries at the top of a sidebar on desktop; the active tab is always visible and each tab has its own title.
 - R2. History lists past conversations: in a bottom panel on phone, always visible under the tabs in the sidebar on desktop. "New question" and settings (sign out, sign out everywhere) live with History, not in the top bar.
-- R3. The desktop sidebar is a slightly darker warm beige than the main area with no border line, and collapses to icons only with a small button; the choice is remembered on that device.
+- R3. The desktop sidebar is a slightly darker warm beige than the main area with no border line, and collapses to icons only with a small button; the choice is remembered on that device. When collapsed, History and New question each keep an icon, so past conversations stay reachable.
 - R4. The question and follow-up box is pinned to the bottom of the Ask tab on phone and desktop.
 - R5. Android back closes an open sheet before it leaves the app.
 
 **Add**
 
 - R6. Add is one box that accepts typed or pasted text, links, YouTube links, dropped or pasted screenshots, and `.md`/`.txt` files, with an Attach button for files.
-- R7. Before saving, the app shows what it detected (text, web link, YouTube video, screenshot, Markdown file). Title and tags are folded away.
+- R7. Before saving, the app shows what it detected (text, web link, YouTube video, screenshot, Markdown file, text file). Title and tags are folded away.
 - R8. Recent saves stay visible on the Add tab with their states (saving, saved and searchable, searchable after the next pass, failed with Retry), and a share from Android still opens Add with the item filled in.
 
 **Answers**
 
 - R9. Source numbers inside the answer text are tiny footnote marks; a row of small numbers under each answer lists the same sources.
-- R10. Tapping a number opens a bottom sheet on phone and a side panel on desktop with the note title, its folder path, the exact passage, and a small Obsidian icon button.
-- R11. When an answer has gaps, a dark green icon with the gap count follows the source numbers; tapping it opens a "What's missing" sheet that lists each gap in plain words, with no internal codes or agent stop messages, and an "Add a note to fill this gap" button that opens Add with a note started.
+- R10. Tapping a number opens a bottom sheet on phone and a side panel on desktop with the note title, its folder path, every passage cited from that note in answer order, and a small Obsidian icon button.
+- R11. When an answer has gaps, a dark green icon with the gap count follows the source numbers; tapping it opens a "What's missing" sheet that lists each gap in plain words, with no internal codes, and an "Add a note to fill this gap" button that opens Add with a note started. Run problems (the agent could not finish checking) are not gaps: they show as a plain line under the answer, with no count and no Add button.
 - R12. Thumbs-down is the only feedback. Tapping it opens a note box and Send (sheet on phone, inline panel on desktop); the saved state is visible and can be removed.
 - R13. Answering, failed (with Retry), answered-with-gaps, spend-cap, empty and signed-out states remain and are restyled; an answer with no citations still shows its feedback control, and "Answered with gaps" stays in the answer row's accessible text.
 
@@ -62,7 +62,7 @@ Matt finds the current UI "a mess". The Add screen replaces the thread but keeps
 
 **Quality**
 
-- R16. Every control is at least 44 pixels to tap, keyboard reachable, with a visible focus ring; sheets trap focus, close on Escape and return focus; text meets WCAG AA contrast.
+- R16. Every control is at least 44 pixels to tap (inline source marks are exempt; the bottom row of numbers meets it), keyboard reachable, with a visible focus ring; sheets trap focus, close on Escape and return focus; text meets WCAG AA contrast.
 - R17. No behaviour behind the screens changes: same API calls, same stored data, same share target, same offline shell.
 
 ### Scope Boundaries
@@ -79,7 +79,7 @@ Matt finds the current UI "a mess". The Add screen replaces the thread but keeps
 
 ### Success Criteria
 
-Matt can use every flow he uses today on his phone and desktop, and calls the result acceptable. No existing capability is lost (U-level checklist in the Verification Contract).
+Matt can use every flow he uses today on his phone and desktop, and calls the result acceptable. No existing capability is lost (U-level checklist in the Verification Contract). The complaints in the Problem Frame are gone: he can say which tab he is in on every screen; opening a source does not move the answer text; he notices the gap icon on an answer that has gaps without being told; the phone's top area holds only a title and History.
 
 ---
 
@@ -107,20 +107,20 @@ Matt can use every flow he uses today on his phone and desktop, and calls the re
 - KTD9. No dark mode for now. (session-settled: user-directed.)
 - KTD10. Stay with plain HTML, CSS and JavaScript, no framework or build step. The app is about 900 lines, the CSP forbids inline code, and the existing no-`innerHTML` rule is enforced by tests.
 - KTD11. Self-host Newsreader and Geist as variable woff2 files under `app/web/fonts/`, Latin subset, and add them to the service worker's shell list. External font hosts are blocked by the CSP and would leak requests to a third party.
-- KTD12. Views are one page with an in-memory view state (`ask`, `add`); only sheets push a browser history entry, marked with a state value, and one `popstate` handler closes the open sheet. Switching tab closes any open sheet first and pops its entry. Back from the Add tab is not guaranteed to return to the previous answer. The share-target redirect to `/?share=1` is a fresh load with no sheet open, so it is unaffected; a 401 closes any open sheet.
+- KTD12. Views are one page with an in-memory view state (`ask`, `add`); only sheets push a browser history entry, marked with a state value, and one `popstate` handler closes the open sheet. Switching tab closes any open sheet first and pops its entry. Back from the Add tab is not guaranteed to return to the previous answer. The share-target redirect to `/?share=1` is a fresh load with no sheet open, so it is unaffected; a 401 closes any open sheet. `popstate` is the only closer: a programmatic close calls `history.back()` and the handler does the teardown, and any follow-up action (tab switch, `openWith`, opening another sheet) runs after the handler completes.
 - KTD13. One sheet component serves Source, Gaps, Feedback and History and is built in U2. On phone it is a bottom sheet; at 900 pixels and wider Source and Gaps become a right-hand panel. Two exceptions: History lives in the sidebar, and Feedback is an inline panel under the answer. One Escape handler, owned by `app.js`, closes the topmost sheet.
-- KTD14. Gap sentences are cleaned in the browser: strip a leading `Unresolved need N<k>:` or `N<k>:` and show the sentence alone. The agent's own stop messages (for example "Hybrid retrieval failed.", "Model stopped: ...", "Investigation budget ended before a valid grounded answer.") map to one plain sentence each in a small table in `app.js`; an unrecognised sentence is shown as it is. There is no "Looked for" line: after the prefix is stripped it would repeat the gap text.
+- KTD14. Gap sentences are cleaned in the browser: strip a leading `Unresolved need N<k>:` or `N<k>:` and show the sentence alone. The agent's own run-problem messages from `stopped()` in `app/agent/harness.py` ("Hybrid retrieval failed.", "Document find failed.", "Document find provenance failed.", "Original source read failed.", "Model stopped: <reason>." matched by prefix, "Investigation budget ended before a valid grounded answer.") are not knowledge gaps: each shows as one plain line under the answer, is not counted on the gap icon and has no Add button. Only the budget message reaches a done-with-gaps turn; the others arrive on failed turns, which already show their own error. Every other gap string is a knowledge gap and is listed. There is no "Looked for" line: after the prefix is stripped it would repeat the gap text.
 
 ### Assumptions
 
 - The Paper boards in the canvas are the pixel reference for spacing, radii and type sizes; where they disagree with the principles in this plan, the canvas wins and the executor notes it.
-- The desktop right-hand panel is about 360 pixels wide and pushes the thread rather than covering it; confirm against the canvas Desktop board.
+- The desktop right-hand panel is about 360 pixels wide and the sidebar about 260; the panel pushes the thread at 1100 pixels and wider and overlays it between 900 and 1100. Confirm both against the canvas Desktop board.
 
 ### Open Questions (deferred)
 
 - OQ1. Exact starter text when "Add a note to fill this gap" opens Add; default is the cleaned gap sentence on the first line so Matt can answer it.
 - OQ2. Final font file sizes after subsetting; if the pair exceeds about 150 KB total, drop Newsreader italics.
-- OQ3. Where the account menu (sign out, sign out everywhere) sits when the desktop sidebar is collapsed; default is a small account icon at the sidebar's foot opening a menu.
+- OQ3. How History, New question and the account menu appear when the desktop sidebar is collapsed; default is one icon each, History opening the conversation list as a popover and the account icon at the sidebar's foot opening a menu.
 
 ### Existing States That Must Survive
 
@@ -164,6 +164,7 @@ Matt can use every flow he uses today on his phone and desktop, and calls the re
 **Test scenarios:**
 - Static: `styles.css` declares both families and references only `/static/fonts/` URLs, never an `http` URL.
 - Static: the CSS contains no `@import` of a remote stylesheet.
+- Manual: muted ink, accent and chip text on the Paper ground each reach 4.5:1 (compute the ratios and adjust the muted token if one fails) before Release A is accepted.
 - Covers the CSP: a test requests `/static/fonts/<file>` through the static route test client and expects status 200 (the content type depends on the platform's MIME table, so it is not asserted).
 
 **Verification:** the sign-in screen and thread render in the new fonts and colours with no console CSP errors.
@@ -184,8 +185,9 @@ Matt can use every flow he uses today on his phone and desktop, and calls the re
 - Phone: bottom tab bar (Ask, Add) above the safe-area inset; History opens as a bottom sheet listing conversations, a New question button, and settings with the two sign-out actions.
 - Desktop (900 pixels and wider): sidebar with the two tabs, History list, New question and an account menu; a button collapses it to icons and the state is stored under a new `localStorage` key, wrapped in try/catch as the existing helpers are.
 - The question box stays in the Ask tab's last grid row so it is pinned on both layouts.
-- View state `ask`/`add` replaces the `capturing` body class; `newQuestion()` and `openConversation()` switch to the Ask tab. The Add tab shows the existing capture form, restyled, until U5 replaces it; the old `#add`, `#sidebar-add` and `#capture-close` bindings and the `closeCapture()` calls are removed here, and `capture.js` exposes `show()`, `hide()` and, for U7, `openWith(text)`, so Release A never throws at start-up.
-- Keep draft and conversation restore exactly as today.
+- View state `ask`/`add` replaces the `capturing` body class; `newQuestion()` and `openConversation()` switch to the Ask tab. The Add tab shows the existing capture form, restyled, until U5 replaces it; the old `#add`, `#sidebar-add` and `#capture-close` bindings and the `closeCapture()` calls are removed here, and `capture.js` exposes `show()`, `hide()` and, for U7, `openWith(text)`, so Release A never throws at start-up. The Escape handler in `capture.js` is removed here too, so `app.js` owns Escape from Release A. `takeShared` switches to the Add tab through the view state before filling the existing form and still deletes the cached share item in `finally`.
+- Keep draft and conversation restore exactly as today. Sign-out, sign-out everywhere and a 401 clear the Add box, attachment and preview and empty any open sheet; only the question draft that is restored on purpose survives.
+- In the collapsed desktop sidebar, History opens the conversation list as a popover (OQ3) and New question has its own icon.
 
 **Technical design:** view state is one variable; each tab owns one container shown with `hidden`, so tab switches keep the other tab's contents (a half-typed question or note survives).
 
@@ -194,7 +196,8 @@ Matt can use every flow he uses today on his phone and desktop, and calls the re
 **Test scenarios:**
 - Static: `index.html` has no inline `<script>`, no `onclick=` and no `style=` attribute.
 - Static: `app.js` and `capture.js` contain none of the banned HTML-insertion calls and no `setAttribute("style"` or `cssText`.
-- Manual (phone): tab switch keeps a typed question; History opens and closes with the scrim, Escape and Android back; selecting a conversation switches to Ask; opening History and then signing out leaves no stale back entry.
+- Manual (phone): tab switch keeps a typed question; History opens and closes with the scrim, Escape and Android back; selecting a conversation switches to Ask; opening History and then signing out leaves no stale back entry; open a sheet, switch tab, press Back, and open the gap sheet then Back at once, each ending in the right place.
+- Manual (Android): sharing a link from another app opens the Add tab with the link filled in.
 - Manual (desktop): the sidebar collapses to icons and stays collapsed after reload; the question box stays at the bottom with a long thread.
 
 **Verification:** every navigation path in the "Existing States" table row for conversations works on both layouts.
@@ -252,12 +255,12 @@ Matt can use every flow he uses today on his phone and desktop, and calls the re
 - Title and tags sit in a closed `<details>`; the request body is built as today.
 - Recent saves list under the box with the existing status strings and Retry; `STATUS` wording is kept unless the canvas copy differs.
 - `takeShared` opens the Add tab, then fills the box as it does now, and still deletes the cached share item in `finally`.
-- Keep the `show()`, `hide()` and `openWith(text)` surface from U2; `openWith` replaces the box contents and focuses it. The Escape handler in `capture.js` is removed; the one in `app.js` owns it.
+- Keep the `show()`, `hide()` and `openWith(text)` surface from U2; `openWith` replaces the box contents and focuses it.
 
 **Patterns to follow:** `requestBody`, `takeFile`, `pollCapture`, `renderCapture`.
 
 **Test scenarios:**
-- Covers detection: pasting `https://youtu.be/<id>` shows "YouTube video"; a normal link shows "Web link"; two words show "Text"; a `.md` file shows "Markdown file" with its text in the box; a PNG shows "Screenshot" and a preview.
+- Covers detection: pasting `https://youtu.be/<id>` shows "YouTube video"; a normal link shows "Web link"; two words show "Text"; a `.md` file shows "Markdown file" and a `.txt` file shows "Text file", each with its text in the box; a PNG shows "Screenshot" and a preview.
 - Error path: an unsupported file type shows the existing message and saves nothing.
 - Edge: Save is disabled when the box is empty and no file is attached.
 - Integration (manual): share a YouTube link from Android; the Add tab opens with the link filled in and the share cache is empty afterwards.
@@ -278,9 +281,9 @@ Matt can use every flow he uses today on his phone and desktop, and calls the re
 **Approach:**
 - `renderAnswer` keeps the per-file numbering and emits a `sup` button per citation; an answer row under the answer lists each number once, then the gap icon (U7), then the thumbs-down (U8). The row renders whenever there are sources, gaps or a feedback control, so an answer with no citations still has its feedback button.
 - Turn states keep their meaning: Answering with seconds, failed with Retry, done. The cap banner sits above the pinned box.
-- The sheet from U2 shows title, folder path, passage in the serif, and an icon button with an accessible name "Open in Obsidian"; the link is shown only when the URL starts with `obsidian://`.
+- The sheet from U2 shows the note title and folder path once, then each passage cited from that note in answer order in the serif, and one icon button with an accessible name "Open in Obsidian"; the link is shown only when the URL starts with `obsidian://`.
 - Opening a sheet pushes one history entry; Back or Escape closes it and returns focus to the number that opened it.
-- Tap targets: the visible number is small; its hit area is at least 44 pixels through padding or a pseudo-element.
+- Inline marks keep a small hit area (R16 exempts them); the 44-pixel target is met by the bottom row of numbers.
 
 **Technical design:** `openSheet(kind, payload)` builds the sheet body with `textContent` and elements only; `closeSheet()` pops the history entry once.
 
@@ -288,6 +291,7 @@ Matt can use every flow he uses today on his phone and desktop, and calls the re
 
 **Test scenarios:**
 - Covers numbering: two passages from the same file share one number; passages from two files get two numbers.
+- Edge: a number cited three times opens one sheet listing three passages under one title.
 - Edge: an answer with no citations shows no numbers and no source sheet trigger, but still shows its feedback button.
 - Error path: a failed turn shows its message and Retry, and the question is re-asked.
 - Static: `app.js` keeps the `url.startsWith("obsidian://")` check the existing test asserts.
@@ -307,14 +311,15 @@ Matt can use every flow he uses today on his phone and desktop, and calls the re
 
 **Approach:**
 - When `receipt.gaps` is non-empty, add a dark green icon button with the gap count after the source numbers; remove the old grey list under the answer.
-- The sheet lists each gap as a sentence after the KTD14 clean-up.
+- Count and list only knowledge gaps (KTD14), as sentences after the clean-up; a run-problem message shows as a plain line under the answer instead.
 - "Add a note to fill this gap" closes the sheet (popping its history entry), switches to the Add tab and calls `captureScreen.openWith` with the gap sentence (OQ1).
 - The turn-level "Answered with gaps" wording is dropped from the header line if the icon makes it redundant; keep it in the accessible text.
 
 **Test scenarios:**
 - Happy path: gaps `["Unresolved need N2: Find a named person's advice on hiring"]` render as "Find a named person's advice on hiring" with no `N2`.
 - Happy path: the model's own sentence renders unchanged.
-- Happy path: "Hybrid retrieval failed.", "Model stopped: ..." and the investigation-budget message each render as their plain sentence from the table.
+- Happy path: the investigation-budget message shows as a plain line under the answer, adds nothing to the gap count and has no Add button.
+- Edge: a gaps list holding only run problems shows no gap icon.
 - Edge: three gaps show count 3 and three entries; an empty `gaps` list shows no icon.
 - Edge: a gap that is only a code prefix and no sentence is skipped rather than shown empty.
 - Integration (manual): the button opens Add with the starter text and the box focused and no sheet left open; Back from Add does not reopen the sheet.
@@ -332,7 +337,7 @@ Matt can use every flow he uses today on his phone and desktop, and calls the re
 **Files:** `app/web/app.js`, `app/web/index.html`, `app/web/styles.css`, `tests/api/test_static.py`
 
 **Approach:**
-- A thumbs-down icon button (accessible name "This answer was not good") sits at the end of the Sources row on done and done-with-gaps turns.
+- A thumbs-down icon button (accessible name "This answer was not good") sits at the end of the answer row on done and done-with-gaps turns.
 - Tapping opens the note sheet (phone) or an inline panel under the answer (desktop). Send does one `POST` with the note; the icon shows its filled state.
 - When feedback already exists, the sheet shows the saved note and a Remove link that calls `DELETE`.
 - Failures use `announce`; a 401 shows sign-in as everywhere else.
@@ -386,7 +391,7 @@ Matt can use every flow he uses today on his phone and desktop, and calls the re
 ## Verification Contract
 
 - **Automated:** `python -m unittest discover -s tests/api -p 'test_static.py'` after every unit that changes static files; the full `tests/api` suite before each release PR (database tests need a disposable `KNOWLEDGE_TEST_DATABASE_URL`).
-- **Manual, by Matt, after each release merges:** installed Android app and desktop browser. Release A covers sign-in, tabs, History, sidebar collapse, pinned box, offline open. Release B adds one save of each Add kind, a shared Android item, a source sheet, a gap sheet (use a question that returns gaps), and one thumbs-down saved and removed. Release C adds the accessibility checklist. There is no JavaScript test runner, so every test scenario not marked Static is a manual check; adding a runner for the pure helpers is deferred.
+- **Manual, by Matt, on the release branch before it merges:** desktop browser first, then the installed Android app once the branch is deployed (the hosted app deploys from `main`, see `deploy/README.md`, so an Android-only failure found after merge is fixed by reverting the PR). Release A covers sign-in, tabs, History, sidebar collapse, pinned box, offline open, and sharing a link from Android into Add. Release B adds one save of each Add kind, a shared Android item, a source sheet, a gap sheet (use a question that returns gaps), and one thumbs-down saved and removed. Release C adds the accessibility checklist. There is no JavaScript test runner, so every test scenario not marked Static is a manual check; adding a runner for the pure helpers is deferred.
 - **Release gate:** Matt sees no console CSP errors; the share target still opens Add.
 
 ## Definition of Done
