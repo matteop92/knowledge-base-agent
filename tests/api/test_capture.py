@@ -54,6 +54,19 @@ class FakeExtractor:
         return self.result, 0.004
 
 
+class FakeTranscriber:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def worst_case_usd(self, url: str) -> float:
+        return 0.0
+
+    def extract(self, item):
+        self.calls.append(item.url)
+        return Draft(kind="youtube", body="**Jawed:** Here we are.", title="Me at the zoo", own={"author": "jawed"},
+                     url=item.url), 0.0
+
+
 class FakeIndexer:
     def __init__(self, runs: bool) -> None:
         self.runs, self.waits = runs, []
@@ -91,13 +104,15 @@ class CaptureApiTests(unittest.TestCase):
         for folder in ("Notes", "Articles", "Transcripts", "Book Highlights", "Books"):
             (self.vault / "Knowledge" / folder).mkdir(parents=True)
         self.classifier, self.indexer, self.extractor = FakeClassifier(), FakeIndexer(runs=False), FakeExtractor()
+        self.transcriber = FakeTranscriber()
         self.build(sync_mode="bidirectional")
 
     def build(self, **changes) -> None:
         from app.api.main import create_app
         config = dataclasses.replace(settings(), sync_enabled=True, vault_root=str(self.vault), **changes)
         self.app = create_app(config, connect=self.connect, auth=FakeAuth(), engine=FakeEngine(),
-                              indexer=self.indexer, classifier=self.classifier, extractor=self.extractor)
+                              indexer=self.indexer, classifier=self.classifier, extractor=self.extractor,
+                              transcriber=self.transcriber)
         self.app.state.captures.today = lambda: date(2026, 10, 19)
         self.client = TestClient(self.app)
         response = self.client.post("/auth/verify", json={"email": EMAIL, "code": "111111"})
@@ -212,6 +227,21 @@ class CaptureApiTests(unittest.TestCase):
         job = self.finished(self.screenshot().json()["capture_id"])
         self.assertEqual(job["status"], "failed")
         self.assertEqual(self.spend(), [("vision", Decimal("0.02000000"))])
+
+    def test_a_youtube_link_becomes_a_transcript_note(self):
+        self.classifier.properties = {"source_type": "note", "tags": []}
+        response = self.client.post("/api/captures", json={"kind": "youtube", "content": "youtu.be/jNQXAC9IVRw"})
+        job = self.finished(response.json()["capture_id"])
+        self.assertEqual(self.transcriber.calls, ["https://www.youtube.com/watch?v=jNQXAC9IVRw"])
+        self.assertEqual(job["vault_path"], "Knowledge/Transcripts/2026-10-19-me-at-the-zoo.md")
+        text = (self.vault / job["vault_path"]).read_text(encoding="utf-8")
+        self.assertIn("url: https://www.youtube.com/watch?v=jNQXAC9IVRw", text)
+        self.assertEqual(self.spend(), [("properties", Decimal("0.00200000"))])
+
+    def test_a_link_that_is_not_youtube_is_refused(self):
+        response = self.client.post("/api/captures", json={"kind": "youtube", "content": "https://example.com/v"})
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(self.transcriber.calls, [])
 
     def test_recent_captures_are_listed_newest_first(self):
         self.finished(self.capture(title="One").json()["capture_id"])
