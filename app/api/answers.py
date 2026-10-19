@@ -17,6 +17,8 @@ from app.agent.records import AnswerLimits, AnswerResult
 from app.api.conversations import ConversationStore
 from app.api.settings import Settings
 from app.storage.search import LABEL_METADATA, source_label
+from app.models.client import ModelClientError
+from app.models.openrouter import completion_limit
 from app.models.routes import PRICE_CEILINGS, TAGS, price_usd
 from app.storage.spend import SpendCapError, check_daily_cap, record_spend
 
@@ -63,12 +65,13 @@ class OpenRouterAnswerEngine:
             max_output_tokens=self.limits.max_output_tokens,
             input_usd_per_token=max(input_ceiling, answer.max_embedding_usd_per_million / Decimal(1_000_000)),
             completion_usd_per_token=answer.max_generation_usd_per_million / Decimal(1_000_000)
-        ) + Decimal(str(price_usd(REWRITE_MODEL, REWRITE_INPUT_CHARS, REWRITE_MAX_OUTPUT_TOKENS)))
+        ) + Decimal(str(price_usd(REWRITE_MODEL, REWRITE_INPUT_CHARS,
+                                  completion_limit(REWRITE_MODEL, "followup_rewrite_v1",
+                                                   REWRITE_MAX_OUTPUT_TOKENS, None)[1])))
 
     def answer(self, question: str, prior: list[PriorTurn] | None = None) -> AnswerOutcome:
         from app.agent.harness import answer_question
-        from app.agent.memory import build_memory, standalone_query
-        from app.models.routes import verify_routes
+        from app.agent.memory import build_memory
         from app.models.client import ModelSpec
         from app.models.openrouter import OpenRouterClient
         from app.storage.retrieval import DatabaseRetriever, selected_embedding_spec
@@ -103,12 +106,7 @@ class OpenRouterAnswerEngine:
                 memory, query = None, None
                 if prior:
                     memory = build_memory(prior, active=active_revisions(conn, prior))
-                    checked = verify_routes(client, [REWRITE_MODEL], structured_ids={REWRITE_MODEL})[REWRITE_MODEL]
-                    rewrite_prices[REWRITE_MODEL] = (
-                        Decimal(str(checked["input_usd_per_million"])) / Decimal(1_000_000),
-                        Decimal(str(checked["output_usd_per_million"])) / Decimal(1_000_000))
-                    query = standalone_query(question, memory.turns, client=client, model=ModelSpec(
-                        provider="openrouter", model_id=REWRITE_MODEL, model_version="current"))
+                    query = rewrite_followup(client, question, memory.turns, rewrite_prices)
                 result = answer_question(question, retriever=retriever, client=client,
                                          model=ModelSpec(provider="openrouter", model_id=answer.model,
                                                          model_version="current"),
@@ -128,6 +126,30 @@ class OpenRouterAnswerEngine:
         measured, known = measured_usd(client, routes, model=model, embedding_model=embedding_model,
                                        extra_prices=extra_prices)
         return float(measured if known else self.worst_case_usd())
+
+
+def rewrite_followup(client, question: str, recent: list[dict[str, str]],
+                     prices: dict[str, tuple[Decimal, Decimal]]) -> str | None:
+    """The follow-up as a standalone query, or None to search with the follow-up itself.
+
+    The rewrite is optional: if its route fails the privacy or price check, the answer goes ahead
+    without it (nothing was billed). On success its checked per-token prices go into `prices`.
+    """
+    from app.agent.memory import standalone_query
+    from app.models.client import ModelSpec
+    from app.models.routes import verify_routes
+
+    if not recent:
+        return None
+    try:
+        checked = verify_routes(client, [REWRITE_MODEL], structured_ids={REWRITE_MODEL})[REWRITE_MODEL]
+    except (ModelClientError, ValueError, KeyError) as exc:
+        log.warning("follow-up rewrite skipped error=%s", type(exc).__name__)
+        return None
+    prices[REWRITE_MODEL] = (Decimal(str(checked["input_usd_per_million"])) / Decimal(1_000_000),
+                             Decimal(str(checked["output_usd_per_million"])) / Decimal(1_000_000))
+    return standalone_query(question, recent, client=client,
+                            model=ModelSpec(provider="openrouter", model_id=REWRITE_MODEL, model_version="current"))
 
 
 def active_revisions(conn, prior: list[PriorTurn]) -> set[tuple[str, str]]:

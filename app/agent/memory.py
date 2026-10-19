@@ -53,6 +53,7 @@ class Memory:
     chunk_titles: dict[str, str] = field(default_factory=dict)
     changed: list[str] = field(default_factory=list)
     dropped_over_cap: int = 0
+    carried_chunks: set[tuple[str, str]] = field(default_factory=set)  # (run, chunk) already carried
 
     @property
     def chunk_count(self) -> int:
@@ -85,6 +86,7 @@ def build_memory(turns: list[PriorTurn], *, active: set[tuple[str, str]]) -> Mem
                             "answer": _clip(CITATION_MARK.sub("", item.answer), ANSWER_CHARS)}
                            for item in turns[-RECENT_TURNS:]])
     kept: list[tuple[str, SourcePassage, str]] = []  # (span suffix, passage, title)
+    changed: dict[str, str] = {}  # document id -> title
     seen: set[tuple[str, str, int]] = set()
     used_bytes = 0
     for prior in reversed(turns[-PRIOR_TURNS:]):
@@ -96,8 +98,7 @@ def build_memory(turns: list[PriorTurn], *, active: set[tuple[str, str]]) -> Mem
             seen.add(key)
             title = prior.titles.get(item.document_id) or item.relative_path
             if (item.document_id, item.run_id) not in active:
-                if title not in memory.changed:
-                    memory.changed.append(title)
+                changed.setdefault(item.document_id, title)
                 continue
             size = len(item.text.encode("utf-8"))
             if len(kept) >= MAX_CARRIED_PASSAGES or used_bytes + size > MAX_CARRIED_BYTES:
@@ -110,6 +111,10 @@ def build_memory(turns: list[PriorTurn], *, active: set[tuple[str, str]]) -> Mem
         chunk_ref = chunks.setdefault((item.run_id, item.chunk_id), f"E{len(chunks) + 1}")
         memory.chunk_titles.setdefault(chunk_ref, title)
         memory.carried[chunk_ref + suffix] = item
+    memory.carried_chunks = set(chunks)
+    # A source whose current version is already carried (read again in a later turn) has not changed for the model.
+    current = {item.document_id for item in memory.carried.values()}
+    memory.changed = [title for document_id, title in changed.items() if document_id not in current]
     return memory
 
 
