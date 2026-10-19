@@ -61,7 +61,7 @@
     if (pending) return { ...pending, label: undefined, title, tags };
     const text = $("capture-text").value.trim();
     if (!text) return null;
-    if (YOUTUBE.test(text) && !/\s/.test(text)) return { kind: "youtube", url: text, title, tags };
+    if (YOUTUBE.test(text) && !/\s/.test(text)) return { kind: "youtube", content: text, title, tags };
     const url = /^https?:\/\/\S+$/.test(text) ? text : null;
     return { kind: "text", content: text, url, title, tags };
   }
@@ -69,7 +69,6 @@
   async function save() {
     const body = requestBody();
     if (!body) { message("Paste text, drop a screenshot or choose a file first."); return; }
-    if (body.kind === "youtube") { message("YouTube capture is coming soon."); return; }
     await send(body);
   }
 

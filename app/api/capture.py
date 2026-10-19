@@ -86,6 +86,28 @@ class ScreenshotInput:
     kind: str = "screenshot"
 
 
+@dataclass
+class YouTubeInput:
+    """A YouTube link waiting for its transcript."""
+    url: str
+    title: str | None = None
+    tags: list[str] | None = None
+    kind: str = "youtube"
+
+
+class GeminiTranscriber:
+    """YouTube transcripts on the Gemini API's free tier: nothing is billed, so nothing reaches the ledger."""
+
+    def worst_case_usd(self, url: str) -> float:
+        return 0.0
+
+    def extract(self, item: YouTubeInput) -> tuple[Draft, float]:
+        from app.capture.youtube import transcribe_youtube
+        from app.models.gemini import GeminiClient
+
+        return transcribe_youtube(item.url, GeminiClient(), title=item.title, tags=item.tags), 0.0
+
+
 class Extractor(Protocol):
     def worst_case_usd(self, image: str) -> float: ...
 
@@ -128,24 +150,27 @@ class CaptureCostError(Exception):
 
 class CaptureJobs:
     def __init__(self, connect: Callable[[], Any], settings: Settings, classifier: Classifier | None = None,
-                 indexer=None, today: Callable[[], date] = date.today, extractor: Extractor | None = None) -> None:
+                 indexer=None, today: Callable[[], date] = date.today, extractor: Extractor | None = None,
+                 transcriber: Extractor | None = None) -> None:
         self.connect, self.settings, self.indexer, self.today = connect, settings, indexer, today
         self.classifier = classifier or OpenRouterClassifier()
         self.extractor = extractor or OpenRouterExtractor()
+        self.transcriber = transcriber or GeminiTranscriber()
         self._threads: list[threading.Thread] = []
 
     @property
     def enabled(self) -> bool:
         return self.settings.sync_enabled and self.settings.sync_mode == "bidirectional"
 
-    def _worst_case(self, item: Draft | ScreenshotInput) -> float:
-        if isinstance(item, ScreenshotInput):
+    def _worst_case(self, item: Draft | ScreenshotInput | YouTubeInput) -> float:
+        if isinstance(item, (ScreenshotInput, YouTubeInput)):
             # The classifier reads at most a fixed slice of the text, so a short stand-in bounds it.
-            return self.extractor.worst_case_usd(item.image) + self.classifier.worst_case_usd(
-                Draft(kind="screenshot", body="x" * 8000, title="x"), self.today())
+            first = (self.extractor.worst_case_usd(item.image) if isinstance(item, ScreenshotInput)
+                     else self.transcriber.worst_case_usd(item.url))
+            return first + self.classifier.worst_case_usd(Draft(kind=item.kind, body="x" * 8000, title="x"), self.today())
         return self.classifier.worst_case_usd(item, self.today())
 
-    def start(self, item: Draft | ScreenshotInput) -> str:
+    def start(self, item: Draft | ScreenshotInput | YouTubeInput) -> str:
         if not self.enabled:
             raise ConversationError(503, "capture needs two-way sync, which is not switched on yet")
         with self.connect() as conn:
@@ -191,7 +216,7 @@ class CaptureJobs:
                 cost_usd=%s, title=coalesce(%s, title), finished_at=now() where job_id=%s and status='running'""",
                          (status, vault_path, indexed, error, round(sum(spend.values()), 8), title, job_id))
 
-    def _run(self, job_id: str, item: Draft | ScreenshotInput) -> None:
+    def _run(self, job_id: str, item: Draft | ScreenshotInput | YouTubeInput) -> None:
         started = time.monotonic()
         spend: dict[str, float] = {}
         title, stage = None, "properties"
@@ -199,12 +224,13 @@ class CaptureJobs:
             today = self.today()
             with self.connect() as conn:
                 check_daily_cap(conn, self._worst_case(item), self.settings.daily_cap_usd)
-            if isinstance(item, ScreenshotInput):
-                stage = "vision"
+            if isinstance(item, (ScreenshotInput, YouTubeInput)):
+                stage = "vision" if isinstance(item, ScreenshotInput) else "transcript"
+                reader = self.extractor if stage == "vision" else self.transcriber
                 try:
-                    draft, spend["vision"] = self.extractor.extract(item)
+                    draft, spend[stage] = reader.extract(item)
                 except CaptureError as exc:
-                    spend["vision"] = getattr(exc, "cost_usd", 0.0)
+                    spend[stage] = getattr(exc, "cost_usd", 0.0)
                     raise
                 stage = "properties"
             else:

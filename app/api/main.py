@@ -15,13 +15,14 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.api.answers import AnswerEngine, AnswerJobs, OpenRouterAnswerEngine
-from app.api.capture import CaptureJobs, Classifier, Extractor, ScreenshotInput
+from app.api.capture import CaptureJobs, Classifier, Extractor, ScreenshotInput, YouTubeInput
 from app.api.auth import COOKIE_NAME, AuthError, RateLimiter, Session, SessionStore, SupabaseAuth
 from app.api.conversations import ConversationError, ConversationStore
 from app.api.scheduler import IndexScheduler, vault_settings_from_env
 from app.api.settings import Settings
 from app.capture.notes import CaptureError, draft_from_markdown, draft_from_text
 from app.capture.screenshot import MAX_DATA_URL_CHARS
+from app.capture.youtube import video_url
 from app.models.openrouter import IMAGE_DATA_URL
 from app.storage.spend import SpendCapError, spent_today
 
@@ -54,7 +55,7 @@ class FeedbackRequest(BaseModel):
 
 
 class CaptureRequest(BaseModel):
-    kind: Literal["text", "markdown", "screenshot"]
+    kind: Literal["text", "markdown", "screenshot", "youtube"]
     content: str | None = Field(default=None, max_length=2_000_000)
     # A screenshot arrives as a data URL, already downscaled by the app.
     image: str | None = Field(default=None, max_length=MAX_DATA_URL_CHARS)
@@ -66,7 +67,7 @@ class CaptureRequest(BaseModel):
 def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
                auth: SupabaseAuth | None = None, engine: AnswerEngine | None = None,
                indexer: IndexScheduler | None = None, classifier: Classifier | None = None,
-               extractor: Extractor | None = None) -> FastAPI:
+               extractor: Extractor | None = None, transcriber: Extractor | None = None) -> FastAPI:
     # A stalled database must fail the request, not hang it: 10 s to connect, 60 s per statement.
     connect = connect or (lambda: psycopg.connect(settings.database_url, autocommit=True, connect_timeout=10,
                                                   options="-c statement_timeout=60000"))
@@ -86,7 +87,7 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
         indexer = IndexScheduler(vault_settings_from_env(), connect, interval_seconds=settings.index_interval_seconds,
                                  max_usd_per_pass=float(settings.index_max_usd_per_pass))
     app.state.indexer = indexer
-    captures = CaptureJobs(connect, settings, classifier, indexer, extractor=extractor)
+    captures = CaptureJobs(connect, settings, classifier, indexer, extractor=extractor, transcriber=transcriber)
     app.state.captures = captures
 
     @app.on_event("startup")
@@ -259,6 +260,12 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
             if not body.image or not IMAGE_DATA_URL.match(body.image):
                 raise ConversationError(422, "a screenshot must be a PNG, JPEG or WebP image")
             return {"capture_id": captures.start(ScreenshotInput(body.image, body.title, body.tags))}
+        if body.kind == "youtube":
+            try:
+                url = video_url(body.url or body.content or "")
+            except CaptureError as exc:
+                raise ConversationError(422, str(exc)) from None
+            return {"capture_id": captures.start(YouTubeInput(url, body.title, body.tags))}
         make = draft_from_text if body.kind == "text" else draft_from_markdown
         try:
             draft = make(body.content or "", title=body.title, url=body.url, tags=body.tags)
