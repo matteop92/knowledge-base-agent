@@ -97,7 +97,7 @@ async function startApp() {
 
 async function refreshConversations() {
   const { conversations } = await api("GET", "/api/conversations");
-  for (const list of [$("conversation-list"), $("sheet-conversation-list")]) {
+  for (const list of [$("sheet-conversation-list")]) {
     list.replaceChildren();
     for (const item of conversations) {
       const li = document.createElement("li");
@@ -119,9 +119,10 @@ function stopPolling() {
   state.polling.clear();
 }
 
+// The question itself is the Ask tab's heading; the window title follows the conversation.
 function setTitle(title) {
   state.title = title;
-  if (state.view === "ask") $("view-title").textContent = title;
+  document.title = title === "New question" ? "Knowledge" : `${title} - Knowledge`;
 }
 
 function newQuestion() {
@@ -355,7 +356,6 @@ function applyView(view) {
   state.view = view;
   $("view-ask").hidden = view !== "ask";
   $("capture").hidden = view !== "add";
-  $("view-title").textContent = view === "add" ? "Add to notes" : state.title;
   for (const tab of document.querySelectorAll("[data-tab]")) {
     if (tab.dataset.tab === view) tab.setAttribute("aria-current", "page"); else tab.removeAttribute("aria-current");
   }
@@ -455,10 +455,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       ask($("question").value.trim());
     }
   });
-  $("sidebar-new").addEventListener("click", newQuestion);
   $("sheet-new").addEventListener("click", () => closeSheet(newQuestion));
   for (const tab of document.querySelectorAll("[data-tab]")) tab.addEventListener("click", () => setView(tab.dataset.tab));
-  for (const id of ["history-button", "sidebar-history", "sidebar-account"]) {
+  for (const id of ["history-button", "sidebar-history"]) {
     $(id).addEventListener("click", (event) => openSheet("history", event.currentTarget));
   }
   $("collapse").addEventListener("click", () => {

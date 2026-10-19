@@ -17,18 +17,18 @@
 <body>
   <!-- Icons: one sprite, referenced with <use> -->
   <svg class="sprite" aria-hidden="true" focusable="false">
-    <symbol id="i-ask" viewBox="0 0 24 24"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-ask" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-add" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
-    <symbol id="i-history" viewBox="0 0 24 24"><path d="M12 7v5l3 2M4 12a8 8 0 1 0 2.5-5.8M4 4v4h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-    <symbol id="i-new" viewBox="0 0 24 24"><path d="M4 20l1-4 11-11 3 3-11 11zM14 7l3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
-    <symbol id="i-collapse" viewBox="0 0 24 24"><path d="M11 6l-6 6 6 6M19 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-    <symbol id="i-account" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 20a8 8 0 0 1 16 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9 4v16" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M17 14V3h3v11zM17 14l-4 7a2 2 0 0 1-3-2l1-5H5a2 2 0 0 1-2-2.3l1.4-7A2 2 0 0 1 6.4 3H17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
   </svg>
 
   <!-- Sign-in -->
   <main id="signin" class="signin" hidden>
-    <h1>Knowledge Agent</h1>
+    <h1>Knowledge</h1>
     <form id="email-form" novalidate>
       <label for="email">Email</label>
       <input id="email" type="email" autocomplete="email" required>
@@ -46,99 +46,94 @@
 
   <!-- App -->
   <div id="app" class="app" hidden>
-    <nav id="sidebar" class="sidebar" aria-label="Main">
+    <aside id="sidebar" class="sidebar">
       <div class="sidebar-top">
-        <span class="brand label">Knowledge Agent</span>
-        <button type="button" id="collapse" class="icon-button" aria-label="Collapse sidebar" aria-expanded="true"><svg class="icon"><use href="#i-collapse"/></svg></button>
+        <span class="brand label">Knowledge</span>
+        <button type="button" id="collapse" class="icon-button" aria-label="Collapse sidebar" aria-expanded="true"><svg class="icon"><use href="#i-panel"/></svg></button>
       </div>
-      <div class="tabs">
-        <button type="button" class="tab" data-tab="ask" aria-label="Ask"><svg class="icon" aria-hidden="true"><use href="#i-ask"/></svg><span class="label">Ask</span></button>
-        <button type="button" class="tab" data-tab="add" aria-label="Add"><svg class="icon" aria-hidden="true"><use href="#i-add"/></svg><span class="label">Add</span></button>
-      </div>
-      <div class="sidebar-actions">
-        <button type="button" id="sidebar-new" class="side-action" aria-label="New question"><svg class="icon" aria-hidden="true"><use href="#i-new"/></svg><span class="label">New question</span></button>
-        <button type="button" id="sidebar-history" class="side-action collapsed-only" aria-label="History" aria-haspopup="dialog"><svg class="icon"><use href="#i-history"/></svg></button>
-      </div>
-      <div class="history label">
-        <h2 class="section-title">History</h2>
-        <ul id="conversation-list" class="conversation-list"></ul>
-        <p class="conversation-empty muted" hidden>No conversations yet.</p>
-      </div>
-      <div class="sidebar-footer">
-        <div class="label">
-          <button type="button" class="link sign-out">Sign out</button>
-          <button type="button" class="link sign-out-everywhere">Sign out everywhere</button>
-          <p class="message small sign-out-message" role="alert"></p>
-        </div>
-        <button type="button" id="sidebar-account" class="side-action collapsed-only" aria-label="Account and history" aria-haspopup="dialog"><svg class="icon"><use href="#i-account"/></svg></button>
-      </div>
-    </nav>
+      <nav class="side-nav" aria-label="Main">
+        <button type="button" class="side-item" data-tab="ask" aria-label="Ask"><svg class="icon" aria-hidden="true"><use href="#i-ask"/></svg><span class="label">Ask</span></button>
+        <button type="button" class="side-item" data-tab="add" aria-label="Add"><svg class="icon" aria-hidden="true"><use href="#i-add"/></svg><span class="label">Add</span></button>
+        <button type="button" id="sidebar-history" class="side-item" aria-label="History" aria-haspopup="dialog"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg><span class="label">History</span></button>
+      </nav>
+    </aside>
 
     <div class="main">
       <header class="topbar">
-        <h1 id="view-title">New question</h1>
-        <button type="button" id="history-button" class="icon-button phone-only" aria-label="History" aria-haspopup="dialog"><svg class="icon"><use href="#i-history"/></svg></button>
+        <span class="brand">Knowledge</span>
+        <button type="button" id="history-button" class="icon-button" aria-label="History" aria-haspopup="dialog"><svg class="icon"><use href="#i-history"/></svg></button>
       </header>
 
       <div class="views">
         <section id="view-ask" class="view view-ask" aria-label="Ask">
           <main class="thread">
-            <section id="empty-state" class="empty-state">
-              <h2>Ask your notes anything.</h2>
-              <p class="muted">Answers cite the exact passages they used.</p>
-            </section>
-            <ol id="turns" class="turns"></ol>
-            <div id="status" class="sr-only" aria-live="polite"></div>
+            <div class="column">
+              <section id="empty-state" class="empty-state">
+                <h1>Ask your notes anything.</h1>
+                <p class="muted">Answers cite the exact passages they used.</p>
+              </section>
+              <ol id="turns" class="turns"></ol>
+              <div id="status" class="sr-only" aria-live="polite"></div>
+            </div>
           </main>
           <form id="composer" class="composer">
-            <label for="question" class="sr-only">Your question</label>
-            <textarea id="question" rows="1" placeholder="Ask a question" required></textarea>
-            <button type="submit" id="ask" class="primary">Ask</button>
+            <div class="composer-box">
+              <label for="question" class="sr-only">Your question</label>
+              <textarea id="question" rows="1" placeholder="Ask a question" required></textarea>
+              <button type="submit" id="ask" class="send" aria-label="Ask"><svg class="icon"><use href="#i-send"/></svg></button>
+            </div>
           </form>
         </section>
 
-        <section id="capture" class="view view-add capture" hidden aria-label="Add">
-          <p id="capture-disabled" class="message" hidden>Adding notes is not switched on yet: the server's sync is still download-only.</p>
-          <form id="capture-form" class="capture-form">
-            <p class="muted small">Paste text, drop or paste a screenshot, or choose a screenshot or .md file.</p>
-            <label for="capture-text" class="sr-only">Text to save</label>
-            <textarea id="capture-text" rows="6" placeholder="Paste text here"></textarea>
-            <label class="small">Screenshot or .md file
-              <input id="capture-file" type="file" accept="image/png,image/jpeg,image/webp,.md,.markdown,.txt,text/markdown,text/plain">
-            </label>
-            <input id="capture-kind" type="hidden" value="text">
-            <p id="capture-pending" class="small"></p>
-            <img id="capture-preview" class="capture-preview" alt="Screenshot to be saved" hidden>
-            <label class="small">Title (optional)
-              <input id="capture-title" maxlength="200">
-            </label>
-            <label class="small">Tags (optional, separated by commas)
-              <input id="capture-tags" maxlength="400">
-            </label>
-            <button type="submit" id="capture-save" class="primary">Save note</button>
-            <p id="capture-message" class="message" role="alert"></p>
-          </form>
-          <h3>Recent</h3>
-          <ul id="capture-list" class="capture-list"></ul>
+        <section id="capture" class="view view-add capture" hidden aria-labelledby="add-title">
+          <div class="column">
+            <h1 id="add-title">Add to your notes</h1>
+            <p id="capture-disabled" class="message" hidden>Adding notes is not switched on yet: the server's sync is still download-only.</p>
+            <form id="capture-form" class="capture-form card">
+              <label for="capture-text" class="sr-only">Text to save</label>
+              <textarea id="capture-text" rows="3" placeholder="Paste text or a link, or drop a screenshot"></textarea>
+              <label class="small field">Screenshot or .md file
+                <input id="capture-file" type="file" accept="image/png,image/jpeg,image/webp,.md,.markdown,.txt,text/markdown,text/plain">
+              </label>
+              <input id="capture-kind" type="hidden" value="text">
+              <p id="capture-pending" class="small"></p>
+              <img id="capture-preview" class="capture-preview" alt="Screenshot to be saved" hidden>
+              <label class="small field">Title (optional)
+                <input id="capture-title" maxlength="200">
+              </label>
+              <label class="small field">Tags (optional, separated by commas)
+                <input id="capture-tags" maxlength="400">
+              </label>
+              <div class="card-actions">
+                <button type="submit" id="capture-save" class="primary">Save</button>
+              </div>
+              <p id="capture-message" class="message" role="alert"></p>
+            </form>
+            <section class="recent" aria-labelledby="recent-title">
+              <h2 id="recent-title" class="section-title">Recent</h2>
+              <ul id="capture-list" class="capture-list"></ul>
+            </section>
+          </div>
         </section>
       </div>
 
       <nav class="tabbar" aria-label="Main">
-        <button type="button" class="tab" data-tab="ask"><svg class="icon" aria-hidden="true"><use href="#i-ask"/></svg><span>Ask</span></button>
-        <button type="button" class="tab" data-tab="add"><svg class="icon" aria-hidden="true"><use href="#i-add"/></svg><span>Add</span></button>
+        <button type="button" class="tab" data-tab="ask"><span class="tab-pill"><svg class="icon" aria-hidden="true"><use href="#i-ask"/></svg></span>Ask</button>
+        <button type="button" class="tab" data-tab="add"><span class="tab-pill"><svg class="icon" aria-hidden="true"><use href="#i-add"/></svg></span>Add</button>
       </nav>
     </div>
 
     <!-- One sheet for everything that slides over the page. -->
     <div id="sheet-scrim" class="scrim" hidden></div>
     <div id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden>
+      <span class="sheet-handle" aria-hidden="true"></span>
       <div class="sheet-head">
         <h2 id="sheet-title">History</h2>
         <button type="button" id="sheet-close" class="icon-button" aria-label="Close"><svg class="icon"><use href="#i-close"/></svg></button>
       </div>
       <div class="sheet-body">
         <section data-sheet="history">
-          <button type="button" id="sheet-new" class="primary wide">New question</button>
+          <button type="button" id="sheet-new" class="primary">New question</button>
           <ul id="sheet-conversation-list" class="conversation-list"></ul>
           <p class="conversation-empty muted" hidden>No conversations yet.</p>
           <div class="sheet-settings">
@@ -153,7 +148,7 @@
 
   <template id="turn-template">
     <li class="turn">
-      <p class="question"></p>
+      <h2 class="question"></h2>
       <div class="answer-block">
         <p class="turn-state muted"></p>
         <div class="answer"></div>
@@ -166,7 +161,7 @@
         </div>
         <div class="turn-actions">
           <button type="button" class="retry" hidden>Retry</button>
-          <button type="button" class="thumbs" aria-pressed="false" aria-label="Mark this answer as not good" hidden>👎</button>
+          <button type="button" class="thumbs" aria-pressed="false" aria-label="Mark this answer as not good" hidden><svg class="icon"><use href="#i-down"/></svg></button>
         </div>
         <form class="feedback-form" hidden>
           <label class="small">What was wrong? (optional)

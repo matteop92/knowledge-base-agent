@@ -67,7 +67,15 @@ class ShellSourceTests(unittest.TestCase):
         self.assertNotIn(".catch(() => {})", body)
         self.assertIn("Could not sign out", body)
         self.assertLess(body.index("await api("), body.index("showSignIn("))
-        self.assertEqual((WEB / "index.html").read_text(encoding="utf-8").count("sign-out-message"), 2)
+        self.assertEqual((WEB / "index.html").read_text(encoding="utf-8").count("sign-out-message"), 1)
+
+    def test_every_element_the_scripts_look_up_exists_in_the_page(self) -> None:
+        page = (WEB / "index.html").read_text(encoding="utf-8")
+        for name in ("app.js", "capture.js"):
+            script = (WEB / name).read_text(encoding="utf-8")
+            for element_id in sorted(set(re.findall(r'\$\("([a-z-]+)"\)', script))):
+                with self.subTest(name=name, element_id=element_id):
+                    self.assertIn(f'id="{element_id}"', page)
 
     def test_styles_use_only_local_fonts_and_no_remote_imports(self) -> None:
         css = (WEB / "styles.css").read_text(encoding="utf-8")
@@ -108,7 +116,7 @@ class ShellSourceTests(unittest.TestCase):
         for match in re.finditer(r"<button([^>]*)>\s*<svg[^>]*>.*?</svg>\s*</button>", page, re.S):
             self.assertIn("aria-label", match.group(1))
         # The collapsed sidebar hides text labels, so its tab and action buttons keep their own names.
-        for match in re.finditer(r"<button([^>]*class=\"(?:tab|side-action)[^>]*)>", page):
+        for match in re.finditer(r"<button([^>]*class=\"side-item[^>]*)>", page):
             self.assertIn("aria-label", match.group(1))
 
 
