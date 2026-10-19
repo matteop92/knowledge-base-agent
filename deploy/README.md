@@ -50,9 +50,12 @@ How it fits together:
   note outside `KNOWLEDGE_INCLUDED_FOLDERS` from the server's copy and adds the folder to the tool's skip list
   (remembered in `/data/excluded-folders-extra.txt`, which also holds the names pasted at setup). A new folder can therefore sit on the server for up to a minute.
   Entries starting with a dot are left alone.
-- **Deleting is allowed only while the copy is download-only.** In two-way sync a delete on the server would reach the real
-  vault. The cleanup deletes only when `KNOWLEDGE_SYNC_MODE` is `pull-only` (the default) **and** `ob sync-config` itself
-  reports `pull-only`; anything else (two-way mode, an unreadable answer) deletes nothing and only updates the skip list.
+- **What the cleanup may delete depends on the sync mode.** While download-only (`KNOWLEDGE_SYNC_MODE` is `pull-only`, the
+  default, **and** `ob sync-config` itself reports `pull-only`) it deletes everything outside the allowed folders. In two-way
+  mode (`bidirectional` in both places) a delete on the server could reach the real vault, so it first adds new folders to
+  the skip list and then deletes only folders that the tool's own settings file (`ignoreFolders` in
+  `$HOME/.config/obsidian-headless/sync/*/config.json`) lists as skipped; loose notes and links stay. Any mismatch or
+  unreadable setting deletes nothing and only updates the skip list.
 - `app/api/scheduler.py` runs the indexer (`app/ingestion/vault_sync.py`) every `KNOWLEDGE_INDEX_INTERVAL_SECONDS` (default 300).
   It waits until the first sync has produced notes, never overlaps two passes, records the last result for `/health`
   (counts and error types only), and **retires nothing on the first pass after a start** so a half-downloaded vault cannot
@@ -62,13 +65,14 @@ How it fits together:
   live on the container's disk and are cleared on every restart.
 - **Phase 2 (captures need two-way sync):** in a server shell run `ob sync-config --path /data/vault --mode bidirectional`
   and set the Railway variable `KNOWLEDGE_SYNC_MODE` to `bidirectional` in the same step. The sign-in and the volume stay as
-  they are. From then on the cleanup stops deleting.
+  they are. From then on the cleanup deletes only skipped folders, as described above.
   **Tested 2026-10-18 on a throwaway folder in the real vault:** after a folder was added to the skip list in two-way mode,
   deleting its local copy and syncing three times did not delete it from the vault. So in Phase 2 the cleanup may delete in
   two-way mode, but only folders already on the skip list, and the skip list must be updated first. Before switching, still
   set `KNOWLEDGE_SYNC_ENABLED` to `false` and redeploy so no cleanup runs mid-switch. (Tested for one folder with the tool at
   version 0.0.14; re-check after upgrading it.)
-  The `(conflict)` copies that `--conflict-strategy conflict` can create also need handling by then.
+  The `(conflict)` copies that `--conflict-strategy conflict` can create are skipped by the indexer
+  (`CONFLICT_COPY` in `app/ingestion/vault_sync.py`); the server only adds new capture notes, so conflicts should be rare.
 
 Variables (all optional except the switch):
 

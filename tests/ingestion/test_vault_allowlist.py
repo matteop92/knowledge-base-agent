@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 import unittest
@@ -86,6 +87,45 @@ class AllowlistTests(unittest.TestCase):
                 self.assertTrue((self.root / "Career/private.md").is_file())
                 self.assertTrue(any("--excluded-folders" in command for command in calls))
 
+    def sync_settings(self, ignore_folders) -> Path:
+        """A sync settings folder like the tool's: one vault folder holding config.json."""
+        folder = Path(self.temp.name) / "sync"
+        (folder / "vault-id").mkdir(parents=True, exist_ok=True)
+        (folder / "vault-id/config.json").write_text(json.dumps(
+            {"syncMode": "bidirectional", "ignoreFolders": ignore_folders}), encoding="utf-8")
+        return folder
+
+    def run_two_way(self, settings: Path, update_code=0):
+        def run(command, **kwargs):
+            return Result("", update_code) if "--excluded-folders" in command else Result("mode: bidirectional\n", 0)
+        with patch.dict(os.environ, {"KNOWLEDGE_SYNC_MODE": "bidirectional"}):
+            return self.main_with(run, "--sync-settings", str(settings))
+
+    def test_two_way_sync_deletes_only_folders_the_tool_skips(self) -> None:
+        # The tool's settings skip Career but not the brand new folder yet.
+        self.assertEqual(self.run_two_way(self.sync_settings(["Tasks", "career"])), 0)
+        self.assertFalse((self.root / "Career").exists())
+        self.assertTrue((self.root / "Brand New Folder").is_dir())
+        self.assertTrue((self.root / "loose note.md").is_file())
+        self.assertTrue((self.root / "Knowledge/Notes/kept.md").is_file())
+
+    def test_two_way_sync_without_a_readable_settings_file_deletes_nothing(self) -> None:
+        settings = self.sync_settings(["Career", "Brand New Folder"])
+        (settings / "vault-id/config.json").write_text("{not json", encoding="utf-8")
+        for folder in (settings, Path(self.temp.name) / "missing"):
+            with self.subTest(folder=folder):
+                self.assertEqual(self.run_two_way(folder), 0)
+                self.assertTrue((self.root / "Career/private.md").is_file())
+                self.assertTrue((self.root / "Brand New Folder").is_dir())
+
+    def test_a_skip_list_naming_an_allowed_folder_never_deletes_it(self) -> None:
+        self.assertEqual(self.run_two_way(self.sync_settings(["Knowledge", "Career"])), 0)
+        self.assertTrue((self.root / "Knowledge/Notes/kept.md").is_file())
+
+    def test_a_failed_skip_list_update_in_two_way_sync_deletes_nothing(self) -> None:
+        self.assertEqual(self.run_two_way(self.sync_settings(["Career"]), update_code=1), 1)
+        self.assertTrue((self.root / "Career/private.md").is_file())
+
     def test_a_failed_skip_list_update_is_reported(self) -> None:
         code, _ = self.run_main("mode: pull-only\n", None, returncode=1)
         self.assertEqual(code, 1)
@@ -122,7 +162,7 @@ class AllowlistTests(unittest.TestCase):
         self.assertTrue((self.root / "Career/private.md").is_file())
 
     def test_the_pull_only_check_fails_safe(self) -> None:
-        for output, code in (("pull-only", 1), ("pull-only bidirectional", 0), ("", 0)):
+        for output, code in (("pull-only", 1), ("pull-only bidirectional", 0), ("", 0), ("mirror-remote", 0)):
             with self.subTest(output=output, code=code), patch("subprocess.run", lambda *a, **k: Result(output, code)):
                 self.assertFalse(allowlist.tool_is_pull_only(self.root))
         with patch("subprocess.run", side_effect=OSError):
