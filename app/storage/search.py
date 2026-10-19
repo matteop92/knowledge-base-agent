@@ -78,7 +78,7 @@ def source_label(metadata: object, relative_path: str) -> tuple[str, list[str], 
                 for item in values if isinstance(item, str) and item.strip()]
 
     people = list(dict.fromkeys(names(data.get("authors")) + names(data.get("guests"))
-                                + names(frontmatter.get("guest"))))
+                                + names(frontmatter.get("guest")) + names(frontmatter.get("people"))))
     tags = names(data.get("tags"))
     generated = data.get("generated") if isinstance(data.get("generated"), dict) else {}
     # Generated properties fill only what the file does not set itself.
