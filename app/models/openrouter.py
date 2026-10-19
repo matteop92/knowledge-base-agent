@@ -18,6 +18,8 @@ from app.models.client import (
 )
 
 
+IMAGE_DATA_URL = re.compile(r"^data:image/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$")
+
 def completion_limit(model_id: str, schema_name: str, max_output_tokens: int,
                      reasoning_effort: str | None) -> tuple[str, int]:
     """The completion-token field and ceiling sent for one structured call.
@@ -228,15 +230,22 @@ class OpenRouterClient:
     def generate_json(
         self, *, model: ModelSpec, system_prompt: str, input_text: str,
         schema_name: str, json_schema: dict[str, Any], max_output_tokens: int,
-        reasoning_effort: str | None = None,
+        reasoning_effort: str | None = None, images: list[str] | None = None,
     ) -> GenerationResult:
+        """`images` are base64 data URLs (PNG, JPEG or WebP) sent with the user text."""
         if model.provider != "openrouter":
             raise ModelClientError("OpenRouter adapter requires an openrouter model")
+        images = images or []
+        if any(not IMAGE_DATA_URL.match(image) for image in images):
+            raise ModelClientError("images must be PNG, JPEG or WebP data URLs")
+        user_content: str | list[dict[str, Any]] = input_text if not images else [
+            {"type": "text", "text": input_text},
+            *({"type": "image_url", "image_url": {"url": image}} for image in images)]
         payload = {
             "model": model.model_id,
             "messages": [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": input_text},
+                {"role": "user", "content": user_content},
             ],
             "response_format": {
                 "type": "json_schema",
@@ -260,7 +269,7 @@ class OpenRouterClient:
         route = self._model_providers.get(model.model_id, self._provider)
         if route is not None:
             payload["provider"] = route
-        response = self._post("/chat/completions", payload, [system_prompt, input_text])
+        response = self._post("/chat/completions", payload, [system_prompt, input_text, *images])
         choices = response.get("choices")
         finish = choices[0].get("finish_reason") if isinstance(choices, list) and choices and isinstance(choices[0], dict) else None
         if finish not in (None, "stop"):

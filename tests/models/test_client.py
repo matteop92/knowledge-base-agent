@@ -28,6 +28,33 @@ class ModelClientTests(unittest.TestCase):
             provider="openrouter", model_id="example/open-model", model_version="2026-09"
         )
 
+    def test_images_are_sent_as_data_urls_beside_the_text(self) -> None:
+        import json
+        response = {"choices": [{"finish_reason": "stop", "message": {"content": '{"text": "hi"}'}}],
+                    "usage": {"prompt_tokens": 900, "completion_tokens": 5}}
+        client = OpenRouterClient(allow_live=True, api_key="test-key", request_budget=1,
+                                  estimated_input_token_budget=10_000)
+        image = "data:image/png;base64,iVBORw0KGgo="
+        with patch("app.models.openrouter.request.urlopen",
+                   return_value=io.BytesIO(json.dumps(response).encode())) as send:
+            result = client.generate_json(model=self.model, system_prompt="Read it", input_text="Screenshot",
+                                          schema_name="t", json_schema={"type": "object"}, max_output_tokens=32,
+                                          images=[image])
+        sent = json.loads(send.call_args[0][0].data)
+        self.assertEqual(sent["messages"][1]["content"],
+                         [{"type": "text", "text": "Screenshot"}, {"type": "image_url", "image_url": {"url": image}}])
+        self.assertEqual(result.data, {"text": "hi"})
+
+    def test_an_image_that_is_not_a_data_url_is_refused_before_any_request(self) -> None:
+        client = OpenRouterClient(allow_live=True, api_key="test-key", request_budget=1,
+                                  estimated_input_token_budget=10_000)
+        for image in ("https://example.com/x.png", "data:image/svg+xml;base64,PHN2Zz4=", "data:image/png;base64,<script>"):
+            with self.subTest(image=image), patch("app.models.openrouter.request.urlopen") as send:
+                with self.assertRaises(ModelClientError):
+                    client.generate_json(model=self.model, system_prompt="Read it", input_text="x", schema_name="t",
+                                         json_schema={"type": "object"}, max_output_tokens=32, images=[image])
+                send.assert_not_called()
+
     def test_live_calls_require_explicit_selection_and_budget(self) -> None:
         kwargs = dict(
             model=self.model, system_prompt="Return JSON", input_text="Private source",

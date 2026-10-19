@@ -15,12 +15,14 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.api.answers import AnswerEngine, AnswerJobs, OpenRouterAnswerEngine
-from app.api.capture import CaptureJobs, Classifier
+from app.api.capture import CaptureJobs, Classifier, Extractor, ScreenshotInput
 from app.api.auth import COOKIE_NAME, AuthError, RateLimiter, Session, SessionStore, SupabaseAuth
 from app.api.conversations import ConversationError, ConversationStore
 from app.api.scheduler import IndexScheduler, vault_settings_from_env
 from app.api.settings import Settings
 from app.capture.notes import CaptureError, draft_from_markdown, draft_from_text
+from app.capture.screenshot import MAX_DATA_URL_CHARS
+from app.models.openrouter import IMAGE_DATA_URL
 from app.storage.spend import SpendCapError, spent_today
 
 WEB_DIR = Path(__file__).resolve().parents[1] / "web"
@@ -52,8 +54,10 @@ class FeedbackRequest(BaseModel):
 
 
 class CaptureRequest(BaseModel):
-    kind: Literal["text", "markdown"]
-    content: str = Field(min_length=1, max_length=2_000_000)
+    kind: Literal["text", "markdown", "screenshot"]
+    content: str | None = Field(default=None, max_length=2_000_000)
+    # A screenshot arrives as a data URL, already downscaled by the app.
+    image: str | None = Field(default=None, max_length=MAX_DATA_URL_CHARS)
     title: str | None = Field(default=None, max_length=500)
     url: str | None = Field(default=None, max_length=2000, pattern=r"^https?://")
     tags: list[str] = Field(default_factory=list, max_length=10)
@@ -61,7 +65,8 @@ class CaptureRequest(BaseModel):
 
 def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
                auth: SupabaseAuth | None = None, engine: AnswerEngine | None = None,
-               indexer: IndexScheduler | None = None, classifier: Classifier | None = None) -> FastAPI:
+               indexer: IndexScheduler | None = None, classifier: Classifier | None = None,
+               extractor: Extractor | None = None) -> FastAPI:
     # A stalled database must fail the request, not hang it: 10 s to connect, 60 s per statement.
     connect = connect or (lambda: psycopg.connect(settings.database_url, autocommit=True, connect_timeout=10,
                                                   options="-c statement_timeout=60000"))
@@ -81,7 +86,7 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
         indexer = IndexScheduler(vault_settings_from_env(), connect, interval_seconds=settings.index_interval_seconds,
                                  max_usd_per_pass=float(settings.index_max_usd_per_pass))
     app.state.indexer = indexer
-    captures = CaptureJobs(connect, settings, classifier, indexer)
+    captures = CaptureJobs(connect, settings, classifier, indexer, extractor=extractor)
     app.state.captures = captures
 
     @app.on_event("startup")
@@ -250,9 +255,13 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
 
     @app.post("/api/captures", status_code=202)
     def capture(body: CaptureRequest, _: Session = Depends(session)):
+        if body.kind == "screenshot":
+            if not body.image or not IMAGE_DATA_URL.match(body.image):
+                raise ConversationError(422, "a screenshot must be a PNG, JPEG or WebP image")
+            return {"capture_id": captures.start(ScreenshotInput(body.image, body.title, body.tags))}
         make = draft_from_text if body.kind == "text" else draft_from_markdown
         try:
-            draft = make(body.content, title=body.title, url=body.url, tags=body.tags)
+            draft = make(body.content or "", title=body.title, url=body.url, tags=body.tags)
         except CaptureError as exc:
             raise ConversationError(422, str(exc)) from None
         return {"capture_id": captures.start(draft)}
