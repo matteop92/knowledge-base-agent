@@ -5,7 +5,7 @@
 (() => {
   const MAX_SIDE = 2000;  // screenshots are downscaled here, so the server never receives huge images
   const SHARE_CACHE = "ka-share";
-  const YOUTUBE = /^(https?:\/\/)?(www\.|m\.)?(youtube\.com\/(watch|shorts|live)|youtu\.be\/)/i;
+  const YOUTUBE = /^(https?:\/\/)?(www\.|m\.|music\.)?(youtube\.com\/(watch|shorts|live|embed)|youtu\.be\/)/i;
   let pending = null;  // {kind, content?, image?, label}
   const retries = new Map();  // capture id -> request body, for Retry
 
@@ -38,11 +38,17 @@
   async function takeFile(file) {
     message("");
     if (!file) return;
+    $("capture-preview").hidden = true;
     if (file.type.startsWith("image/")) {
       pending = { kind: "screenshot", image: await downscale(file), label: `Screenshot: ${file.name || "image"}` };
+      // Show exactly what Save will send.
+      $("capture-preview").src = pending.image;
+      $("capture-preview").hidden = false;
     } else if (/\.(md|markdown|txt)$/i.test(file.name || "") || file.type.startsWith("text/")) {
-      pending = { kind: /\.txt$/i.test(file.name || "") ? "text" : "markdown", content: await file.text(),
-                  label: `File: ${file.name || "note"}` };
+      // The file's text goes into the visible box, so nothing is saved that cannot be seen.
+      pending = null;
+      $("capture-text").value = await file.text();
+      $("capture-kind").value = /\.txt$/i.test(file.name || "") ? "text" : "markdown";
     } else {
       pending = null;
       message("Only screenshots (PNG, JPEG, WebP) and .md files can be added.");
@@ -62,6 +68,7 @@
     const text = $("capture-text").value.trim();
     if (!text) return null;
     if (YOUTUBE.test(text) && !/\s/.test(text)) return { kind: "youtube", content: text, title, tags };
+    if ($("capture-kind").value === "markdown") return { kind: "markdown", content: text, title, tags };
     const url = /^https?:\/\/\S+$/.test(text) ? text : null;
     return { kind: "text", content: text, url, title, tags };
   }
@@ -79,6 +86,8 @@
       retries.set(id, body);
       pending = null;
       $("capture-pending").textContent = "";
+      $("capture-preview").hidden = true;
+      $("capture-kind").value = "text";
       $("capture-text").value = "";
       $("capture-title").value = "";
       message("Saving… it appears under Recent below.", true);
@@ -174,19 +183,23 @@
     if (!new URLSearchParams(location.search).has("share") || !("caches" in window)) return;
     history.replaceState(null, "", "/");
     const cache = await caches.open(SHARE_CACHE);
-    const meta = await cache.match("/share/meta");
-    if (!meta) return;
-    const { title, text, url } = await meta.json();
-    await openCapture();
-    const file = await cache.match("/share/file");
-    if (file) {
-      const blob = await file.blob();
-      const name = decodeURIComponent(file.headers.get("x-name") || "shared");
-      await takeFile(new File([blob], name, { type: blob.type }));
+    try {
+      const meta = await cache.match("/share/meta");
+      if (!meta) return;
+      const { title, text, url } = await meta.json();
+      await openCapture();
+      const file = await cache.match("/share/file");
+      if (file) {
+        const blob = await file.blob();
+        const name = decodeURIComponent(file.headers.get("x-name") || "shared");
+        await takeFile(new File([blob], name, { type: blob.type }));
+      }
+      takeText(text, title, url);
+    } finally {
+      // The shared item lives only in the form now; never leave it in the browser's cache.
+      await cache.delete("/share/meta");
+      await cache.delete("/share/file");
     }
-    takeText(text, title, url);
-    await cache.delete("/share/meta");
-    await cache.delete("/share/file");
   }
 
   document.addEventListener("DOMContentLoaded", () => {

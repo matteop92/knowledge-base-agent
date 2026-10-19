@@ -160,6 +160,51 @@ class CaptureApiTests(unittest.TestCase):
         self.assertIn("- writing", text)
         self.assertIn("- leadership", text)
 
+    def test_a_markdown_files_own_type_picks_its_folder(self):
+        self.classifier.properties = {"tags": []}  # the classifier fills only missing fields
+        content = "---\ntitle: Essay\ntype: article\n---\n\nBody.\n"
+        job = self.finished(self.client.post("/api/captures", json={"kind": "markdown", "content": content})
+                            .json()["capture_id"])
+        self.assertEqual(job["vault_path"], "Knowledge/Articles/2026-10-19-essay.md")
+
+    def test_a_capture_indexed_at_once_says_so(self):
+        from app.api.capture import CaptureJobs
+        self.app.state.captures._index_now = lambda path: True
+        job = self.finished(self.capture().json()["capture_id"])
+        self.assertTrue(job["indexed"])
+
+    def test_a_failed_index_pass_still_keeps_the_saved_note(self):
+        def broken(path):
+            raise RuntimeError("index down")
+        self.app.state.captures._index_now = broken
+        job = self.finished(self.capture().json()["capture_id"])
+        self.assertEqual((job["status"], job["indexed"]), ("done", False))
+        self.assertTrue((self.vault / job["vault_path"]).is_file())
+
+    def test_a_stale_running_capture_is_marked_interrupted_and_a_late_finish_still_lands(self):
+        with psycopg.connect(os.environ["KNOWLEDGE_TEST_DATABASE_URL"], autocommit=True) as conn:
+            old = str(conn.execute("""insert into knowledge.capture_jobs (kind, created_at)
+                values ('text', now() - interval '30 minutes') returning job_id""").fetchone()[0])
+            fresh = str(conn.execute("insert into knowledge.capture_jobs (kind) values ('text') returning job_id")
+                        .fetchone()[0])
+        self.assertEqual(self.client.get(f"/api/captures/{old}").json()["status"], "failed")
+        self.assertEqual(self.client.get(f"/api/captures/{fresh}").json()["status"], "running")
+        self.app.state.captures._finish(old, status="done", vault_path="Knowledge/Notes/x.md")
+        self.assertEqual(self.client.get(f"/api/captures/{old}").json()["status"], "done")
+
+    def test_a_youtube_failure_reads_plainly_and_bills_nothing(self):
+        def fail(item):
+            raise CaptureError("this video is private or unavailable")
+        self.transcriber.extract = fail
+        job = self.finished(self.client.post("/api/captures", json={"kind": "youtube", "content": "youtu.be/jNQXAC9IVRw"})
+                            .json()["capture_id"])
+        self.assertEqual((job["status"], job["error"]), ("failed", "this video is private or unavailable"))
+        self.assertEqual(self.spend(), [])
+
+    def test_capture_needs_a_session(self):
+        self.client.cookies.clear()
+        self.assertEqual(self.capture().status_code, 401)
+
     def test_capture_is_refused_until_sync_is_two_way(self):
         self.build(sync_mode="pull-only")
         response = self.capture()

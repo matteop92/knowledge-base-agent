@@ -63,10 +63,11 @@ def merged_exclusions(baseline: Path | None, extra: Path, new: list[str], keep: 
     # An allowed folder must never stay on the skip list, even if a mistake once put it there.
     names = [name for name in names if not any(_same(name, allowed) for allowed in keep)]
     for name in new:
-        if not any(_same(name, existing) for existing in names):
+        # Exact spelling, so the tool's skip list names each folder as it is on disk.
+        if name not in names:
             names.append(name)
     extra.write_text("\n".join(name for name in names if not any(
-        _same(name, line.strip()) for line in (baseline.read_text(encoding="utf-8").splitlines()
+        name == line.strip() for line in (baseline.read_text(encoding="utf-8").splitlines()
                                                 if baseline.is_file() else []))) + "\n", encoding="utf-8")
     return names
 
@@ -87,11 +88,6 @@ def tool_mode(root: Path) -> str | None:
         return None
     modes = [mode for mode in ("pull-only", "bidirectional", "mirror-remote") if mode in text]
     return modes[0] if len(modes) == 1 and modes[0] != "mirror-remote" else None
-
-
-def tool_is_pull_only(root: Path) -> bool:
-    """Ask the sync tool itself; anything unclear counts as not download-only."""
-    return tool_mode(root) == "pull-only"
 
 
 def skipped_folders(settings_dir: Path) -> list[str] | None:
@@ -115,7 +111,9 @@ def remove_skipped_folders(root: Path, folders: list[str], settings_dir: Path) -
     for name in folders:
         entry = root / name
         if (entry.is_dir() and not entry.is_symlink() and not name.startswith(".")
-                and any(_same(name, item.strip("/")) for item in skipped)):
+                # Exact spelling only: a folder is deleted only if the tool's own list names it exactly.
+                and any(unicodedata.normalize("NFC", name) == unicodedata.normalize("NFC", item.strip("/"))
+                        for item in skipped)):
             shutil.rmtree(entry)
             removed.append(name)
     return removed

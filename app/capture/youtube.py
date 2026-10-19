@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 from urllib import error, parse, request
 
-from app.capture.notes import CaptureError, Draft, MAX_TEXT_BYTES, _clean_tags, _clean_title
+from app.capture.notes import CaptureError, Draft, MAX_TEXT_BYTES, clean_tags, clean_title
 from app.models.gemini import GeminiClient, GeminiError
 
 PROMPT_VERSION = "youtube_transcript_v1"
@@ -78,5 +78,5 @@ def transcribe_youtube(link: str, client: GeminiClient, *, title: str | None = N
     own = {"source": "YouTube"}
     if info.get("channel"):
         own["author"] = str(info["channel"])[:200]
-    return Draft(kind="youtube", body=body, title=_clean_title(title) or _clean_title(info.get("title")) or "YouTube video",
-                 own=own, url=url, tags=_clean_tags(tags))
+    return Draft(kind="youtube", body=body, title=clean_title(title) or clean_title(info.get("title")) or "YouTube video",
+                 own=own, url=url, tags=clean_tags(tags))

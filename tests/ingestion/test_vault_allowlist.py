@@ -52,9 +52,10 @@ class AllowlistTests(unittest.TestCase):
         baseline, extra = Path(self.temp.name) / "baseline.txt", Path(self.temp.name) / "extra.txt"
         baseline.write_text("Career\nTasks\n", encoding="utf-8")
         names = allowlist.merged_exclusions(baseline, extra, ["Brand New Folder", "career"])
-        self.assertEqual(names, ["Career", "Tasks", "Brand New Folder"])
-        self.assertEqual(extra.read_text(encoding="utf-8").splitlines(), ["Brand New Folder"])
-        self.assertEqual(allowlist.merged_exclusions(baseline, extra, [])[-1], "Brand New Folder")
+        # Each spelling on disk is listed exactly, so the tool skips the folder as it is named.
+        self.assertEqual(names, ["Career", "Tasks", "Brand New Folder", "career"])
+        self.assertEqual(extra.read_text(encoding="utf-8").splitlines(), ["Brand New Folder", "career"])
+        self.assertEqual(allowlist.merged_exclusions(baseline, extra, [])[-2:], ["Brand New Folder", "career"])
 
     def run_main(self, config_output: str, mode: str | None, returncode=0):
         baseline, extra = Path(self.temp.name) / "baseline.txt", Path(self.temp.name) / "extra.txt"
@@ -103,11 +104,16 @@ class AllowlistTests(unittest.TestCase):
 
     def test_two_way_sync_deletes_only_folders_the_tool_skips(self) -> None:
         # The tool's settings skip Career but not the brand new folder yet.
-        self.assertEqual(self.run_two_way(self.sync_settings(["Tasks", "career"])), 0)
+        self.assertEqual(self.run_two_way(self.sync_settings(["Tasks", "Career"])), 0)
         self.assertFalse((self.root / "Career").exists())
         self.assertTrue((self.root / "Brand New Folder").is_dir())
         self.assertTrue((self.root / "loose note.md").is_file())
         self.assertTrue((self.root / "Knowledge/Notes/kept.md").is_file())
+
+    def test_two_way_sync_never_deletes_a_folder_whose_name_differs_in_case(self) -> None:
+        self.assertEqual(self.run_two_way(self.sync_settings(["career", "brand new folder"])), 0)
+        self.assertTrue((self.root / "Career/private.md").is_file())
+        self.assertTrue((self.root / "Brand New Folder").is_dir())
 
     def test_two_way_sync_without_a_readable_settings_file_deletes_nothing(self) -> None:
         settings = self.sync_settings(["Career", "Brand New Folder"])
@@ -164,9 +170,9 @@ class AllowlistTests(unittest.TestCase):
     def test_the_pull_only_check_fails_safe(self) -> None:
         for output, code in (("pull-only", 1), ("pull-only bidirectional", 0), ("", 0), ("mirror-remote", 0)):
             with self.subTest(output=output, code=code), patch("subprocess.run", lambda *a, **k: Result(output, code)):
-                self.assertFalse(allowlist.tool_is_pull_only(self.root))
+                self.assertNotEqual(allowlist.tool_mode(self.root), "pull-only")
         with patch("subprocess.run", side_effect=OSError):
-            self.assertFalse(allowlist.tool_is_pull_only(self.root))
+            self.assertIsNone(allowlist.tool_mode(self.root))
 
     def test_a_link_is_removed_but_what_it_points_to_is_not(self) -> None:
         target = Path(self.temp.name) / "elsewhere"

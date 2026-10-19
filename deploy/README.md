@@ -73,6 +73,11 @@ How it fits together:
   version 0.0.14; re-check after upgrading it.)
   The `(conflict)` copies that `--conflict-strategy conflict` can create are skipped by the indexer
   (`CONFLICT_COPY` in `app/ingestion/vault_sync.py`); the server only adds new capture notes, so conflicts should be rare.
+  **Unproven point before switching:** while download-only, the cleanup also deleted loose notes at the vault root and
+  folders that were not yet on the skip list. It is not known whether the sync tool, once two-way, would send those old
+  local deletions back to the real vault. Do not switch the existing copy in place until this is settled; agree the switch
+  procedure with the owner first (for example, start the two-way copy fresh in an empty folder with the skip list set
+  before its first sync, so the tool has no record of earlier deletions).
 
 Variables (all optional except the switch):
 
@@ -81,6 +86,9 @@ Variables (all optional except the switch):
 | `KNOWLEDGE_SYNC_ENABLED` | `false` | Turn on the sync loop and the scheduler. Set to `true` only after the one-time setup below. |
 | `KNOWLEDGE_SYNC_MODE` | `pull-only` | `pull-only` or `bidirectional`; must match the sync tool's mode. Captures are refused unless it is `bidirectional`. |
 | `KNOWLEDGE_CAPTURE_FOLDER` | `Knowledge` | Folder whose `Transcripts`, `Articles`, `Book Highlights` and `Notes` subfolders receive new capture notes (new files only). |
+| `GEMINI_API_KEY` | none | Google AI Studio key for YouTube transcripts. Use a **free-tier** key (a project without billing): its use is not recorded in the spend ledger. Without it, YouTube captures fail with a clear message. |
+| `KNOWLEDGE_VISION_MODEL` | `openai/gpt-6-luna` | Model that reads screenshots; must be in the pinned zero-retention routes in `app/models/routes.py`. |
+| `KNOWLEDGE_YOUTUBE_MODEL` | `gemini-3.8-flash` | Gemini model for YouTube transcripts. |
 | `KNOWLEDGE_SOURCE_ROOT` | `/data/vault` | Where the vault copy lives. |
 | `KNOWLEDGE_INCLUDED_FOLDERS` | `Knowledge` | Top-level vault folders to index and keep on the server. |
 | `KNOWLEDGE_INDEX_INTERVAL_SECONDS` | `300` | Time between index passes. |

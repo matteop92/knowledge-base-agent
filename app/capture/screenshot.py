@@ -10,7 +10,7 @@ import os
 from datetime import date
 from pathlib import Path
 
-from app.capture.notes import CaptureError, Draft, MAX_TEXT_BYTES, _clean_tags, _clean_title, _first_line_title
+from app.capture.notes import CaptureError, Draft, MAX_TEXT_BYTES, clean_tags, clean_title, first_line_title
 from app.models.client import ModelClient, ModelSpec
 from app.models.routes import price_usd
 
@@ -77,5 +77,5 @@ def extract_screenshot(image: str, client: ModelClient, model: ModelSpec | None 
         except ValueError:
             pass
     return Draft(kind="screenshot", body=text,
-                 title=_clean_title(title) or _clean_title(_optional(data.get("title"), 200)) or _first_line_title(text),
-                 own=own, tags=_clean_tags(tags))
+                 title=clean_title(title) or clean_title(_optional(data.get("title"), 200)) or first_line_title(text),
+                 own=own, tags=clean_tags(tags))
