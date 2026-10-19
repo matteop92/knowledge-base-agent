@@ -58,24 +58,23 @@ class TranscribeTests(unittest.TestCase):
         self.assertEqual(parsed.metadata.source_url, URL)
         self.assertIn("bold speaker labels", parsed.route_reason)
 
-    def test_the_people_in_a_video_go_in_guest_and_the_channel_stays_author(self):
+    def test_the_people_in_a_video_go_in_people_and_the_channel_stays_author(self):
         from app.ingestion.properties import missing_fields
         draft = transcribe_youtube(URL, FakeGemini(text="**Claire:** Hi.\n\n**John:** Hello."),
                                    details=lambda url: {"title": "Jev", "channel": "How I AI"})
         # The channel as author must not stop the classifier from looking for the people.
         self.assertIn("people", missing_fields(parse_draft(draft, date(2026, 10, 19))))
         props = note_properties(draft, {"people": ["Claire Vo", "John Lindquist", "How I AI"]}, date(2026, 10, 19))
-        self.assertEqual((props["author"], props["guest"]), ("How I AI", ["Claire Vo", "John Lindquist"]))
+        self.assertEqual((props["author"], props["people"]), ("How I AI", ["Claire Vo", "John Lindquist"]))
         self.assertNotIn("authors", props)
         parsed = parse_draft(draft_from_markdown(render(draft, props)), date(2026, 10, 19))
-        self.assertEqual(parsed.metadata.guests, ["Claire Vo", "John Lindquist"])
         from app.storage.search import source_label
         label_people = source_label(parsed.metadata.model_dump(mode="json"), "Knowledge/Transcripts/x.md")[1]
         self.assertEqual(label_people, ["How I AI", "Claire Vo", "John Lindquist"])
 
-    def test_a_video_with_no_people_found_gets_no_guest_line(self):
+    def test_a_video_with_no_people_found_gets_no_people_line(self):
         draft = transcribe_youtube(URL, FakeGemini(), details=DETAILS)
-        self.assertNotIn("guest", note_properties(draft, {"people": []}, date(2026, 10, 19)))
+        self.assertNotIn("people", note_properties(draft, {"people": []}, date(2026, 10, 19)))
 
     def test_a_cut_off_transcript_says_so(self):
         draft = transcribe_youtube(URL, FakeGemini(finish="MAX_TOKENS"), details=DETAILS)
