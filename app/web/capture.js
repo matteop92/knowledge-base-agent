@@ -15,7 +15,10 @@
     queued: "Saved; searchable after the next index pass (within five minutes)",
   };
 
-  function message(text) { $("capture-message").textContent = text || ""; }
+  function message(text, ok) {
+    $("capture-message").textContent = text || "";
+    $("capture-message").classList.toggle("ok", Boolean(ok));
+  }
 
   function obsidianLink(path) {
     return `obsidian://open?vault=${encodeURIComponent(state.vaultName || "")}&file=${encodeURIComponent(path)}`;
@@ -79,9 +82,9 @@
       $("capture-pending").textContent = "";
       $("capture-text").value = "";
       $("capture-title").value = "";
-      message("");
+      message("Saving… it appears under Recent below.", true);
       renderCapture({ id, status: "running", title: body.title || "New capture" }, true);
-      pollCapture(id);
+      pollCapture(id, true);
     } catch (error) {
       message(error.status === 429 ? "The daily spending cap was reached." : error.message);
     } finally {
@@ -126,12 +129,16 @@
     }
   }
 
-  function pollCapture(id) {
+  function pollCapture(id, announceResult) {
     const tick = async () => {
       try {
         const job = await api("GET", `/api/captures/${encodeURIComponent(id)}`);
         renderCapture(job);
-        if (job.status === "running") setTimeout(tick, POLL_MS);
+        if (job.status === "running") { setTimeout(tick, POLL_MS); return; }
+        if (announceResult) {
+          message(job.status === "failed" ? `Not saved: ${job.error || "unknown reason"}` : `Saved to ${job.vault_path}`,
+                  job.status !== "failed");
+        }
       } catch (error) {
         if (error.status !== 401) setTimeout(tick, POLL_MS * 2);
       }
