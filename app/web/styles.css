@@ -68,7 +68,6 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .feedback-form { display: grid; gap: 8px; margin-top: 8px; }
 .feedback-form textarea { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); }
 .turn[data-status="failed"] .turn-state { color: var(--danger); }
-#follow-up-note { max-width: 760px; margin: 16px auto 0; }
 .banner { grid-column: 2; margin: 0; padding: 8px 16px; background: #fef3c7; }
 .composer { grid-column: 2; display: flex; gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); background: var(--surface); }
 .composer textarea { flex: 1; resize: none; overflow-y: auto; scrollbar-width: none; min-height: 44px; max-height: 200px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); }

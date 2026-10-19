@@ -65,14 +65,18 @@ def worst_case_usd(*, input_byte_budget: int, request_budget: int, max_output_to
             + Decimal(request_budget * max_output_tokens * 4) * completion_usd_per_token)
 
 
-def measured_usd(client, routes: AnswerRoutes, *, model: str, embedding_model: str) -> tuple[Decimal, bool]:
+def measured_usd(client, routes: AnswerRoutes, *, model: str, embedding_model: str,
+                 extra_prices: dict[str, tuple[Decimal, Decimal]] | None = None) -> tuple[Decimal, bool]:
     """Measured spend and whether every request reported its usage.
+
+    `extra_prices` adds per-token (prompt, completion) prices for other generation models,
+    such as the follow-up rewrite.
 
     A request that timed out or failed still has a timing but no billable record, so the
     counts must match; generation requests must also report output tokens.
     """
     prices = {model: (routes.prompt_price, routes.completion_price),
-              embedding_model: (routes.embedding_price, Decimal(0))}
+              embedding_model: (routes.embedding_price, Decimal(0)), **(extra_prices or {})}
     known = len(client.request_timings) == len(client.billable_requests) and all(
         usage.input_tokens is not None and (model_id == embedding_model or usage.output_tokens is not None)
         for model_id, usage in client.billable_requests)
