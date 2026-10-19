@@ -116,11 +116,17 @@ Matt can use every flow he uses today on his phone and desktop, and calls the re
 - The Paper boards in the canvas are the pixel reference for spacing, radii and type sizes; where they disagree with the principles in this plan, the canvas wins and the executor notes it.
 - The desktop right-hand panel is about 360 pixels wide and the sidebar about 260; the panel pushes the thread at 1100 pixels and wider and overlays it between 900 and 1100. Confirm both against the canvas Desktop board.
 
+### Release A decisions (made during the build)
+
+- Muted ink is `#625E56`, not the first-draft `#6B675F`: on the darker sidebar the old value reached only 4.48:1. Measured ratios: ink on ground 15.5, muted on ground 5.9, muted on sidebar 5.1, muted on chip 5.3, accent on ground 6.8, white on accent 7.5, danger on ground 6.9. The sidebar beige is `#EAE5DA`.
+- The sheet closes through one browser Back per sheet; a repeat trigger before the Back finishes is ignored, and a reload on a leftover sheet entry clears it.
+- The service worker now fetches its shell files with `cache: "reload"` on install so an update never mixes old and new files from the browser's HTTP cache.
+
 ### Open Questions (deferred)
 
 - OQ1. Exact starter text when "Add a note to fill this gap" opens Add; default is the cleaned gap sentence on the first line so Matt can answer it.
-- OQ2. Final font file sizes after subsetting; if the pair exceeds about 150 KB total, drop Newsreader italics.
-- OQ3. How History, New question and the account menu appear when the desktop sidebar is collapsed; default is one icon each, History opening the conversation list as a popover and the account icon at the sidebar's foot opening a menu.
+- OQ2. Final font file sizes after subsetting; if the pair exceeds about 150 KB total, drop Newsreader italics. Resolved in Release A: Latin subset, Newsreader pinned to its 16 pt optical size (weights 200-800, no italics), 92 KB for the pair.
+- OQ3. How History, New question and the account menu appear when the desktop sidebar is collapsed; default is one icon each, History opening the conversation list as a popover and the account icon at the sidebar's foot opening a menu. Resolved in Release A: History and the account icon both open the same History popover, which also holds the two sign-out actions.
 
 ### Existing States That Must Survive
 

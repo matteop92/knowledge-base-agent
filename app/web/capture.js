@@ -8,6 +8,7 @@
   const YOUTUBE = /^(https?:\/\/)?(www\.|m\.|music\.)?(youtube\.com\/(watch|shorts|live|embed)|youtu\.be\/)/i;
   let pending = null;  // {kind, content?, image?, label}
   const retries = new Map();  // capture id -> request body, for Retry
+  const pollers = new Map();  // capture id -> timer, so one save is never polled twice
 
   const STATUS = {
     running: "Saving…",
@@ -138,20 +139,23 @@
   }
 
   function pollCapture(id, announceResult) {
+    if (pollers.has(id)) return;
+    const later = (ms) => pollers.set(id, setTimeout(tick, ms));
     const tick = async () => {
+      pollers.delete(id);
       try {
         const job = await api("GET", `/api/captures/${encodeURIComponent(id)}`);
         renderCapture(job);
-        if (job.status === "running") { setTimeout(tick, POLL_MS); return; }
+        if (job.status === "running") { later(POLL_MS); return; }
         if (announceResult) {
           message(job.status === "failed" ? `Not saved: ${job.error || "unknown reason"}` : `Saved to ${job.vault_path}`,
                   job.status !== "failed");
         }
       } catch (error) {
-        if (error.status !== 401) setTimeout(tick, POLL_MS * 2);
+        if (error.status !== 401) later(POLL_MS * 2);
       }
     };
-    setTimeout(tick, POLL_MS);
+    later(POLL_MS);
   }
 
   // Called by the shell when the Add tab is shown: load the setting and the recent saves.
@@ -175,10 +179,13 @@
   function reset() {
     pending = null;
     retries.clear();
+    for (const timer of pollers.values()) clearTimeout(timer);
+    pollers.clear();
     $("capture-kind").value = "text";
     for (const id of ["capture-text", "capture-title", "capture-tags", "capture-file"]) $(id).value = "";
     $("capture-pending").textContent = "";
     $("capture-preview").hidden = true;
+    $("capture-preview").removeAttribute("src");
     $("capture-list").replaceChildren();
     message("");
   }
