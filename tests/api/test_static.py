@@ -61,6 +61,14 @@ class ShellSourceTests(unittest.TestCase):
         self.assertIn('await setView("add");', capture[capture.index("async function takeShared"):])
         self.assertIn('await cache.delete("/share/meta")', capture)
 
+    def test_sign_out_only_reports_success_after_the_server_answers(self) -> None:
+        script = (WEB / "app.js").read_text(encoding="utf-8")
+        body = script[script.index("async function signOut"):script.index("function autosize")]
+        self.assertNotIn(".catch(() => {})", body)
+        self.assertIn("Could not sign out", body)
+        self.assertLess(body.index("await api("), body.index("showSignIn("))
+        self.assertEqual((WEB / "index.html").read_text(encoding="utf-8").count("sign-out-message"), 2)
+
     def test_styles_use_only_local_fonts_and_no_remote_imports(self) -> None:
         css = (WEB / "styles.css").read_text(encoding="utf-8")
         self.assertNotIn("@import", css)

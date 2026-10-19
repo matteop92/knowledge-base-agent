@@ -422,8 +422,17 @@ function setSidebarCollapsed(collapsed) {
   $("collapse").setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
 }
 
+// Only say "signed out" once the server has said so; a failed request must not look like success.
 async function signOut(everywhere) {
-  await api("POST", everywhere ? "/auth/sign-out-everywhere" : "/auth/sign-out").catch(() => {});
+  const notices = document.querySelectorAll(".sign-out-message");
+  for (const notice of notices) notice.textContent = "";
+  try {
+    await api("POST", everywhere ? "/auth/sign-out-everywhere" : "/auth/sign-out");
+  } catch (error) {
+    if (error.status === 401) return;  // the session had already ended; api() showed the sign-in screen
+    for (const notice of notices) notice.textContent = "Could not sign out. Check your connection and try again.";
+    return;
+  }
   showSignIn(everywhere ? "Signed out on every device." : "");
 }
 
