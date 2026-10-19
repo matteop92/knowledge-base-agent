@@ -84,6 +84,15 @@ class ConversationStore:
                          (conversation_id,))
         return conversation_id, turn_id
 
+    def prior_turns(self, conversation_id: str, turn_id: str, limit: int) -> list[tuple[str, dict[str, Any]]]:
+        """Question and receipt of the latest finished turns before this one, oldest first."""
+        with self.connect() as conn:
+            rows = conn.execute("""select question, receipt from knowledge.turns
+                where conversation_id=%s and receipt is not null and status in ('done', 'done_with_gaps')
+                  and position < (select position from knowledge.turns where turn_id=%s)
+                order by position desc limit %s""", (conversation_id, turn_id, limit)).fetchall()
+        return [(row[0], row[1]) for row in reversed(rows)]
+
     def finish_turn(self, turn_id: str, *, status: str, receipt: dict[str, Any] | None, cost_usd: float,
                     error: str | None = None) -> None:
         with self.connect() as conn:

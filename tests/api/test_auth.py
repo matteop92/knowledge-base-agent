@@ -140,6 +140,71 @@ class AnswerCostTests(unittest.TestCase):
         client.request_timings.append(("gen", 60.0))  # a request that timed out has no usage record
         self.assertFalse(measured_usd(client, routes, model="gen", embedding_model="embed")[1])
 
+    def test_worst_case_includes_a_rewrite_at_its_full_completion_allowance(self) -> None:
+        from decimal import Decimal
+        from unittest import mock
+        from app.api import answers
+        from app.models.routes import price_usd
+
+        engine = answers.OpenRouterAnswerEngine(settings(), connect=lambda: None)
+        with mock.patch.object(answers, "REWRITE_MAX_OUTPUT_TOKENS", 0), \
+                mock.patch.object(answers, "REWRITE_INPUT_CHARS", 0):
+            without = engine.worst_case_usd()
+        rewrite = Decimal(str(price_usd(answers.REWRITE_MODEL, answers.REWRITE_INPUT_CHARS,
+                                        answers.REWRITE_MAX_OUTPUT_TOKENS * 4)))
+        self.assertEqual(engine.worst_case_usd() - without, rewrite)
+
+    def test_a_failed_rewrite_route_check_searches_with_the_follow_up_and_bills_nothing(self) -> None:
+        from app.api.answers import rewrite_followup
+        from app.models.client import ModelClientError
+
+        class RefusingClient:
+            def require_zdr_route(self, *args, **kwargs):
+                raise ModelClientError("endpoint is not zero-retention")
+
+            def generate_json(self, **kwargs):
+                raise AssertionError("no rewrite call expected")
+
+        prices: dict = {}
+        recent = [{"question": "Who talks about hiring?", "answer": "Ferrari."}]
+        self.assertIsNone(rewrite_followup(RefusingClient(), "And the second?", recent, prices))
+        self.assertEqual(prices, {})
+
+    def test_a_checked_rewrite_route_records_its_prices_and_returns_the_query(self) -> None:
+        from decimal import Decimal
+        from app.api.answers import REWRITE_MODEL, rewrite_followup
+        from app.models.client import GenerationResult
+
+        class Client:
+            def require_zdr_route(self, model_id, tag, structured=False):
+                return {"tag": tag, "pricing": {"prompt": "0.0000001", "completion": "0.0000005"}}
+
+            def generate_json(self, **kwargs):
+                return GenerationResult(data={"query": "What does Derek Sivers say about hiring?"},
+                                        model=kwargs["model"])
+
+        prices: dict = {}
+        recent = [{"question": "Who talks about hiring?", "answer": "Ferrari and Sivers."}]
+        self.assertEqual(rewrite_followup(Client(), "And the second?", recent, prices),
+                         "What does Derek Sivers say about hiring?")
+        # The route check reports dollars per million as floats, so allow float rounding.
+        self.assertAlmostEqual(prices[REWRITE_MODEL][0], Decimal("1E-7"), places=20)
+        self.assertAlmostEqual(prices[REWRITE_MODEL][1], Decimal("5E-7"), places=20)
+
+    def test_a_follow_up_rewrite_is_priced_at_its_own_rate(self) -> None:
+        from decimal import Decimal
+        from app.agent.endpoints import AnswerRoutes, measured_usd
+        from app.models.client import ModelUsage
+
+        routes = AnswerRoutes({"pricing": {"prompt": "0"}}, {}, Decimal("0.00000025"), Decimal("0.000002"))
+        client = type("Client", (), {})()
+        client.billable_requests = [("rewrite", ModelUsage(input_tokens=1000, output_tokens=20))]
+        client.request_timings = [("rewrite", 0.5)]
+        cost, known = measured_usd(client, routes, model="gen", embedding_model="embed",
+                                   extra_prices={"rewrite": (Decimal("0.0000001"), Decimal("0.0000005"))})
+        self.assertTrue(known)
+        self.assertEqual(cost, Decimal("0.0001") + Decimal("0.00001"))
+
 
 class RateLimiterTests(unittest.TestCase):
     def test_limit_per_address(self) -> None:

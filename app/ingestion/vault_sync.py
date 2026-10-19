@@ -299,11 +299,11 @@ def _pass_lock(settings: VaultSettings):
         path.unlink(missing_ok=True)
 
 
-def _usage_mark(client) -> tuple[int, int]:
+def usage_mark(client) -> tuple[int, int]:
     return (len(getattr(client, "request_timings", []) or []), len(getattr(client, "billable_requests", []) or []))
 
 
-def _measured_usd(client, mark: tuple[int, int], worst_case: float) -> float:
+def measured_cost(client, mark: tuple[int, int], worst_case: float) -> float:
     """Measured cost since the mark; a request with no usage record (timeout, error) counts at the worst case."""
     requests = getattr(client, "billable_requests", None)
     if requests is None:
@@ -328,7 +328,7 @@ def _select_live_manifest(run_dir: Path, client) -> RunManifest:
     return manifest
 
 
-def _openrouter_client(models: list[str], *, requests: int, input_bytes: int, structured: set[str]):
+def openrouter_client(models: list[str], *, requests: int, input_bytes: int, structured: set[str]):
     """One live client pinned to zero-retention routes; fails closed if a route changed."""
     from app.models.openrouter import OpenRouterClient
 
@@ -339,7 +339,7 @@ def _openrouter_client(models: list[str], *, requests: int, input_bytes: int, st
     return client
 
 
-def _classifier_input_bytes(parsed: ParsedDocument, tag_list: TagList) -> int:
+def classifier_input_bytes(parsed: ParsedDocument, tag_list: TagList) -> int:
     return len(PROPERTIES_PROMPT.read_text(encoding="utf-8").encode("utf-8")) + len(
         model_input(parsed, tag_list).encode("utf-8"))
 
@@ -347,10 +347,10 @@ def _classifier_input_bytes(parsed: ParsedDocument, tag_list: TagList) -> int:
 def _live_client(prepared: list[PreparedFile], backfill: list[ParsedDocument], tag_list: TagList | None):
     classify = ([item.parsed for item in prepared if missing_fields(item.parsed)] + backfill) if tag_list else []
     properties = [properties_model().model_id] if classify else []
-    return _openrouter_client(
+    return openrouter_client(
         [EMBEDDING_MODEL, *properties], requests=sum(item.requests for item in prepared) + len(classify),
         input_bytes=sum(item.input_bytes for item in prepared)
-        + sum(_classifier_input_bytes(parsed, tag_list) for parsed in classify),
+        + sum(classifier_input_bytes(parsed, tag_list) for parsed in classify),
         structured=set(properties))
 
 
@@ -398,9 +398,9 @@ def _backfill_properties(conn, backfill: list[ParsedDocument], report: dict[str,
             except SpendCapError:
                 report["stopped"] = "daily spend cap reached during properties backfill"
                 break
-        mark = _usage_mark(client)
+        mark = usage_mark(client)
         _classify_and_store(conn, parsed, client, tag_list, report)
-        cost = _measured_usd(client, mark, worst)
+        cost = measured_cost(client, mark, worst)
         if cost > 0:
             record_spend(conn, "bulk_load" if bulk_load else "properties", cost, parsed.run_id)
         spent += cost
@@ -529,7 +529,7 @@ def _embed_and_publish(settings, conn, prepared, report, failures, spec, profile
             except SpendCapError:
                 report["stopped"] = "daily spend cap reached"
                 break
-        mark = _usage_mark(client)
+        mark = usage_mark(client)
         try:
             manifest = _select_live_manifest(item.run_dir, client)
             progress = embed_chunks(item.parsed, item.chunks, client, spec.model_copy(), manifest, item.run_dir,
@@ -555,7 +555,7 @@ def _embed_and_publish(settings, conn, prepared, report, failures, spec, profile
                                 _failure_reason(exc))
             failed[type(exc).__name__] = failed.get(type(exc).__name__, 0) + 1
         finally:
-            cost = _measured_usd(client, mark, item.worst_case_usd)
+            cost = measured_cost(client, mark, item.worst_case_usd)
             if cost > 0:
                 record_spend(conn, "bulk_load" if bulk_load else "indexing", cost, item.parsed.run_id)
             spent += cost
@@ -603,8 +603,8 @@ def propose_tags(settings: VaultSettings, sample_size: int, *, max_usd: float, c
             raise VaultSyncError(f"tag proposal worst case ${worst:.4f} exceeds --max-usd")
         if client is None:
             model_id = properties_model().model_id
-            client = _openrouter_client([model_id], requests=len(parsed_files),
-                                        input_bytes=sum(_classifier_input_bytes(p, open_list) for p in parsed_files),
+            client = openrouter_client([model_id], requests=len(parsed_files),
+                                        input_bytes=sum(classifier_input_bytes(p, open_list) for p in parsed_files),
                                         structured={model_id})
         failed = 0
         for parsed in parsed_files:
@@ -612,7 +612,7 @@ def propose_tags(settings: VaultSettings, sample_size: int, *, max_usd: float, c
                 suggested.update(suggest_tags(parsed, client).properties["tags"])
             except Exception:  # noqa: BLE001
                 failed += 1
-    spent = _measured_usd(client, (0, 0), worst)
+    spent = measured_cost(client, (0, 0), worst)
     draft = draft_tag_list(existing, suggested, output or TAGS_PATH)
     return {"sampled_files": len(parsed_files), "failed_calls": failed, "files_scanned": len(candidates),
             "distinct_existing_tags": len(existing), "draft_tags": len(draft["tags"]),

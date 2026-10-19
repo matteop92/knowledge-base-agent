@@ -88,6 +88,7 @@ async function startApp() {
   const remembered = load(CONVERSATION_KEY);
   store(CONVERSATION_KEY, null);
   if (remembered) await openConversation(remembered); else newQuestion();
+  await window.captureScreen.takeShared().catch(() => {});
 }
 
 async function refreshConversations() {
@@ -114,18 +115,19 @@ function stopPolling() {
 }
 
 function newQuestion() {
+  window.captureScreen.closeCapture();
   stopPolling();
   state.conversationId = null;
   $("turns").replaceChildren();
   $("conversation-title").textContent = "New question";
   $("empty-state").hidden = false;
-  $("follow-up-note").hidden = true;
   setRunning(false);
   closeSidebar();
   $("question").focus();
 }
 
 async function openConversation(id) {
+  window.captureScreen.closeCapture();
   stopPolling();
   try {
     const conversation = await api("GET", `/api/conversations/${encodeURIComponent(id)}`);
@@ -138,7 +140,6 @@ async function openConversation(id) {
       renderTurn(turn);
       if (turn.status === "running") { running = true; poll(turn.id); }
     }
-    $("follow-up-note").hidden = conversation.turns.length === 0;
     setRunning(running);
     refreshConversations();
   } catch (error) {
@@ -161,7 +162,6 @@ async function ask(question) {
     }
     $("empty-state").hidden = true;
     renderTurn({ id: started.turn_id, question, status: "running", created_at: new Date().toISOString() });
-    $("follow-up-note").hidden = $("turns").children.length < 2;
     poll(started.turn_id);
     refreshConversations();
   } catch (error) {
