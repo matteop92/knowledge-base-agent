@@ -1,6 +1,10 @@
 #!/bin/sh
-# Railway sets PORT and ends TLS at its proxy. The app reads the proxy-appended address itself,
-# so uvicorn must not rewrite the client address from headers the client can set.
+# Starts as root so the Railway volume (mounted at /data, owned by root) can be handed to the app user,
+# then runs everything else as that user.
 set -eu
-exec uvicorn app.api.main:build --factory --host 0.0.0.0 --port "${PORT:-8000}" \
-  --no-proxy-headers --no-server-header
+mkdir -p /data
+chown -R agent:agent /data
+mkdir -p /data/home
+chmod 700 /data/home
+# setpriv replaces this process (runuser would stay as PID 1 and may cut shutdown short).
+exec setpriv --reuid=agent --regid=agent --init-groups ./deploy/run.sh

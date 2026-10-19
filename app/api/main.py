@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from app.api.answers import AnswerEngine, AnswerJobs, OpenRouterAnswerEngine
 from app.api.auth import COOKIE_NAME, AuthError, RateLimiter, Session, SessionStore, SupabaseAuth
 from app.api.conversations import ConversationError, ConversationStore
+from app.api.scheduler import IndexScheduler, vault_settings_from_env
 from app.api.settings import Settings
 from app.storage.spend import SpendCapError, spent_today
 
@@ -49,7 +50,8 @@ class FeedbackRequest(BaseModel):
 
 
 def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
-               auth: SupabaseAuth | None = None, engine: AnswerEngine | None = None) -> FastAPI:
+               auth: SupabaseAuth | None = None, engine: AnswerEngine | None = None,
+               indexer: IndexScheduler | None = None) -> FastAPI:
     # A stalled database must fail the request, not hang it: 10 s to connect, 60 s per statement.
     connect = connect or (lambda: psycopg.connect(settings.database_url, autocommit=True, connect_timeout=10,
                                                   options="-c statement_timeout=60000"))
@@ -65,6 +67,10 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
     verify_limiter = RateLimiter(limit=10, window_seconds=900)
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.jobs = jobs
+    if indexer is None and settings.sync_enabled:
+        indexer = IndexScheduler(vault_settings_from_env(), connect, interval_seconds=settings.index_interval_seconds,
+                                 max_usd_per_pass=float(settings.index_max_usd_per_pass))
+    app.state.indexer = indexer
 
     @app.on_event("startup")
     def interrupt_running_turns() -> None:
@@ -72,10 +78,14 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
         count = jobs.expire_stale()
         if count:
             log.info("marked %d running turns as interrupted", count)
+        if indexer is not None:
+            indexer.start()
 
     @app.on_event("shutdown")
     def finish_running_answers() -> None:
         # Give in-flight answers time to finish and record their spend before the process exits.
+        if indexer is not None:
+            indexer.stop()
         jobs.wait(engine.limits.max_seconds + 30)
 
     @app.exception_handler(RequestValidationError)
@@ -186,6 +196,7 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
             today = spent_today(conn)
         return {"database": "ok", "last_index_at": last_index.isoformat() if last_index else None,
                 "properties_failures": failed_properties, "spent_today_usd": str(today),
+                "index": indexer.status() if indexer is not None else {"enabled": False},
                 "daily_cap_usd": str(settings.daily_cap_usd)}
 
     @app.get("/api/conversations")

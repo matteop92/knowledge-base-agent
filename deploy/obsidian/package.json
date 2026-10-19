@@ -1,0 +1,8 @@
+{
+  "name": "obsidian-sync-tool",
+  "private": true,
+  "description": "Pins the Obsidian Headless sync tool and everything it depends on; the Docker build installs exactly this lock file.",
+  "dependencies": {
+    "obsidian-headless": "0.0.14"
+  }
+}
