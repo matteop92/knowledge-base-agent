@@ -4,8 +4,8 @@ import json
 import unittest
 
 from app.agent.harness import answer_question
-from app.agent.memory import (MAX_CARRIED_PASSAGES, PriorTurn, build_memory, prior_turn_from_receipt,
-                              standalone_query)
+from app.agent.memory import (MAX_CARRIED_BYTES, MAX_CARRIED_PASSAGES, PriorTurn, build_memory,
+                              prior_turn_from_receipt, standalone_query)
 from app.agent.records import AnswerLimits
 from app.models.client import GenerationResult, ModelClientError, ModelSpec
 from app.storage.records import FusedHit, SearchHit, SourcePassage
@@ -95,6 +95,24 @@ class BuildMemoryTests(unittest.TestCase):
         self.assertEqual(memory.carried["E1.0"].chunk_id, "new")
         self.assertEqual(memory.dropped_over_cap, 1)
         self.assertEqual(memory.record()["dropped_over_cap"], 1)
+
+    def test_ledger_over_the_byte_cap_keeps_the_newest_passages(self):
+        big = "é" * (MAX_CARRIED_BYTES // 4)  # two bytes per character: half the cap each
+        old = turn(question="Old", passages={"E1.0": passage(chunk="old", text=big)}, titles={"doc-1": "Note"})
+        new = turn(question="New", passages={"E1.0": passage(chunk="new1", text=big),
+                                             "E2.0": passage(chunk="new2", text=big)}, titles={"doc-1": "Note"})
+        memory = build_memory([old, new], active={("doc-1", "run-1")})
+        self.assertEqual(sorted(item.chunk_id for item in memory.carried.values()), ["new1", "new2"])
+        self.assertEqual(memory.dropped_over_cap, 1)
+        self.assertLessEqual(sum(len(item.text.encode("utf-8")) for item in memory.carried.values()),
+                             MAX_CARRIED_BYTES)
+
+    def test_a_source_read_again_after_its_edit_is_not_reported_as_changed(self):
+        old = turn(passages={"E1.0": passage(run="run-old", text="Old text.")}, titles={"doc-1": "Note"})
+        new = turn(passages={"E1.0": passage(run="run-new", text="New text.")}, titles={"doc-1": "Note"})
+        memory = build_memory([old, new], active={("doc-1", "run-new")})
+        self.assertEqual([item.text for item in memory.carried.values()], ["New text."])
+        self.assertEqual(memory.changed, [])
 
     def test_the_same_passage_read_in_two_turns_is_carried_once(self):
         same = {"E1.0": passage()}
@@ -198,6 +216,22 @@ class FollowUpHarnessTests(unittest.TestCase):
         answer_question("More?", retriever=OneHit(), client=client, model=MODEL, memory=memory,
                         limits=AnswerLimits(max_model_calls=1))
         self.assertEqual([item["id"] for item in client.inputs[0]["candidates"]], ["E3"])
+
+    def test_a_carried_chunk_found_again_is_not_listed_as_a_new_candidate(self):
+        class CarriedHit(EmptyRetriever):
+            def search(self, query):
+                hit = SearchHit(rank=1, score=0, document_id="sivers", run_id="run-s", source_sha256="a" * 64,
+                                root_alias="primary", relative_path="Knowledge/sivers.md", chunk_id="cs",
+                                source_spans=[{"start_char": 0, "end_char": 3}], raw_text="Hire")
+                return [FusedHit(rank=1, rrf_score=1 / 61, channels=["text"], hit=hit)]
+
+        memory = build_memory([turn()], active={("ferrari", "run-f"), ("sivers", "run-s")})
+        client = CapturingClient([action_v3("finish", answer="No verified source.", completeness="unsupported",
+                                            sufficient=False, gaps=["none"])])
+        answer_question("More on Sivers?", retriever=CarriedHit(), client=client, model=MODEL, memory=memory,
+                        search_query="Derek Sivers hiring", limits=AnswerLimits(max_model_calls=1))
+        self.assertEqual(client.inputs[0]["candidates"], [])
+        self.assertIn("Derek Sivers hiring", client.inputs[0]["feedback"])
 
     def test_without_memory_the_v13_prompt_and_input_are_unchanged(self):
         client = CapturingClient([action_v3("finish", answer="No verified source.", completeness="unsupported",

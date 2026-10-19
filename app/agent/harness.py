@@ -65,7 +65,9 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
     inspected: dict[str, SourcePassage] = dict(memory.carried) if memory else {}
     carried_ids = set(inspected)
     next_ref = memory.chunk_count if memory else 0
-    memory_record = ({**memory.record(), "search_query": host_query} if memory else None)
+    memory_record = ({**memory.record(), "search_query": host_query, "prompt_version": FOLLOWUP_PROMPT_VERSION}
+                     if memory else None)
+    carried_chunks = memory.carried_chunks if memory else set()
     needs: dict[str, dict] = {"N1": {"description": question, "status": "open", "evidence_ids": [], "rationale": None}}
     actions: list[dict] = []
     calls = searches = finds = reads = 0
@@ -89,6 +91,9 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
         nonlocal next_ref
         refs = []
         for item in found:
+            # A chunk carried from an earlier turn is already inspected; listing it again would invite a re-read.
+            if (item.hit.run_id, item.hit.chunk_id) in carried_chunks:
+                continue
             ref = next((key for key, old in candidates.items() if old.hit.run_id == item.hit.run_id
                         and old.hit.chunk_id == item.hit.chunk_id), None)
             if ref is None:
@@ -132,7 +137,8 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
     host_search = {"query": host_query, "results": [
         {"rank": item.rank, "rrf_score": item.rrf_score, "channels": item.channels,
          **item.hit.model_dump(exclude={"raw_text", "score", "rank"})} for item in found]}
-    feedback = (f"The host searched with the question and found {len(found)} chunks, listed best first. "
+    searched = "the question" if host_query == question else f"the standalone query {host_query!r}"
+    feedback = (f"The host searched with {searched} and found {len(found)} chunks, listed best first. "
                 "Read promising chunks, or search with a short specific query.")
     while calls < limits.max_model_calls and time.monotonic() - started < limits.max_seconds:
         available = [{"id": ref, "title": candidates[ref].hit.title or candidates[ref].hit.relative_path.rsplit("/", 1)[-1],
@@ -154,6 +160,8 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                 for ref, title in memory.chunk_titles.items()]
             if memory.changed:
                 turn_input["changed_sources"] = memory.changed
+            if memory.dropped_over_cap:
+                turn_input["earlier_passages_not_carried"] = memory.dropped_over_cap
         input_text = json.dumps({**turn_input, "candidates": available,
                                  "inspected": read_evidence, "needs": needs, "feedback": feedback,
                                  "remaining": {"searches": limits.max_searches - searches,
