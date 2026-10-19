@@ -73,7 +73,8 @@ How it fits together:
   (`railway ssh`) run `sh deploy/ob-two-way.sh` and type the vault password when asked; then set
   `KNOWLEDGE_SYNC_MODE` to `bidirectional` and `KNOWLEDGE_SYNC_ENABLED` to `true`. From then on the cleanup deletes only
   folders the tool's own skip list names exactly. Keep the `/data/vault-pullonly-*` backup until a captured note has
-  reached the devices.
+  reached the devices. If a run stops after the download check (steps 1 to 4 done), `sh deploy/ob-two-way.sh finish`
+  redoes the check and runs only steps 5 and 6, without downloading again or asking for the password.
   **Tested 2026-10-18 on a throwaway folder in the real vault:** after a folder was added to the skip list in two-way mode,
   deleting its local copy and syncing three times did not delete it from the vault. (Tool version 0.0.14; re-check after
   upgrading it.)
