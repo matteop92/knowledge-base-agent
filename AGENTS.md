@@ -1,13 +1,13 @@
 # Project guide
 
-**Status:** The repository captures, parses, and chunks mixed Markdown from an external vault, with source-linked eval labels and local previews. A card-free six-file structural/raw profile with 83 vectors is selected; source-aware search passed the live 41/44/47 recall repeat and Q8's first search returned both named sources. The agent shows source titles and people. The 85-check answer checklist is frozen and prompt v13 is the accepted answer baseline; an incremental vault indexer, a properties classifier, a FastAPI server and an installable web app are built and live on Railway over a hosted index of the `Knowledge` folder (22 notes); automatic vault sync (Phase 1b: download from Obsidian Sync, cleanup, five-minute indexing) is live; follow-up memory and capture from the app (Phase 2) are built on `claude/phase-2` but not yet live; captures need the server's sync switched to two-way.
+**Status:** The repository captures, parses, and chunks mixed Markdown from an external vault, with source-linked eval labels and local previews. A card-free six-file structural/raw profile with 83 vectors is selected; source-aware search passed the live 41/44/47 recall repeat and Q8's first search returned both named sources. The agent shows source titles and people. The 85-check answer checklist is frozen and prompt v13 is the accepted answer baseline; an incremental vault indexer, a properties classifier, a FastAPI server and an installable web app are built and live on Railway over a hosted index of the `Knowledge` folder (22 notes); automatic vault sync (Phase 1b: download from Obsidian Sync, cleanup, five-minute indexing) is live; follow-up memory and capture from the app (Phase 2) are live, with the server's sync two-way.
 
 Read [SYSTEM.md](SYSTEM.md) for the one-page map. [FOUNDATION.md#current-progress](FOUNDATION.md#current-progress) is the single progress tracker; [INGESTION.md](INGESTION.md), [RETRIEVAL.md](RETRIEVAL.md), and [DATA.md](DATA.md) explain individual parts. Update current facts in place rather than adding a history section.
 
 ## Where to find things
 
 - `app/ingestion/`: source capture, parsing, chunking, eval mapping, enrichment, summaries, embeddings, and preview CLI.
-- `app/ingestion/vault_allowlist.py`: removes everything outside the allowed folders from the server's vault copy (download-only mode).
+- `app/ingestion/vault_allowlist.py`: removes everything outside the allowed folders from the server's vault copy (download-only mode; in two-way mode only folders the sync tool's skip list names exactly).
 - `app/ingestion/vault_sync.py` and `app/ingestion/properties.py`: incremental indexing of selected vault folders and the tag classifier (`config/tags.yaml` holds the approved tags).
 - `app/models/`: model interface, opt-in OpenRouter adapter, and pinned private routes and prices (`routes.py`).
 - `app/storage/`: private Postgres loading, publication, retirement, search and the spend ledger.
