@@ -11,6 +11,7 @@ from typing import Protocol
 import psycopg
 
 from app.agent.actions import ACTION_SCHEMA_V3, AgentAction
+from app.agent.memory import Memory
 from app.agent.records import AnswerLimits, AnswerResult
 from app.models.client import ModelClient, ModelClientError, ModelSpec
 from app.storage import StorageError
@@ -19,6 +20,9 @@ from app.storage.records import FusedHit, SourcePassage
 PROMPT_VERSION = "answer_agent_v13"
 PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / f"{PROMPT_VERSION}.md"
 PROMPT = PROMPT_PATH.read_text(encoding="utf-8")
+# Follow-ups use v14, which adds the conversation and carried evidence; v13 stays the baseline.
+FOLLOWUP_PROMPT_VERSION = "answer_agent_v14"
+FOLLOWUP_PROMPT = (PROMPT_PATH.parent / f"{FOLLOWUP_PROMPT_VERSION}.md").read_text(encoding="utf-8")
 CITATION = re.compile(r"\[(E\d+\.\d+(?:@\d+)?)\]")
 
 
@@ -37,8 +41,13 @@ class AnswerRetriever(Protocol):
 def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelClient,
                     model: ModelSpec, limits: AnswerLimits | None = None,
                     reasoning_effort: str | None = None,
-                    allow_legacy_actions: bool = False) -> AnswerResult:
-    """All mutable budgets, references, and evidence belong to this invocation."""
+                    allow_legacy_actions: bool = False, memory: Memory | None = None,
+                    search_query: str | None = None) -> AnswerResult:
+    """All mutable budgets, references, and evidence belong to this invocation.
+
+    `memory` carries earlier turns of the conversation; `search_query` replaces the question
+    for the host's first search (a follow-up rewritten to stand on its own).
+    """
     if not question.strip():
         raise ValueError("question must not be empty")
     limits = limits or AnswerLimits()
@@ -50,7 +59,13 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
     best_rank: dict[str, int] = {}
     read_refs: set[str] = set()
     host_search: dict | None = None
-    inspected: dict[str, SourcePassage] = {}
+    prompt = FOLLOWUP_PROMPT if memory is not None else PROMPT
+    host_query = search_query or question
+    # Carried passages count as inspected; new candidates are numbered after their chunks.
+    inspected: dict[str, SourcePassage] = dict(memory.carried) if memory else {}
+    carried_ids = set(inspected)
+    next_ref = memory.chunk_count if memory else 0
+    memory_record = ({**memory.record(), "search_query": host_query} if memory else None)
     needs: dict[str, dict] = {"N1": {"description": question, "status": "open", "evidence_ids": [], "rationale": None}}
     actions: list[dict] = []
     calls = searches = finds = reads = 0
@@ -67,16 +82,18 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                             completeness="unsupported" if not inspected else "partial",
                             citations={}, gaps=[reason], actions=actions, model_calls=calls,
                             inspected=inspected, needs=needs, finalization_reason=finalization_reason,
-                            host_search=host_search, termination=termination,
+                            host_search=host_search, termination=termination, memory=memory_record,
                             elapsed_seconds=time.monotonic() - started)
     def register(found: list[FusedHit]) -> list[str]:
         """One candidate per chunk, keeping its best rank."""
+        nonlocal next_ref
         refs = []
         for item in found:
             ref = next((key for key, old in candidates.items() if old.hit.run_id == item.hit.run_id
                         and old.hit.chunk_id == item.hit.chunk_id), None)
             if ref is None:
-                ref = f"E{len(candidates) + 1}"
+                next_ref += 1
+                ref = f"E{next_ref}"
                 candidates[ref] = item
             best_rank[ref] = min(best_rank.get(ref, item.rank), item.rank)
             refs.append(ref)
@@ -107,12 +124,12 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
 
     # The host searches with the question itself so the first turn already has ranked leads.
     try:
-        found = retriever.search(question)
+        found = retriever.search(host_query)
         register(found)
     except (StorageError, ModelClientError, psycopg.Error) as exc:
-        host_search = {"query": question, "error_type": type(exc).__name__}
+        host_search = {"query": host_query, "error_type": type(exc).__name__}
         return stopped("Hybrid retrieval failed.", "tool_failed")
-    host_search = {"query": question, "results": [
+    host_search = {"query": host_query, "results": [
         {"rank": item.rank, "rrf_score": item.rrf_score, "channels": item.channels,
          **item.hit.model_dump(exclude={"raw_text", "score", "rank"})} for item in found]}
     feedback = (f"The host searched with the question and found {len(found)} chunks, listed best first. "
@@ -127,7 +144,17 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                           "passages": [[key, item.text] for key, item in inspected.items()
                                        if key.startswith(ref + ".")]}
                          for ref in candidates if ref in read_refs]
-        input_text = json.dumps({"question": question, "candidates": available,
+        turn_input = {"question": question}
+        if memory is not None:
+            turn_input["conversation"] = memory.turns
+            turn_input["earlier_evidence"] = [
+                {"chunk": ref, "title": title,
+                 "passages": [[key, item.text] for key, item in inspected.items()
+                              if key in carried_ids and key.startswith(ref + ".")]}
+                for ref, title in memory.chunk_titles.items()]
+            if memory.changed:
+                turn_input["changed_sources"] = memory.changed
+        input_text = json.dumps({**turn_input, "candidates": available,
                                  "inspected": read_evidence, "needs": needs, "feedback": feedback,
                                  "remaining": {"searches": limits.max_searches - searches,
                                                "finds": limits.max_finds - finds,
@@ -136,7 +163,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
         # Leave room to synthesize the inspected evidence instead of spending
         # the entire allowance on another investigation turn.
         remaining_bytes = getattr(client, "remaining_input_bytes", None)
-        next_request_bytes = len(json.dumps([PROMPT, input_text, base_schema]).encode("utf-8")) + 4096
+        next_request_bytes = len(json.dumps([prompt, input_text, base_schema]).encode("utf-8")) + 4096
         recent_timings = getattr(client, "request_timings", [])[-3:]
         finish_seconds = max(30.0, 2 * max((duration for _, duration in recent_timings), default=0.0))
         triggers = []
@@ -166,7 +193,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
             schema["properties"]["action"]["enum"] = ["read"]
         try:
             calls += 1
-            result = client.generate_json(model=model, system_prompt=PROMPT,
+            result = client.generate_json(model=model, system_prompt=prompt,
                                           input_text=input_text, schema_name="answer_action_v3",
                                           json_schema=schema,
                                           max_output_tokens=limits.max_output_tokens,
@@ -408,5 +435,6 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                                 citations={ref: inspected[ref] for ref in action.citation_ids},
                                 gaps=private_gaps, actions=actions, model_calls=calls,
                                 inspected=inspected, needs=needs, finalization_reason=finalization_reason,
-                                host_search=host_search, elapsed_seconds=time.monotonic() - started)
+                                host_search=host_search, memory=memory_record,
+                                elapsed_seconds=time.monotonic() - started)
     return stopped("Investigation budget ended before a valid grounded answer.", "exhausted")

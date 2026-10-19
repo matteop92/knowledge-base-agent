@@ -57,14 +57,16 @@ class FakeEngine:
         self.limits = AnswerLimits(max_seconds=5)
         self.mode = "done"
         self.calls = 0
+        self.priors: list = []
         self.release = threading.Event()
         self.release.set()
 
     def worst_case_usd(self) -> Decimal:
         return Decimal("0.30")
 
-    def answer(self, question: str) -> AnswerOutcome:
+    def answer(self, question: str, prior=None) -> AnswerOutcome:
         self.calls += 1
+        self.priors.append(prior or [])
         self.release.wait(5)
         if self.mode == "error":
             raise RuntimeError("model failed")
@@ -189,6 +191,23 @@ class ApiTests(unittest.TestCase):
         self.app.state.jobs.wait()
         conversation = self.client.get(f"/api/conversations/{started['conversation_id']}").json()
         self.assertEqual([turn["position"] for turn in conversation["turns"]], [1, 2])
+
+    def test_a_follow_up_receives_earlier_finished_turns_with_their_read_passages(self):
+        self.sign_in()
+        first = self.ask().json()
+        turn = self.finished(first["turn_id"])
+        stored = turn["receipt"]["inspected"]["E1.1"]
+        self.assertEqual((stored["run_id"], stored["chunk_id"]), ("run-1", "c1"))
+        self.engine.mode = "error"
+        self.finished(self.ask("Why?", first["conversation_id"]).json()["turn_id"])
+        self.engine.mode = "done"
+        self.finished(self.ask("And the apple?", first["conversation_id"]).json()["turn_id"])
+        self.assertEqual(self.engine.priors[0], [])
+        prior = self.engine.priors[2]
+        # The failed turn has no answer to build on, so only the first turn is passed.
+        self.assertEqual([item.question for item in prior], ["Is the pear ripe?"])
+        self.assertEqual(prior[0].passages["E1.1"].run_id, "run-1")
+        self.assertEqual(prior[0].titles, {"doc-1": "Knowledge/Notes/pear tree.md"})
 
     def test_running_turns_are_interrupted_on_startup(self):
         from app.api.main import create_app

@@ -11,11 +11,13 @@ from typing import Any, Callable, Protocol
 from urllib.parse import quote
 
 from app.agent.endpoints import check_answer_routes, measured_usd, private_routes, worst_case_usd
+from app.agent.memory import (PRIOR_TURNS, REWRITE_INPUT_CHARS, REWRITE_MAX_OUTPUT_TOKENS, REWRITE_MODEL, PriorTurn,
+                              prior_turn_from_receipt)
 from app.agent.records import AnswerLimits, AnswerResult
 from app.api.conversations import ConversationStore
 from app.api.settings import Settings
 from app.storage.search import LABEL_METADATA, source_label
-from app.models.routes import PRICE_CEILINGS
+from app.models.routes import PRICE_CEILINGS, TAGS, price_usd
 from app.storage.spend import SpendCapError, check_daily_cap, record_spend
 
 log = logging.getLogger("knowledge.api.answers")
@@ -40,7 +42,7 @@ class AnswerEngine(Protocol):
 
     def worst_case_usd(self) -> Decimal: ...
 
-    def answer(self, question: str) -> AnswerOutcome: ...
+    def answer(self, question: str, prior: list[PriorTurn] | None = None) -> AnswerOutcome: ...
 
 
 class OpenRouterAnswerEngine:
@@ -52,17 +54,21 @@ class OpenRouterAnswerEngine:
         self.limits = AnswerLimits()
 
     def worst_case_usd(self) -> Decimal:
-        # The CLI bound, priced at the approved ceilings because no endpoint has been checked yet.
+        # The CLI bound, priced at the approved ceilings because no endpoint has been checked yet,
+        # plus one follow-up rewrite with every character counted as a token.
         answer = self.settings
         input_ceiling = Decimal(str(PRICE_CEILINGS[answer.model][0])) / Decimal(1_000_000)
         return worst_case_usd(
             input_byte_budget=answer.input_byte_budget, request_budget=answer.request_budget,
             max_output_tokens=self.limits.max_output_tokens,
             input_usd_per_token=max(input_ceiling, answer.max_embedding_usd_per_million / Decimal(1_000_000)),
-            completion_usd_per_token=answer.max_generation_usd_per_million / Decimal(1_000_000))
+            completion_usd_per_token=answer.max_generation_usd_per_million / Decimal(1_000_000)
+        ) + Decimal(str(price_usd(REWRITE_MODEL, REWRITE_INPUT_CHARS, REWRITE_MAX_OUTPUT_TOKENS)))
 
-    def answer(self, question: str) -> AnswerOutcome:
+    def answer(self, question: str, prior: list[PriorTurn] | None = None) -> AnswerOutcome:
         from app.agent.harness import answer_question
+        from app.agent.memory import build_memory, standalone_query
+        from app.models.routes import verify_routes
         from app.models.client import ModelSpec
         from app.models.openrouter import OpenRouterClient
         from app.storage.retrieval import DatabaseRetriever, selected_embedding_spec
@@ -70,11 +76,15 @@ class OpenRouterAnswerEngine:
         answer = self.settings
         private_route, model_providers = private_routes(answer.model, answer.embedding_provider_tag,
                                                         answer.generation_provider_tag)
-        client = OpenRouterClient(allow_live=True, request_budget=answer.request_budget,
+        if prior:
+            model_providers[REWRITE_MODEL] = {**private_route, "only": [TAGS[REWRITE_MODEL]],
+                                              "require_parameters": True}
+        # A follow-up's rewrite gets its own request so the answer keeps its full allowance.
+        client = OpenRouterClient(allow_live=True, request_budget=answer.request_budget + (1 if prior else 0),
                                   estimated_input_token_budget=answer.input_byte_budget,
                                   conservative_input_budget=True, provider=private_route,
                                   model_providers=model_providers)
-        routes, embedding_model = None, None
+        routes, embedding_model, rewrite_prices = None, None, {}
         try:
             # The deadline covers the endpoint checks too, so a slow preflight cannot outlive the turn.
             client.set_deadline(time.monotonic() + self.limits.max_seconds)
@@ -90,22 +100,46 @@ class OpenRouterAnswerEngine:
                     reasoning_effort=answer.reasoning_effort)
                 retriever = DatabaseRetriever(conn, client, provider_tag=answer.embedding_provider_tag,
                                               max_embedding_usd_per_million=answer.max_embedding_usd_per_million)
+                memory, query = None, None
+                if prior:
+                    memory = build_memory(prior, active=active_revisions(conn, prior))
+                    checked = verify_routes(client, [REWRITE_MODEL], structured_ids={REWRITE_MODEL})[REWRITE_MODEL]
+                    rewrite_prices[REWRITE_MODEL] = (
+                        Decimal(str(checked["input_usd_per_million"])) / Decimal(1_000_000),
+                        Decimal(str(checked["output_usd_per_million"])) / Decimal(1_000_000))
+                    query = standalone_query(question, memory.turns, client=client, model=ModelSpec(
+                        provider="openrouter", model_id=REWRITE_MODEL, model_version="current"))
                 result = answer_question(question, retriever=retriever, client=client,
                                          model=ModelSpec(provider="openrouter", model_id=answer.model,
                                                          model_version="current"),
-                                         limits=self.limits, reasoning_effort=answer.reasoning_effort)
+                                         limits=self.limits, reasoning_effort=answer.reasoning_effort,
+                                         memory=memory, search_query=query)
         except Exception as exc:
-            raise AnswerFailed(self._cost(client, routes, answer.model, embedding_model)) from exc
-        return AnswerOutcome(result, self._cost(client, routes, answer.model, embedding_model))
+            raise AnswerFailed(self._cost(client, routes, answer.model, embedding_model, rewrite_prices)) from exc
+        return AnswerOutcome(result, self._cost(client, routes, answer.model, embedding_model, rewrite_prices))
 
-    def _cost(self, client, routes, model: str, embedding_model: str | None = None) -> float:
+    def _cost(self, client, routes, model: str, embedding_model: str | None = None,
+              extra_prices: dict | None = None) -> float:
         """Measured cost, or the worst case when any request's usage is unknown."""
         if not client.request_timings:
             return 0.0
         if routes is None or embedding_model is None:
             return float(self.worst_case_usd())
-        measured, known = measured_usd(client, routes, model=model, embedding_model=embedding_model)
+        measured, known = measured_usd(client, routes, model=model, embedding_model=embedding_model,
+                                       extra_prices=extra_prices)
         return float(measured if known else self.worst_case_usd())
+
+
+def active_revisions(conn, prior: list[PriorTurn]) -> set[tuple[str, str]]:
+    """(document, run) pairs that still serve answers, for the documents earlier turns read."""
+    documents = list({item.document_id for turn in prior for item in turn.passages.values()})
+    if not documents:
+        return set()
+    rows = conn.execute("""select r.document_id, r.run_id from knowledge.active_runs a
+        join knowledge.runs r on r.run_id=a.run_id
+        join knowledge.corpus_state s on s.profile_id=a.profile_id
+        where r.document_id = any(%s)""", (documents,)).fetchall()
+    return {(str(row[0]), str(row[1])) for row in rows}
 
 
 def obsidian_link(vault_name: str, relative_path: str) -> str:
@@ -114,15 +148,17 @@ def obsidian_link(vault_name: str, relative_path: str) -> str:
 
 def build_receipt(result: AnswerResult, labels: dict[str, str], vault_name: str) -> dict[str, Any]:
     def passage(item) -> dict[str, Any]:
+        # Revision ids let a follow-up carry this passage while its document is unchanged.
         return {"document_id": item.document_id, "title": labels.get(item.document_id) or item.relative_path,
-                "relative_path": item.relative_path, "obsidian_url": obsidian_link(vault_name, item.relative_path),
+                "run_id": item.run_id, "chunk_id": item.chunk_id, "source_sha256": item.source_sha256,
+                "root_alias": item.root_alias, "relative_path": item.relative_path, "obsidian_url": obsidian_link(vault_name, item.relative_path),
                 "start_char": item.start_char, "end_char": item.end_char, "text": item.text}
 
     return {"answer": result.answer, "completeness": result.completeness, "gaps": result.gaps,
             "citations": {ref: passage(item) for ref, item in result.citations.items()},
             "inspected": {ref: passage(item) for ref, item in result.inspected.items()},
             "termination": result.termination, "finalization_reason": result.finalization_reason,
-            "needs": result.needs, "model_calls": result.model_calls,
+            "needs": result.needs, "model_calls": result.model_calls, "memory": result.memory,
             "elapsed_seconds": result.elapsed_seconds}
 
 
@@ -160,7 +196,8 @@ class AnswerJobs:
         with self._start_lock:
             self.check_cap()
             conversation_id, turn_id = self.store.start_turn(conversation_id, question)
-        thread = threading.Thread(target=self._run, args=(turn_id, question), daemon=True, name=f"answer-{turn_id}")
+        thread = threading.Thread(target=self._run, args=(conversation_id, turn_id, question), daemon=True,
+                                  name=f"answer-{turn_id}")
         self._threads = [item for item in self._threads if item.is_alive()] + [thread]
         thread.start()
         return conversation_id, turn_id
@@ -193,12 +230,14 @@ class AnswerJobs:
         except Exception as exc:  # noqa: BLE001 - never leave the turn running because the ledger failed
             log.error("spend not recorded turn=%s cost_usd=%.6f error=%s", turn_id, cost, type(exc).__name__)
 
-    def _run(self, turn_id: str, question: str) -> None:
+    def _run(self, conversation_id: str, turn_id: str, question: str) -> None:
         started = time.monotonic()
         cost = 0.0
         status, receipt, error = "failed", None, "the answer could not be completed; try again"
         try:
-            outcome = self.engine.answer(question)
+            prior = [prior_turn_from_receipt(asked, receipt)
+                     for asked, receipt in self.store.prior_turns(conversation_id, turn_id, PRIOR_TURNS)]
+            outcome = self.engine.answer(question, prior)
             cost = outcome.cost_usd
             status, error = turn_status(outcome.result)
             receipt = build_receipt(outcome.result, self._labels(outcome.result), self.settings.vault_name)

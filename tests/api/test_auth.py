@@ -140,6 +140,20 @@ class AnswerCostTests(unittest.TestCase):
         client.request_timings.append(("gen", 60.0))  # a request that timed out has no usage record
         self.assertFalse(measured_usd(client, routes, model="gen", embedding_model="embed")[1])
 
+    def test_a_follow_up_rewrite_is_priced_at_its_own_rate(self) -> None:
+        from decimal import Decimal
+        from app.agent.endpoints import AnswerRoutes, measured_usd
+        from app.models.client import ModelUsage
+
+        routes = AnswerRoutes({"pricing": {"prompt": "0"}}, {}, Decimal("0.00000025"), Decimal("0.000002"))
+        client = type("Client", (), {})()
+        client.billable_requests = [("rewrite", ModelUsage(input_tokens=1000, output_tokens=20))]
+        client.request_timings = [("rewrite", 0.5)]
+        cost, known = measured_usd(client, routes, model="gen", embedding_model="embed",
+                                   extra_prices={"rewrite": (Decimal("0.0000001"), Decimal("0.0000005"))})
+        self.assertTrue(known)
+        self.assertEqual(cost, Decimal("0.0001") + Decimal("0.00001"))
+
 
 class RateLimiterTests(unittest.TestCase):
     def test_limit_per_address(self) -> None:
