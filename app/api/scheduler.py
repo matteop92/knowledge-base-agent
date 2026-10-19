@@ -87,9 +87,13 @@ class IndexScheduler:
                 return True
         return False
 
-    def tick(self) -> bool:
-        """Run one pass unless the last one is still going or the vault has not synced yet."""
-        if not self._lock.acquire(blocking=False):
+    def tick(self, wait: float = 0) -> bool:
+        """Run one pass unless the last one is still going or the vault has not synced yet.
+
+        `wait` lets a capture wait that many seconds for a running pass to finish before giving up.
+        """
+        acquired = self._lock.acquire(timeout=wait) if wait > 0 else self._lock.acquire(blocking=False)
+        if not acquired:
             self.state["status"] = "skipped: the previous pass is still running"
             return False
         try:

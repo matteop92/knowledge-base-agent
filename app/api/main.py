@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 import psycopg
 from fastapi import Depends, FastAPI, Request, Response
@@ -15,10 +15,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.api.answers import AnswerEngine, AnswerJobs, OpenRouterAnswerEngine
+from app.api.capture import CaptureJobs, Classifier
 from app.api.auth import COOKIE_NAME, AuthError, RateLimiter, Session, SessionStore, SupabaseAuth
 from app.api.conversations import ConversationError, ConversationStore
 from app.api.scheduler import IndexScheduler, vault_settings_from_env
 from app.api.settings import Settings
+from app.capture.notes import CaptureError, draft_from_markdown, draft_from_text
 from app.storage.spend import SpendCapError, spent_today
 
 WEB_DIR = Path(__file__).resolve().parents[1] / "web"
@@ -49,9 +51,17 @@ class FeedbackRequest(BaseModel):
     note: str | None = Field(default=None, max_length=2000)
 
 
+class CaptureRequest(BaseModel):
+    kind: Literal["text", "markdown"]
+    content: str = Field(min_length=1, max_length=2_000_000)
+    title: str | None = Field(default=None, max_length=500)
+    url: str | None = Field(default=None, max_length=2000, pattern=r"^https?://")
+    tags: list[str] = Field(default_factory=list, max_length=10)
+
+
 def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
                auth: SupabaseAuth | None = None, engine: AnswerEngine | None = None,
-               indexer: IndexScheduler | None = None) -> FastAPI:
+               indexer: IndexScheduler | None = None, classifier: Classifier | None = None) -> FastAPI:
     # A stalled database must fail the request, not hang it: 10 s to connect, 60 s per statement.
     connect = connect or (lambda: psycopg.connect(settings.database_url, autocommit=True, connect_timeout=10,
                                                   options="-c statement_timeout=60000"))
@@ -71,6 +81,8 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
         indexer = IndexScheduler(vault_settings_from_env(), connect, interval_seconds=settings.index_interval_seconds,
                                  max_usd_per_pass=float(settings.index_max_usd_per_pass))
     app.state.indexer = indexer
+    captures = CaptureJobs(connect, settings, classifier, indexer)
+    app.state.captures = captures
 
     @app.on_event("startup")
     def interrupt_running_turns() -> None:
@@ -78,6 +90,9 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
         count = jobs.expire_stale()
         if count:
             log.info("marked %d running turns as interrupted", count)
+        count = captures.expire_stale()
+        if count:
+            log.info("marked %d running captures as interrupted", count)
         if indexer is not None:
             indexer.start()
 
@@ -232,6 +247,25 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
     def remove_feedback(turn_id: str, _: Session = Depends(session)):
         store.clear_feedback(_uuid(turn_id))
         return {"status": "removed"}
+
+    @app.post("/api/captures", status_code=202)
+    def capture(body: CaptureRequest, _: Session = Depends(session)):
+        make = draft_from_text if body.kind == "text" else draft_from_markdown
+        try:
+            draft = make(body.content, title=body.title, url=body.url, tags=body.tags)
+        except CaptureError as exc:
+            raise ConversationError(422, str(exc)) from None
+        return {"capture_id": captures.start(draft)}
+
+    @app.get("/api/captures")
+    def recent_captures(_: Session = Depends(session)):
+        captures.expire_stale()
+        return {"captures": captures.recent(), "enabled": captures.enabled}
+
+    @app.get("/api/captures/{capture_id}")
+    def capture_status(capture_id: str, _: Session = Depends(session)):
+        captures.expire_stale()
+        return captures.job(_uuid(capture_id))
 
     # Static shell ----------------------------------------------------------------------------
     if WEB_DIR.is_dir():
