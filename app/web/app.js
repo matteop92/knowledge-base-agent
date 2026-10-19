@@ -393,7 +393,11 @@ function teardownSheet() {
   const after = sheet.afterClose.splice(0);
   for (const run of after) run();
   // Keep keyboard focus somewhere real: back on the opener unless a follow-up action already moved it.
-  if ((!document.activeElement || document.activeElement === document.body) && opener && opener.isConnected) opener.focus();
+  if (!document.activeElement || document.activeElement === document.body) {
+    // The opener may have been hidden meanwhile (the window crossed the phone/desktop width).
+    const visible = [opener, $("history-button"), $("sidebar-history")].find((el) => el && el.isConnected && el.getClientRects().length);
+    if (visible) visible.focus();
+  }
 }
 
 // popstate is the only closer: a programmatic close just goes back, and the handler tears down.
