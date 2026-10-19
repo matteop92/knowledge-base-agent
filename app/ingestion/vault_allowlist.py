@@ -4,13 +4,15 @@ Obsidian's tool can skip folders by name but cannot say "only this folder", so a
 the vault would be copied to the server. Each cycle this removes anything outside the allowlist from the
 server's copy and tells the sync tool to stop syncing those folders.
 
-Deleting is safe only while the copy is download-only: in two-way sync a local delete would reach the real
-vault, so then nothing is deleted and folders are only added to the skip list.
+While the copy is download-only, everything outside the allowlist is deleted. In two-way sync a local delete
+can reach the real vault, so then only folders that the sync tool confirms are on its skip list are deleted
+(a 2026-10-18 test with the tool at 0.0.14 showed such deletes stay local); loose notes and links are kept.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -61,22 +63,60 @@ def merged_exclusions(baseline: Path | None, extra: Path, new: list[str], keep: 
     # An allowed folder must never stay on the skip list, even if a mistake once put it there.
     names = [name for name in names if not any(_same(name, allowed) for allowed in keep)]
     for name in new:
-        if not any(_same(name, existing) for existing in names):
+        # Exact spelling, so the tool's skip list names each folder as it is on disk.
+        if name not in names:
             names.append(name)
     extra.write_text("\n".join(name for name in names if not any(
-        _same(name, line.strip()) for line in (baseline.read_text(encoding="utf-8").splitlines()
+        name == line.strip() for line in (baseline.read_text(encoding="utf-8").splitlines()
                                                 if baseline.is_file() else []))) + "\n", encoding="utf-8")
     return names
 
 
-def tool_is_pull_only(root: Path) -> bool:
-    """Ask the sync tool itself; anything unclear counts as not download-only."""
+def tool_settings(root: Path) -> str | None:
+    """The sync tool's printed settings, lower-cased, or None when they cannot be read."""
     try:
         result = subprocess.run(["ob", "sync-config", "--path", str(root)], capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.SubprocessError):
-        return False
-    text = (result.stdout or "").lower()
-    return result.returncode == 0 and "pull-only" in text and "bidirectional" not in text and "mirror-remote" not in text
+        return None
+    return (result.stdout or "").lower() if result.returncode == 0 else None
+
+
+def tool_mode(root: Path) -> str | None:
+    """'pull-only' or 'bidirectional' when the tool's settings name exactly one of them; anything unclear is None."""
+    text = tool_settings(root)
+    if text is None:
+        return None
+    modes = [mode for mode in ("pull-only", "bidirectional", "mirror-remote") if mode in text]
+    return modes[0] if len(modes) == 1 and modes[0] != "mirror-remote" else None
+
+
+def skipped_folders(settings_dir: Path) -> list[str] | None:
+    """The folder names in the sync tool's own settings file (`ignoreFolders`), or None if it cannot be read."""
+    configs = list(settings_dir.glob("*/config.json")) if settings_dir.is_dir() else []
+    if len(configs) != 1:
+        return None
+    try:
+        names = json.loads(configs[0].read_text(encoding="utf-8")).get("ignoreFolders")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return [name for name in names if isinstance(name, str)] if isinstance(names, list) else None
+
+
+def remove_skipped_folders(root: Path, folders: list[str], settings_dir: Path) -> list[str]:
+    """Two-way mode: delete only these top-level folders, and only those the tool's settings file skips."""
+    skipped = skipped_folders(settings_dir)
+    if skipped is None:
+        return []
+    removed = []
+    for name in folders:
+        entry = root / name
+        if (entry.is_dir() and not entry.is_symlink() and not name.startswith(".")
+                # Exact spelling only: a folder is deleted only if the tool's own list names it exactly.
+                and any(unicodedata.normalize("NFC", name) == unicodedata.normalize("NFC", item.strip("/"))
+                        for item in skipped)):
+            shutil.rmtree(entry)
+            removed.append(name)
+    return removed
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -85,14 +125,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--baseline", type=Path, default=None, help="optional fixed list of folder names to skip")
     parser.add_argument("--extra", type=Path, default=Path("/data/excluded-folders-extra.txt"))
     parser.add_argument("--check", action="store_true", help="only say whether this run would delete")
+    parser.add_argument("--sync-settings", type=Path, default=Path.home() / ".config/obsidian-headless/sync",
+                        help="the sync tool's settings folder (read for its skip list in two-way mode)")
     args = parser.parse_args(argv)
     included = list(parse_folders(os.getenv("KNOWLEDGE_INCLUDED_FOLDERS", "Knowledge")))
     if not args.root.is_dir():
         return 0
-    # Both the setting and the sync tool's own configuration must say download-only before anything is deleted.
-    delete = os.getenv("KNOWLEDGE_SYNC_MODE", "pull-only") == "pull-only" and tool_is_pull_only(args.root)
+    # The setting and the sync tool's own configuration must agree on the mode before anything is deleted.
+    setting = os.getenv("KNOWLEDGE_SYNC_MODE", "pull-only")
+    mode = tool_mode(args.root)
+    delete = setting == "pull-only" and mode == "pull-only"
+    two_way = setting == "bidirectional" and mode == "bidirectional"
     if args.check:
-        print("cleanup will delete outside the allowed folders" if delete else "cleanup will NOT delete (not verified download-only)")
+        print("cleanup will delete outside the allowed folders" if delete else
+              "cleanup will delete only skipped folders (two-way sync)" if two_way else
+              "cleanup will NOT delete (sync mode not verified)")
         return 0
     outside, loose = enforce(args.root, included, delete=False)
     # If no allowed folder exists at all, the setting is probably wrong: change nothing rather than remove everything.
@@ -111,15 +158,24 @@ def main(argv: list[str] | None = None) -> int:
         if result.returncode != 0:
             print("could not update the skip list", file=sys.stderr)
             return 1
-    if delete:
-        try:
+    removed: list[str] = []
+    try:
+        if delete:
             enforce(args.root, included, delete=True)
-        except OSError as exc:
-            print(f"could not remove files outside the allowed folders ({type(exc).__name__})", file=sys.stderr)
-            return 1
+        elif two_way and outside:
+            # The skip list was updated above; delete only what the tool now confirms it skips.
+            removed = remove_skipped_folders(args.root, outside, args.sync_settings)
+    except OSError as exc:
+        print(f"could not remove files outside the allowed folders ({type(exc).__name__})", file=sys.stderr)
+        return 1
     if outside or loose:
-        print(f"allowlist: {len(outside)} folders and {loose} loose notes outside {', '.join(included)}"
-              f"{' removed from the server copy' if delete else ' found (not deleted: two-way sync)'}")
+        if delete:
+            outcome = " removed from the server copy"
+        elif two_way:
+            outcome = f" found; {len(removed)} skipped folders removed from the server copy (two-way sync)"
+        else:
+            outcome = " found (not deleted: sync mode not verified)"
+        print(f"allowlist: {len(outside)} folders and {loose} loose notes outside {', '.join(included)}{outcome}")
     return 0
 
 

@@ -37,3 +37,5 @@ class AnswerResult(StrictRecord):
     host_search: dict | None = None
     termination: Literal["completed", "exhausted", "model_failed", "tool_failed"] = "completed"
     elapsed_seconds: float = Field(default=0, ge=0)
+    # Follow-ups only: the search query used and what earlier evidence was carried or dropped.
+    memory: dict | None = None

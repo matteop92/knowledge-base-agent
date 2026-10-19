@@ -10,6 +10,7 @@
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
   <link rel="stylesheet" href="/static/styles.css">
   <script src="/static/app.js" defer></script>
+  <script src="/static/capture.js" defer></script>
 </head>
 <body>
   <!-- Sign-in -->
@@ -35,10 +36,12 @@
     <header class="topbar">
       <button type="button" id="menu" class="icon-button" aria-label="Show conversations" aria-expanded="false" aria-controls="sidebar">☰</button>
       <h1 id="conversation-title">New question</h1>
+      <button type="button" id="add" aria-label="Add to your notes">Add</button>
       <button type="button" id="new-question" class="pill">New question</button>
     </header>
     <nav id="sidebar" class="sidebar" aria-label="Conversations">
       <button type="button" id="sidebar-new" class="pill wide">New question</button>
+      <button type="button" id="sidebar-add" class="wide">Add to your notes</button>
       <ul id="conversation-list"></ul>
       <p id="conversation-empty" class="muted" hidden>No conversations yet.</p>
       <div class="sidebar-footer">
@@ -53,9 +56,36 @@
         <p class="muted">Answers cite the exact passages they used.</p>
       </section>
       <ol id="turns" class="turns"></ol>
-      <p id="follow-up-note" class="muted small" hidden>Follow-ups are answered on their own for now; earlier questions in this conversation are not used yet.</p>
       <div id="status" class="sr-only" aria-live="polite"></div>
     </main>
+    <section id="capture" class="capture" hidden aria-labelledby="capture-heading">
+      <div class="capture-head">
+        <h2 id="capture-heading">Add to your notes</h2>
+        <button type="button" id="capture-close" aria-label="Close">Close</button>
+      </div>
+      <p id="capture-disabled" class="message" hidden>Adding notes is not switched on yet: the server's sync is still download-only.</p>
+      <form id="capture-form" class="capture-form">
+        <p class="muted small">Paste text, drop or paste a screenshot, or choose a screenshot or .md file.</p>
+        <label for="capture-text" class="sr-only">Text to save</label>
+        <textarea id="capture-text" rows="6" placeholder="Paste text here"></textarea>
+        <label class="small">Screenshot or .md file
+          <input id="capture-file" type="file" accept="image/png,image/jpeg,image/webp,.md,.markdown,.txt,text/markdown,text/plain">
+        </label>
+        <input id="capture-kind" type="hidden" value="text">
+        <p id="capture-pending" class="small"></p>
+        <img id="capture-preview" class="capture-preview" alt="Screenshot to be saved" hidden>
+        <label class="small">Title (optional)
+          <input id="capture-title" maxlength="200">
+        </label>
+        <label class="small">Tags (optional, separated by commas)
+          <input id="capture-tags" maxlength="400">
+        </label>
+        <button type="submit" id="capture-save" class="pill">Save note</button>
+        <p id="capture-message" class="message" role="alert"></p>
+      </form>
+      <h3>Recent</h3>
+      <ul id="capture-list" class="capture-list"></ul>
+    </section>
     <form id="composer" class="composer">
       <label for="question" class="sr-only">Your question</label>
       <textarea id="question" rows="1" placeholder="Ask a question" required></textarea>

@@ -41,7 +41,7 @@ class ModelClient(Protocol):
     def generate_json(
         self, *, model: ModelSpec, system_prompt: str, input_text: str,
         schema_name: str, json_schema: dict[str, Any], max_output_tokens: int,
-        reasoning_effort: str | None = None,
+        reasoning_effort: str | None = None, images: list[str] | None = None,
     ) -> GenerationResult: ...
 
     def embed(

@@ -46,6 +46,24 @@ class SchedulerTests(unittest.TestCase):
         self.assertTrue(scheduler.tick())
         self.assertEqual(len(self.calls), 1)
 
+    def test_a_capture_waits_for_a_running_pass_then_runs_its_own(self) -> None:
+        self.note()
+        scheduler = self.scheduler()
+        scheduler._lock.acquire()
+        threading.Timer(0.2, scheduler._lock.release).start()
+        self.assertTrue(scheduler.tick(wait=5))
+        self.assertEqual(len(self.calls), 1)
+
+    def test_a_capture_gives_up_when_the_running_pass_outlasts_its_wait(self) -> None:
+        self.note()
+        scheduler = self.scheduler()
+        scheduler._lock.acquire()
+        try:
+            self.assertFalse(scheduler.tick(wait=0.1))
+        finally:
+            scheduler._lock.release()
+        self.assertEqual(self.calls, [])
+
     def test_the_first_pass_after_a_start_retires_nothing(self) -> None:
         self.note()
         scheduler = self.scheduler()

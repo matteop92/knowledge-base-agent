@@ -18,6 +18,20 @@ class ShellSourceTests(unittest.TestCase):
             self.assertNotIn(unsafe, script)
         self.assertIn('url.startsWith("obsidian://")', script)
 
+    def test_capture_and_worker_scripts_never_insert_html(self) -> None:
+        for name in ("capture.js", "sw.js"):
+            script = (WEB / name).read_text(encoding="utf-8")
+            for unsafe in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
+                with self.subTest(name=name, unsafe=unsafe):
+                    self.assertNotIn(unsafe, script)
+
+    def test_the_app_is_a_share_target_for_screenshots_text_and_markdown(self) -> None:
+        import json
+        share = json.loads((WEB / "manifest.webmanifest").read_text(encoding="utf-8"))["share_target"]
+        self.assertEqual((share["action"], share["method"], share["enctype"]), ("/share", "POST", "multipart/form-data"))
+        self.assertIn("image/png", share["params"]["files"][0]["accept"])
+        self.assertIn(".md", share["params"]["files"][0]["accept"])
+
     def test_page_has_no_inline_script(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")
         self.assertNotIn("<script>", page)
