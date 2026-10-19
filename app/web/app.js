@@ -88,6 +88,7 @@ async function startApp() {
   const remembered = load(CONVERSATION_KEY);
   store(CONVERSATION_KEY, null);
   if (remembered) await openConversation(remembered); else newQuestion();
+  await window.captureScreen.takeShared().catch(() => {});
 }
 
 async function refreshConversations() {
@@ -114,6 +115,7 @@ function stopPolling() {
 }
 
 function newQuestion() {
+  window.captureScreen.closeCapture();
   stopPolling();
   state.conversationId = null;
   $("turns").replaceChildren();
@@ -125,6 +127,7 @@ function newQuestion() {
 }
 
 async function openConversation(id) {
+  window.captureScreen.closeCapture();
   stopPolling();
   try {
     const conversation = await api("GET", `/api/conversations/${encodeURIComponent(id)}`);
