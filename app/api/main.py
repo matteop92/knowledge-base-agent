@@ -10,7 +10,7 @@ from typing import Any, Callable, Literal
 import psycopg
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -269,7 +269,7 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
     @app.get("/api/captures")
     def recent_captures(_: Session = Depends(session)):
         captures.expire_stale()
-        return {"captures": captures.recent(), "enabled": captures.enabled}
+        return {"captures": captures.recent(), "enabled": captures.enabled, "vault_name": settings.vault_name}
 
     @app.get("/api/captures/{capture_id}")
     def capture_status(capture_id: str, _: Session = Depends(session)):
@@ -285,6 +285,11 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
         @app.get("/manifest.webmanifest")
         def manifest():
             return FileResponse(WEB_DIR / "manifest.webmanifest", media_type="application/manifest+json")
+
+        @app.post("/share")
+        def share_without_worker():
+            # The service worker normally answers shares; this only runs before it is installed.
+            return RedirectResponse("/?share=failed", status_code=303)
 
         @app.get("/sw.js")
         def service_worker():
