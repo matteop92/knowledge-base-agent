@@ -63,21 +63,22 @@ How it fits together:
   reads only `Knowledge`, so it is unaffected by the cleanup.
 - The vault copy and Obsidian's sign-in live on the Railway volume at `/data` (`/data/vault`, `/data/home`). Run snapshots
   live on the container's disk and are cleared on every restart.
-- **Phase 2 (captures need two-way sync):** in a server shell run `ob sync-config --path /data/vault --mode bidirectional`
-  and set the Railway variable `KNOWLEDGE_SYNC_MODE` to `bidirectional` in the same step. The sign-in and the volume stay as
-  they are. From then on the cleanup deletes only skipped folders, as described above.
+- **Phase 2 (captures need two-way sync):** switch with `deploy/ob-two-way.sh`, never by flipping the existing copy.
+  While download-only, the cleanup deleted loose root notes and not-yet-skipped folders from the server's copy, and the
+  sync tool may remember those deletions; in two-way mode it could send them to the real vault. The script therefore
+  keeps the current copy as a backup, connects a new empty copy with the skip list and "notes only" set before anything
+  downloads, downloads everything while still download-only, checks every `Knowledge` note against the old copy, then
+  switches to two-way and requires the first two-way sync to change nothing (otherwise it goes back to download-only).
+  Steps: set `KNOWLEDGE_SYNC_ENABLED` to `false` in Railway and wait for the redeploy; in a server shell
+  (`railway ssh`) run `sh deploy/ob-two-way.sh` and type the vault password when asked; then set
+  `KNOWLEDGE_SYNC_MODE` to `bidirectional` and `KNOWLEDGE_SYNC_ENABLED` to `true`. From then on the cleanup deletes only
+  folders the tool's own skip list names exactly. Keep the `/data/vault-pullonly-*` backup until a captured note has
+  reached the devices.
   **Tested 2026-10-18 on a throwaway folder in the real vault:** after a folder was added to the skip list in two-way mode,
-  deleting its local copy and syncing three times did not delete it from the vault. So in Phase 2 the cleanup may delete in
-  two-way mode, but only folders already on the skip list, and the skip list must be updated first. Before switching, still
-  set `KNOWLEDGE_SYNC_ENABLED` to `false` and redeploy so no cleanup runs mid-switch. (Tested for one folder with the tool at
-  version 0.0.14; re-check after upgrading it.)
+  deleting its local copy and syncing three times did not delete it from the vault. (Tool version 0.0.14; re-check after
+  upgrading it.)
   The `(conflict)` copies that `--conflict-strategy conflict` can create are skipped by the indexer
   (`CONFLICT_COPY` in `app/ingestion/vault_sync.py`); the server only adds new capture notes, so conflicts should be rare.
-  **Unproven point before switching:** while download-only, the cleanup also deleted loose notes at the vault root and
-  folders that were not yet on the skip list. It is not known whether the sync tool, once two-way, would send those old
-  local deletions back to the real vault. Do not switch the existing copy in place until this is settled; agree the switch
-  procedure with the owner first (for example, start the two-way copy fresh in an empty folder with the skip list set
-  before its first sync, so the tool has no record of earlier deletions).
 
 Variables (all optional except the switch):
 
