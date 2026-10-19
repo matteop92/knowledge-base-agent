@@ -351,6 +351,7 @@ function wireFeedback(element, turnId) {
 // Views and sheets ----------------------------------------------------------------------------
 // Two tabs share one page: each owns a container shown with `hidden`, so switching keeps what was typed.
 function applyView(view) {
+  const changed = state.view !== view;
   state.view = view;
   $("view-ask").hidden = view !== "ask";
   $("capture").hidden = view !== "add";
@@ -358,18 +359,16 @@ function applyView(view) {
   for (const tab of document.querySelectorAll("[data-tab]")) {
     if (tab.dataset.tab === view) tab.setAttribute("aria-current", "page"); else tab.removeAttribute("aria-current");
   }
-  return view === "add" ? window.captureScreen.show() : undefined;
+  return view === "add" && changed ? window.captureScreen.show() : undefined;
 }
 
 // A tab switch first lets any open sheet finish closing, so no stale history entry is left behind.
 function setView(view) {
-  let shown;
-  closeSheet(() => { shown = applyView(view); });
-  return shown;
+  return new Promise((resolve) => closeSheet(() => resolve(applyView(view))));
 }
 
 const SHEET_TITLES = { history: "History" };
-const sheet = { open: false, opener: null, afterClose: [] };
+const sheet = { open: false, closing: false, opener: null, afterClose: [] };
 
 function openSheet(name, opener) {
   if (sheet.open) return;
@@ -385,18 +384,24 @@ function openSheet(name, opener) {
 
 function teardownSheet() {
   sheet.open = false;
+  sheet.closing = false;
   $("sheet").hidden = true;
   $("sheet-scrim").hidden = true;
   const opener = sheet.opener;
   sheet.opener = null;
   const after = sheet.afterClose.splice(0);
-  if (after.length) { for (const run of after) run(); } else if (opener && opener.isConnected) opener.focus();
+  for (const run of after) run();
+  // Keep keyboard focus somewhere real: back on the opener unless a follow-up action already moved it.
+  if ((!document.activeElement || document.activeElement === document.body) && opener && opener.isConnected) opener.focus();
 }
 
 // popstate is the only closer: a programmatic close just goes back, and the handler tears down.
 function closeSheet(after) {
   if (!sheet.open) { if (after) after(); return; }
   if (after) sheet.afterClose.push(after);
+  // One Back per sheet: a repeat trigger before popstate arrives must not pop a second history entry.
+  if (sheet.closing) return;
+  sheet.closing = true;
   history.back();
 }
 
@@ -429,6 +434,7 @@ function autosize() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  if (history.state && history.state.ka === "sheet") history.replaceState(null, "", location.href);
   $("email-form").addEventListener("submit", (event) => { event.preventDefault(); sendCode(); });
   $("code-form").addEventListener("submit", (event) => { event.preventDefault(); verifyCode(); });
   $("resend").addEventListener("click", sendCode);

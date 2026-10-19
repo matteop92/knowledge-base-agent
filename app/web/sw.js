@@ -7,7 +7,7 @@ const SHELL = ["/", "/static/app.js", "/static/capture.js", "/static/styles.css"
   "/static/fonts/Newsreader-Variable.woff2", "/static/fonts/Geist-Variable.woff2"];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL.map((path) => new Request(path, { cache: "reload" })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (event) => {

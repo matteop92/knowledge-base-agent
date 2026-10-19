@@ -116,8 +116,7 @@ input, textarea { background: #fff; border: 1px solid var(--line); border-radius
 .feedback-form textarea { width: 100%; }
 .turn[data-status="failed"] .turn-state { color: var(--danger); }
 .banner { margin: 0; padding: var(--s2) var(--s4); background: var(--warn); }
-.composer { display: flex; gap: var(--s2); align-items: flex-end; padding: var(--s3) var(--s4) calc(var(--s3) + env(safe-area-inset-bottom)); }
-.composer { max-width: 792px; width: 100%; margin: 0 auto; }
+.composer { display: flex; gap: var(--s2); align-items: flex-end; max-width: 792px; width: 100%; margin: 0 auto; padding: var(--s3) var(--s4) calc(var(--s3) + env(safe-area-inset-bottom)); }
 .composer textarea { flex: 1; resize: none; overflow-y: auto; scrollbar-width: none; min-height: 44px; max-height: 200px; border-radius: var(--r-l); padding: 10px var(--s4); }
 .composer button { border-radius: var(--r-l); }
 

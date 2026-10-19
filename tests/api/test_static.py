@@ -47,6 +47,20 @@ class ShellSourceTests(unittest.TestCase):
                 self.assertNotIn('setAttribute("style"', script)
                 self.assertNotIn("cssText", script)
 
+    def test_shell_cache_is_bumped_and_the_sidebar_choice_is_remembered(self) -> None:
+        worker = (WEB / "sw.js").read_text(encoding="utf-8")
+        self.assertIn('const CACHE = "ka-shell-v3"', worker)
+        script = (WEB / "app.js").read_text(encoding="utf-8")
+        self.assertEqual(script.count("SIDEBAR_KEY"), 3)  # declaration, read at start, write on collapse
+
+    def test_sign_out_clears_the_add_box_and_a_shared_item_opens_add(self) -> None:
+        capture = (WEB / "capture.js").read_text(encoding="utf-8")
+        reset = capture[capture.index("function reset()"):capture.index("async function openWith")]
+        for field in ("capture-text", "capture-title", "capture-tags", "capture-file", "capture-preview", "capture-list"):
+            self.assertIn(field, reset)
+        self.assertIn('await setView("add");', capture[capture.index("async function takeShared"):])
+        self.assertIn('await cache.delete("/share/meta")', capture)
+
     def test_styles_use_only_local_fonts_and_no_remote_imports(self) -> None:
         css = (WEB / "styles.css").read_text(encoding="utf-8")
         self.assertNotIn("@import", css)
@@ -74,6 +88,12 @@ class ShellSourceTests(unittest.TestCase):
         self.assertEqual(len(re.findall(r'data-tab="ask"', page)), 2)
         self.assertEqual(len(re.findall(r'data-tab="add"', page)), 2)
         self.assertEqual(script.count('addEventListener("popstate"'), 1)
+        # The back-button contract: opening pushes one history entry, closing goes back once, and only
+        # the popstate handler tears the sheet down (so a double tap cannot pop two entries).
+        self.assertIn("history.pushState", script)
+        self.assertEqual(script.count("history.back()"), 1)
+        self.assertIn("if (sheet.closing) return;", script)
+        self.assertEqual(script.count("teardownSheet()"), 2)  # definition + the popstate handler
         self.assertNotIn("capture-close", page)
         self.assertNotIn('id="sidebar-add"', page)
         # Every icon-only button needs an accessible name.
