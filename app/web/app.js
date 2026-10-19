@@ -4,9 +4,10 @@
 const $ = (id) => document.getElementById(id);
 const DRAFT_KEY = "ka-draft";
 const CONVERSATION_KEY = "ka-conversation";
+const SIDEBAR_KEY = "ka-sidebar";
 const POLL_MS = 2000;
 
-const state = { conversationId: null, polling: new Map(), running: false, capReached: false };
+const state = { conversationId: null, polling: new Map(), running: false, capReached: false, view: "ask", title: "New question" };
 
 function store(key, value) {
   try { value === null ? localStorage.removeItem(key) : localStorage.setItem(key, value); } catch (_) { /* private mode */ }
@@ -41,6 +42,8 @@ function showSignIn(message) {
   if (draft) store(DRAFT_KEY, draft);
   if (state.conversationId) store(CONVERSATION_KEY, state.conversationId);
   stopPolling();
+  closeSheet();
+  window.captureScreen.reset();
   $("app").hidden = true;
   $("signin").hidden = false;
   $("signin-message").textContent = message || "";
@@ -82,6 +85,7 @@ async function verifyCode() {
 async function startApp() {
   $("signin").hidden = true;
   $("app").hidden = false;
+  setSidebarCollapsed(load(SIDEBAR_KEY) === "1");
   const draft = load(DRAFT_KEY);
   if (draft) { $("question").value = draft; store(DRAFT_KEY, null); }
   await refreshConversations();
@@ -93,20 +97,21 @@ async function startApp() {
 
 async function refreshConversations() {
   const { conversations } = await api("GET", "/api/conversations");
-  const list = $("conversation-list");
-  list.replaceChildren();
-  for (const item of conversations) {
-    const li = document.createElement("li");
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "conversation";
-    button.textContent = item.title;
-    if (item.id === state.conversationId) button.setAttribute("aria-current", "true");
-    button.addEventListener("click", () => { closeSidebar(); openConversation(item.id); });
-    li.append(button);
-    list.append(li);
+  for (const list of [$("conversation-list"), $("sheet-conversation-list")]) {
+    list.replaceChildren();
+    for (const item of conversations) {
+      const li = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "conversation";
+      button.textContent = item.title;
+      if (item.id === state.conversationId) button.setAttribute("aria-current", "true");
+      button.addEventListener("click", () => closeSheet(() => openConversation(item.id)));
+      li.append(button);
+      list.append(li);
+    }
   }
-  $("conversation-empty").hidden = conversations.length > 0;
+  for (const empty of document.querySelectorAll(".conversation-empty")) empty.hidden = conversations.length > 0;
 }
 
 function stopPolling() {
@@ -114,25 +119,29 @@ function stopPolling() {
   state.polling.clear();
 }
 
+function setTitle(title) {
+  state.title = title;
+  if (state.view === "ask") $("view-title").textContent = title;
+}
+
 function newQuestion() {
-  window.captureScreen.closeCapture();
   stopPolling();
   state.conversationId = null;
   $("turns").replaceChildren();
-  $("conversation-title").textContent = "New question";
+  setTitle("New question");
   $("empty-state").hidden = false;
   setRunning(false);
-  closeSidebar();
+  setView("ask");
   $("question").focus();
 }
 
 async function openConversation(id) {
-  window.captureScreen.closeCapture();
+  setView("ask");
   stopPolling();
   try {
     const conversation = await api("GET", `/api/conversations/${encodeURIComponent(id)}`);
     state.conversationId = conversation.id;
-    $("conversation-title").textContent = conversation.title;
+    setTitle(conversation.title);
     $("empty-state").hidden = true;
     $("turns").replaceChildren();
     let running = false;
@@ -158,7 +167,7 @@ async function ask(question) {
     $("question").value = "";
     if (state.conversationId !== started.conversation_id) {
       state.conversationId = started.conversation_id;
-      $("conversation-title").textContent = question;
+      setTitle(question);
     }
     $("empty-state").hidden = true;
     renderTurn({ id: started.turn_id, question, status: "running", created_at: new Date().toISOString() });
@@ -339,16 +348,78 @@ function wireFeedback(element, turnId) {
   });
 }
 
-// Layout --------------------------------------------------------------------------------------
-function openSidebar() {
-  document.body.classList.add("sidebar-open");
-  $("menu").setAttribute("aria-expanded", "true");
-  $("scrim").hidden = false;
+// Views and sheets ----------------------------------------------------------------------------
+// Two tabs share one page: each owns a container shown with `hidden`, so switching keeps what was typed.
+function applyView(view) {
+  state.view = view;
+  $("view-ask").hidden = view !== "ask";
+  $("capture").hidden = view !== "add";
+  $("view-title").textContent = view === "add" ? "Add to notes" : state.title;
+  for (const tab of document.querySelectorAll("[data-tab]")) {
+    if (tab.dataset.tab === view) tab.setAttribute("aria-current", "page"); else tab.removeAttribute("aria-current");
+  }
+  return view === "add" ? window.captureScreen.show() : undefined;
 }
-function closeSidebar() {
-  document.body.classList.remove("sidebar-open");
-  $("menu").setAttribute("aria-expanded", "false");
-  $("scrim").hidden = true;
+
+// A tab switch first lets any open sheet finish closing, so no stale history entry is left behind.
+function setView(view) {
+  let shown;
+  closeSheet(() => { shown = applyView(view); });
+  return shown;
+}
+
+const SHEET_TITLES = { history: "History" };
+const sheet = { open: false, opener: null, afterClose: [] };
+
+function openSheet(name, opener) {
+  if (sheet.open) return;
+  sheet.open = true;
+  sheet.opener = opener || document.activeElement;
+  history.pushState({ ka: "sheet", name }, "");
+  $("sheet-title").textContent = SHEET_TITLES[name];
+  for (const section of $("sheet").querySelectorAll("[data-sheet]")) section.hidden = section.dataset.sheet !== name;
+  $("sheet").hidden = false;
+  $("sheet-scrim").hidden = false;
+  $("sheet-close").focus();
+}
+
+function teardownSheet() {
+  sheet.open = false;
+  $("sheet").hidden = true;
+  $("sheet-scrim").hidden = true;
+  const opener = sheet.opener;
+  sheet.opener = null;
+  const after = sheet.afterClose.splice(0);
+  if (after.length) { for (const run of after) run(); } else if (opener && opener.isConnected) opener.focus();
+}
+
+// popstate is the only closer: a programmatic close just goes back, and the handler tears down.
+function closeSheet(after) {
+  if (!sheet.open) { if (after) after(); return; }
+  if (after) sheet.afterClose.push(after);
+  history.back();
+}
+
+function trapFocus(event) {
+  if (!sheet.open || event.key !== "Tab") return;
+  const items = [...$("sheet").querySelectorAll("button, a[href], input, textarea")].filter((el) => !el.closest("[hidden]"));
+  if (!items.length) return;
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  else if (!$("sheet").contains(document.activeElement)) { event.preventDefault(); first.focus(); }
+}
+
+function setSidebarCollapsed(collapsed) {
+  document.body.classList.toggle("sidebar-collapsed", collapsed);
+  $("collapse").setAttribute("aria-expanded", collapsed ? "false" : "true");
+  $("collapse").setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
+}
+
+async function signOut(everywhere) {
+  await api("POST", everywhere ? "/auth/sign-out-everywhere" : "/auth/sign-out").catch(() => {});
+  showSignIn(everywhere ? "Signed out on every device." : "");
 }
 
 function autosize() {
@@ -369,17 +440,26 @@ document.addEventListener("DOMContentLoaded", async () => {
       ask($("question").value.trim());
     }
   });
-  $("new-question").addEventListener("click", newQuestion);
   $("sidebar-new").addEventListener("click", newQuestion);
-  $("menu").addEventListener("click", () =>
-    document.body.classList.contains("sidebar-open") ? closeSidebar() : openSidebar());
-  $("scrim").addEventListener("click", closeSidebar);
-  document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeSidebar(); });
-  $("sign-out").addEventListener("click", async () => { await api("POST", "/auth/sign-out").catch(() => {}); showSignIn(""); });
-  $("sign-out-everywhere").addEventListener("click", async () => {
-    await api("POST", "/auth/sign-out-everywhere").catch(() => {});
-    showSignIn("Signed out on every device.");
+  $("sheet-new").addEventListener("click", () => closeSheet(newQuestion));
+  for (const tab of document.querySelectorAll("[data-tab]")) tab.addEventListener("click", () => setView(tab.dataset.tab));
+  for (const id of ["history-button", "sidebar-history", "sidebar-account"]) {
+    $(id).addEventListener("click", (event) => openSheet("history", event.currentTarget));
+  }
+  $("collapse").addEventListener("click", () => {
+    const collapsed = !document.body.classList.contains("sidebar-collapsed");
+    setSidebarCollapsed(collapsed);
+    store(SIDEBAR_KEY, collapsed ? "1" : null);
   });
+  $("sheet-close").addEventListener("click", () => closeSheet());
+  $("sheet-scrim").addEventListener("click", () => closeSheet());
+  window.addEventListener("popstate", () => { if (sheet.open) teardownSheet(); });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeSheet();
+    trapFocus(event);
+  });
+  for (const button of document.querySelectorAll(".sign-out")) button.addEventListener("click", () => signOut(false));
+  for (const button of document.querySelectorAll(".sign-out-everywhere")) button.addEventListener("click", () => signOut(true));
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
   try {
     await api("GET", "/auth/me");
