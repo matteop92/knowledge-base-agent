@@ -138,13 +138,13 @@ def note_properties(draft: Draft, generated: dict[str, Any], today: date) -> dic
             props[name] = generated[name]
     props["capture"] = draft.kind
     merged = dict(draft.own)
-    if draft.kind == "youtube" and generated.get("people") and "guest" not in merged:
-        # `author` is the channel (the publisher); the people in the video go in `guest`, the field the parser reads
-        # for interviews, so source labels and name searches find them.
+    if draft.kind == "youtube" and generated.get("people") and "people" not in merged:
+        # `author` is the channel (the publisher); the hosts and guests in the video go in `people`, which source
+        # labels and name searches read.
         channel = str(merged.get("author") or "").casefold()
         people = [name for name in generated["people"] if name.casefold() != channel]
         if people:
-            merged["guest"] = people
+            merged["people"] = people
     if "tags" in merged and tags:
         own_tags = merged["tags"] if isinstance(merged["tags"], list) else [merged["tags"]]
         merged["tags"] = list(dict.fromkeys([*[str(tag) for tag in own_tags], *tags]))
