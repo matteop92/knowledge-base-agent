@@ -122,6 +122,12 @@ Matt can use every flow he uses today on his phone and desktop, and calls the re
 - The sheet closes through one browser Back per sheet; a repeat trigger before the Back finishes is ignored, and a reload on a leftover sheet entry clears it.
 - The service worker now fetches its shell files with `cache: "reload"` on install so an update never mixes old and new files from the browser's HTTP cache.
 
+### Known gaps carried out of the Release A review
+
+- Fixed in Release A: sign-out used to say "signed out" even when the request failed; it now waits for the server and shows "Could not sign out" otherwise.
+- Release B (Add rebuild): the daily-limit banner and the "answer still running" notice sit in the Ask area, which is hidden while the Add tab is open, so they cannot be seen from Add. Give them a place that shows on both tabs.
+- Kept on purpose: the Android share target stores the shared item in the phone's browser storage until the app is opened and signed in, then deletes it (see `takeShared` in `capture.js`), so a share made while signed out is not lost. If the app is never signed in again, the item stays in that browser storage.
+
 ### Open Questions (deferred)
 
 - OQ1. Exact starter text when "Add a note to fill this gap" opens Add; default is the cleaned gap sentence on the first line so Matt can answer it.
