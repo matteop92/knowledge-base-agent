@@ -66,9 +66,10 @@ def merged_exclusions(baseline: Path | None, extra: Path, new: list[str], keep: 
         # Exact spelling, so the tool's skip list names each folder as it is on disk.
         if name not in names:
             names.append(name)
-    extra.write_text("\n".join(name for name in names if not any(
-        name == line.strip() for line in (baseline.read_text(encoding="utf-8").splitlines()
-                                                if baseline.is_file() else []))) + "\n", encoding="utf-8")
+    # Only names beyond the baseline are remembered; with no baseline (the server's case), every name is.
+    base = ({line.strip() for line in baseline.read_text(encoding="utf-8").splitlines()}
+            if baseline is not None and baseline.is_file() else set())
+    extra.write_text("\n".join(name for name in names if name not in base) + "\n", encoding="utf-8")
     return names
 
 
