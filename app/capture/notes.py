@@ -31,7 +31,7 @@ CAPTURE_FOLDERS = ("Transcripts", "Articles", "Book Highlights", "Notes")
 MAX_TEXT_BYTES = 2_000_000
 MAX_TITLE_CHARS = 200
 SLUG_CHARS = 60
-FRONTMATTER = re.compile(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.DOTALL)
+FRONTMATTER = re.compile(r"\A---[ \t]*\r?\n(?:(.*?)\r?\n)?---[ \t]*(?:\r?\n|\Z)", re.DOTALL)
 
 
 class CaptureError(ValueError):
@@ -40,7 +40,7 @@ class CaptureError(ValueError):
 
 @dataclass
 class Draft:
-    kind: str  # text | markdown (screenshot, youtube later)
+    kind: str  # text | markdown | screenshot | youtube
     body: str
     title: str
     # Properties the input already sets (a Markdown file's own frontmatter); these always win.
@@ -49,20 +49,20 @@ class Draft:
     tags: list[str] = field(default_factory=list)
 
 
-def _clean_title(value: str | None) -> str | None:
+def clean_title(value: str | None) -> str | None:
     text = " ".join((value or "").split())[:MAX_TITLE_CHARS]
     return text or None
 
 
-def _first_line_title(body: str) -> str:
+def first_line_title(body: str) -> str:
     for line in body.splitlines():
         text = line.strip().lstrip("#").strip()
         if any(char.isalnum() for char in text):  # skip rules such as "---"
-            return _clean_title(text[:80]) or "Capture"
+            return clean_title(text[:80]) or "Capture"
     return "Capture"
 
 
-def _clean_tags(tags: list[str] | None) -> list[str]:
+def clean_tags(tags: list[str] | None) -> list[str]:
     cleaned = [" ".join(str(tag).split()).lstrip("#").strip().lower()[:40] for tag in tags or []]
     return list(dict.fromkeys(tag for tag in cleaned if tag))[:10]
 
@@ -74,8 +74,8 @@ def draft_from_text(text: str, *, title: str | None = None, url: str | None = No
         raise CaptureError("there is no text to save")
     if len(body.encode("utf-8")) > MAX_TEXT_BYTES:
         raise CaptureError("the text is too long to save")
-    return Draft(kind="text", body=body, title=_clean_title(title) or _first_line_title(body),
-                 url=url, tags=_clean_tags(tags))
+    return Draft(kind="text", body=body, title=clean_title(title) or first_line_title(body),
+                 url=url, tags=clean_tags(tags))
 
 
 def draft_from_markdown(markdown: str, *, title: str | None = None, url: str | None = None,
@@ -88,7 +88,7 @@ def draft_from_markdown(markdown: str, *, title: str | None = None, url: str | N
     match = FRONTMATTER.match(text)
     if match:
         try:
-            loaded = yaml.safe_load(match.group(1)) or {}
+            loaded = yaml.safe_load(match.group(1) or "") or {}
         except yaml.YAMLError:
             raise CaptureError("the file's properties block is not valid YAML") from None
         if not isinstance(loaded, dict):
@@ -99,8 +99,8 @@ def draft_from_markdown(markdown: str, *, title: str | None = None, url: str | N
     if not body:
         raise CaptureError("the file has no text to save")
     own_title = own.get("title") if isinstance(own.get("title"), str) else None
-    return Draft(kind="markdown", body=body, title=_clean_title(own_title) or _clean_title(title) or _first_line_title(body),
-                 own=own, url=url, tags=_clean_tags(tags))
+    return Draft(kind="markdown", body=body, title=clean_title(own_title) or clean_title(title) or first_line_title(body),
+                 own=own, url=url, tags=clean_tags(tags))
 
 
 def folder_for(kind: str, source_type: str | None) -> str:
@@ -166,8 +166,9 @@ def parse_draft(draft: Draft, today: date) -> ParsedDocument:
     with tempfile.TemporaryDirectory() as scratch:
         root = Path(scratch) / "vault"
         (root / "Knowledge" / "Captured").mkdir(parents=True)
-        (root / "Knowledge" / "Captured" / "draft.md").write_text(render(draft, note_properties(draft, {}, today)),
-                                                                  encoding="utf-8")
+        # Without `created`, so a missing publication date still counts as missing for the classifier.
+        properties = {name: value for name, value in note_properties(draft, {}, today).items() if name != "created"}
+        (root / "Knowledge" / "Captured" / "draft.md").write_text(render(draft, properties), encoding="utf-8")
         captured = capture_source(root, "Knowledge/Captured/draft.md", Path(scratch) / "runs")
         return route_source(captured)
 

@@ -25,7 +25,9 @@ log = logging.getLogger("knowledge.api.capture")
 
 INDEX_WAIT_SECONDS = 30
 # A running job older than this no longer counts as running: the server restarted while it ran.
-JOB_LIMIT = timedelta(minutes=5)
+# It must outlast the slowest capture: a YouTube transcript may take up to the Gemini timeout (10 minutes),
+# then classification, the 30-second index wait and an index pass.
+JOB_LIMIT = timedelta(minutes=20)
 INTERRUPTED = "interrupted: the server restarted while saving"
 JOB_SELECT = "select job_id, kind, status, vault_path, title, indexed, error, cost_usd, created_at, finished_at from knowledge.capture_jobs"
 
@@ -59,7 +61,7 @@ class OpenRouterClassifier:
 
     def classify(self, draft: Draft, today: date) -> Classification:
         from app.ingestion.properties import TagList, classify_properties, model_spec, worst_case_usd
-        from app.ingestion.vault_sync import _classifier_input_bytes, _measured_usd, _openrouter_client, _usage_mark
+        from app.ingestion.vault_sync import classifier_input_bytes, measured_cost, openrouter_client, usage_mark
 
         tag_list = TagList.load()
         if tag_list is None:
@@ -67,14 +69,14 @@ class OpenRouterClassifier:
         parsed = parse_draft(draft, today)
         model = model_spec()
         worst = worst_case_usd(parsed, tag_list, model)
-        client = _openrouter_client([model.model_id], requests=1, input_bytes=_classifier_input_bytes(parsed, tag_list),
+        client = openrouter_client([model.model_id], requests=1, input_bytes=classifier_input_bytes(parsed, tag_list),
                                     structured={model.model_id})
-        mark = _usage_mark(client)
+        mark = usage_mark(client)
         try:
             result = classify_properties(parsed, tag_list, client, model)
         except Exception:
-            raise CaptureCostError(_measured_usd(client, mark, worst)) from None
-        return Classification(result.properties, _measured_usd(client, mark, worst))
+            raise CaptureCostError(measured_cost(client, mark, worst)) from None
+        return Classification(result.properties, measured_cost(client, mark, worst))
 
 
 @dataclass
@@ -96,9 +98,13 @@ class YouTubeInput:
 
 
 class GeminiTranscriber:
-    """YouTube transcripts on the Gemini API's free tier: nothing is billed, so nothing reaches the ledger."""
+    """YouTube transcripts on the Gemini API's free tier: nothing is billed, so nothing reaches the ledger.
 
-    def worst_case_usd(self, url: str) -> float:
+    A key from a project with billing turned on would be billed by Google without a ledger entry;
+    deploy/README.md says to use a free-tier key.
+    """
+
+    def worst_case_usd(self, item: YouTubeInput) -> float:
         return 0.0
 
     def extract(self, item: YouTubeInput) -> tuple[Draft, float]:
@@ -108,36 +114,41 @@ class GeminiTranscriber:
         return transcribe_youtube(item.url, GeminiClient(), title=item.title, tags=item.tags), 0.0
 
 
-class Extractor(Protocol):
-    def worst_case_usd(self, image: str) -> float: ...
+class Reader(Protocol):
+    """Turns a screenshot or a YouTube link into a draft note, with what that cost."""
 
-    def extract(self, item: ScreenshotInput) -> tuple[Draft, float]: ...
+    def worst_case_usd(self, item) -> float: ...
+
+    def extract(self, item) -> tuple[Draft, float]: ...
+
+
+Extractor = Reader  # name kept for create_app's keyword arguments
 
 
 class OpenRouterExtractor:
     """The vision model on its pinned zero-retention route."""
 
-    def worst_case_usd(self, image: str) -> float:
+    def worst_case_usd(self, item: ScreenshotInput) -> float:
         from app.capture.screenshot import worst_case_usd
 
-        return worst_case_usd(image)
+        return worst_case_usd(item.image)
 
     def extract(self, item: ScreenshotInput) -> tuple[Draft, float]:
         from app.capture.screenshot import extract_screenshot, input_bytes, model_spec, worst_case_usd
-        from app.ingestion.vault_sync import _measured_usd, _openrouter_client, _usage_mark
+        from app.ingestion.vault_sync import measured_cost, openrouter_client, usage_mark
 
         model = model_spec()
-        client = _openrouter_client([model.model_id], requests=1, input_bytes=input_bytes(item.image),
+        client = openrouter_client([model.model_id], requests=1, input_bytes=input_bytes(item.image),
                                     structured={model.model_id})
-        mark, worst = _usage_mark(client), worst_case_usd(item.image, model)
+        mark, worst = usage_mark(client), worst_case_usd(item.image, model)
         try:
             draft = extract_screenshot(item.image, client, model, title=item.title, tags=item.tags)
         except CaptureError as exc:
-            exc.cost_usd = _measured_usd(client, mark, worst)
+            exc.cost_usd = measured_cost(client, mark, worst)
             raise
         except Exception:
-            raise CaptureCostError(_measured_usd(client, mark, worst)) from None
-        return draft, _measured_usd(client, mark, worst)
+            raise CaptureCostError(measured_cost(client, mark, worst)) from None
+        return draft, measured_cost(client, mark, worst)
 
 
 class CaptureCostError(Exception):
@@ -164,10 +175,12 @@ class CaptureJobs:
 
     def _worst_case(self, item: Draft | ScreenshotInput | YouTubeInput) -> float:
         if isinstance(item, (ScreenshotInput, YouTubeInput)):
-            # The classifier reads at most a fixed slice of the text, so a short stand-in bounds it.
-            first = (self.extractor.worst_case_usd(item.image) if isinstance(item, ScreenshotInput)
-                     else self.transcriber.worst_case_usd(item.url))
-            return first + self.classifier.worst_case_usd(Draft(kind=item.kind, body="x" * 8000, title="x"), self.today())
+            from app.ingestion.properties import INPUT_CHARS
+
+            # The classifier reads at most INPUT_CHARS of the text, so a stand-in of that length bounds it.
+            reader = self.extractor if isinstance(item, ScreenshotInput) else self.transcriber
+            return reader.worst_case_usd(item) + self.classifier.worst_case_usd(
+                Draft(kind=item.kind, body="x" * INPUT_CHARS, title="x"), self.today())
         return self.classifier.worst_case_usd(item, self.today())
 
     def start(self, item: Draft | ScreenshotInput | YouTubeInput) -> str:
@@ -213,8 +226,9 @@ class CaptureJobs:
             for source, usd in spend.items():
                 record_spend(conn, source, usd, job_id)
             conn.execute("""update knowledge.capture_jobs set status=%s, vault_path=%s, indexed=%s, error=%s,
-                cost_usd=%s, title=coalesce(%s, title), finished_at=now() where job_id=%s and status='running'""",
-                         (status, vault_path, indexed, error, round(sum(spend.values()), 8), title, job_id))
+                cost_usd=%s, title=coalesce(%s, title), finished_at=now()
+                where job_id=%s and (status='running' or (status='failed' and error=%s))""",
+                         (status, vault_path, indexed, error, round(sum(spend.values()), 8), title, job_id, INTERRUPTED))
 
     def _run(self, job_id: str, item: Draft | ScreenshotInput | YouTubeInput) -> None:
         started = time.monotonic()
@@ -239,7 +253,9 @@ class CaptureJobs:
             classified = self.classifier.classify(draft, today)
             spend["properties"] = classified.cost_usd
             properties = note_properties(draft, classified.properties, today)
-            folder = folder_for(draft.kind, classified.properties.get("source_type"))
+            # The note's own type wins, as it does for the classifier; otherwise the generated one.
+            own_type = draft.own.get("type") or draft.own.get("source_type")
+            folder = folder_for(draft.kind, own_type if isinstance(own_type, str) else classified.properties.get("source_type"))
             vault_path = write_note(Path(self.settings.vault_root), self.settings.capture_folder, folder, draft.title,
                                     render(draft, properties), today)
         except CaptureError as exc:

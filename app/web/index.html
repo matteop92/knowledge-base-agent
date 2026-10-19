@@ -71,7 +71,9 @@
         <label class="small">Screenshot or .md file
           <input id="capture-file" type="file" accept="image/png,image/jpeg,image/webp,.md,.markdown,.txt,text/markdown,text/plain">
         </label>
+        <input id="capture-kind" type="hidden" value="text">
         <p id="capture-pending" class="small"></p>
+        <img id="capture-preview" class="capture-preview" alt="Screenshot to be saved" hidden>
         <label class="small">Title (optional)
           <input id="capture-title" maxlength="200">
         </label>

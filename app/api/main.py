@@ -108,6 +108,8 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
         if indexer is not None:
             indexer.stop()
         jobs.wait(engine.limits.max_seconds + 30)
+        # Captures are short except YouTube; give them the same bounded time to save and record spend.
+        captures.wait(engine.limits.max_seconds + 30)
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(_: Request, exc: RequestValidationError):
