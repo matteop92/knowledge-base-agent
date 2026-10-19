@@ -110,6 +110,27 @@ class AllowlistTests(unittest.TestCase):
         self.assertTrue((self.root / "loose note.md").is_file())
         self.assertTrue((self.root / "Knowledge/Notes/kept.md").is_file())
 
+    def test_skip_list_works_without_a_baseline_file(self) -> None:
+        # The server runs without --baseline; a new folder must still reach the skip list.
+        extra = Path(self.temp.name) / "extra.txt"
+        extra.write_text("Career\n", encoding="utf-8")
+        self.assertEqual(allowlist.merged_exclusions(None, extra, ["Brand New Folder"]), ["Career", "Brand New Folder"])
+        self.assertEqual(extra.read_text(encoding="utf-8").splitlines(), ["Career", "Brand New Folder"])
+
+    def test_main_without_a_baseline_updates_the_skip_list_and_cleans_up(self) -> None:
+        extra = Path(self.temp.name) / "e.txt"
+        extra.write_text("Tasks\n", encoding="utf-8")
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append(command)
+            return Result("" if "--excluded-folders" in command else "mode: pull-only\n", 0)
+        with patch("subprocess.run", run):
+            self.assertEqual(allowlist.main(["--root", str(self.root), "--extra", str(extra)]), 0)
+        update = [command for command in calls if "--excluded-folders" in command][0]
+        self.assertEqual(update[update.index("--excluded-folders") + 1], "Tasks,Brand New Folder,Career")
+        self.assertFalse((self.root / "Career").exists())
+
     def test_two_way_sync_never_deletes_a_folder_whose_name_differs_in_case(self) -> None:
         self.assertEqual(self.run_two_way(self.sync_settings(["career", "brand new folder"])), 0)
         self.assertTrue((self.root / "Career/private.md").is_file())
