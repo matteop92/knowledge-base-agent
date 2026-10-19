@@ -33,3 +33,65 @@ restricted runtime login. Secrets live in the host's secret store, never in the 
 In Railway **Deployments**, choose the last good deployment and **Redeploy**. Database
 migrations deploy separately through the Supabase GitHub integration and are not rolled back
 by this; a bad migration needs a new forward migration.
+
+## Vault sync and indexing (Phase 1b)
+
+The server keeps a read-only copy of the vault's `Knowledge` folder through Obsidian Sync and indexes new,
+edited and deleted notes every five minutes.
+
+How it fits together:
+
+- `deploy/run.sh` starts `deploy/sync-loop.sh` beside the web server when `KNOWLEDGE_SYNC_ENABLED=true`. Every minute the loop
+  (1) removes anything outside the allowed folders from the server's copy, then (2) runs one `ob sync` (Obsidian Headless,
+  pinned in the `Dockerfile`). One download per cycle means the settings are re-read each time and nothing runs while files
+  are being removed.
+- **Only the allowed folders stay on the server.** Obsidian's tool can skip folders by name but cannot say "only this one", so
+  a folder you create later in the vault would be copied. `app/ingestion/vault_allowlist.py` removes every folder and loose
+  note outside `KNOWLEDGE_INCLUDED_FOLDERS` from the server's copy and adds the folder to the tool's skip list
+  (remembered in `/data/excluded-folders-extra.txt`, which also holds the names pasted at setup). A new folder can therefore sit on the server for up to a minute.
+  Entries starting with a dot are left alone.
+- **Deleting is allowed only while the copy is download-only.** In two-way sync a delete on the server would reach the real
+  vault. The cleanup deletes only when `KNOWLEDGE_SYNC_MODE` is `pull-only` (the default) **and** `ob sync-config` itself
+  reports `pull-only`; anything else (two-way mode, an unreadable answer) deletes nothing and only updates the skip list.
+- `app/api/scheduler.py` runs the indexer (`app/ingestion/vault_sync.py`) every `KNOWLEDGE_INDEX_INTERVAL_SECONDS` (default 300).
+  It waits until the first sync has produced notes, never overlaps two passes, records the last result for `/health`
+  (counts and error types only), and **retires nothing on the first pass after a start** so a half-downloaded vault cannot
+  look like deleted notes. The indexer's own guard still refuses to retire more than 10% or 20 files at once. The indexer
+  reads only `Knowledge`, so it is unaffected by the cleanup.
+- The vault copy and Obsidian's sign-in live on the Railway volume at `/data` (`/data/vault`, `/data/home`). Run snapshots
+  live on the container's disk and are cleared on every restart.
+- **Phase 2 (captures need two-way sync):** in a server shell run `ob sync-config --path /data/vault --mode bidirectional`
+  and set the Railway variable `KNOWLEDGE_SYNC_MODE` to `bidirectional` in the same step. The sign-in and the volume stay as
+  they are. From then on the cleanup stops deleting.
+  **Tested 2026-10-18 on a throwaway folder in the real vault:** after a folder was added to the skip list in two-way mode,
+  deleting its local copy and syncing three times did not delete it from the vault. So in Phase 2 the cleanup may delete in
+  two-way mode, but only folders already on the skip list, and the skip list must be updated first. Before switching, still
+  set `KNOWLEDGE_SYNC_ENABLED` to `false` and redeploy so no cleanup runs mid-switch. (Tested for one folder with the tool at
+  version 0.0.14; re-check after upgrading it.)
+  The `(conflict)` copies that `--conflict-strategy conflict` can create also need handling by then.
+
+Variables (all optional except the switch):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `KNOWLEDGE_SYNC_ENABLED` | `false` | Turn on the sync loop and the scheduler. Set to `true` only after the one-time setup below. |
+| `KNOWLEDGE_SYNC_MODE` | `pull-only` | `pull-only` or `bidirectional`; must match the sync tool's mode. |
+| `KNOWLEDGE_SOURCE_ROOT` | `/data/vault` | Where the vault copy lives. |
+| `KNOWLEDGE_INCLUDED_FOLDERS` | `Knowledge` | Top-level vault folders to index and keep on the server. |
+| `KNOWLEDGE_INDEX_INTERVAL_SECONDS` | `300` | Time between index passes. |
+| `KNOWLEDGE_SYNC_INTERVAL_SECONDS` | `60` | Time between download cycles. |
+| `KNOWLEDGE_INDEX_MAX_USD_PER_PASS` | `0.10` | Spend limit for one pass; the daily cap still applies. |
+
+### One-time setup
+
+1. In Railway, open the service, then **Settings → Volumes → Add Volume**, mount path `/data`. Redeploy.
+2. Open a shell on the server: install the Railway CLI (`npm install -g @railway/cli`), then `railway login`, `railway link`
+   (pick this project and service) and `railway ssh`.
+3. In that shell run `sh deploy/ob-setup.sh`. It asks for your Obsidian email, password (and a two-factor code), the vault name
+   and the vault's encryption password if it has one. It then asks you to paste the names of your other top-level folders (kept
+   only on the volume, never in the repository; later folders are handled automatically) so they are skipped from the first
+   download. It syncs download-only and notes only (`deploy/notes_only.py` empties the tool's attachment list, which its command line cannot do), prints the tool's settings (check that it says `pull-only` and that cleanup "will delete"),
+   how many notes arrived, and how many non-note files (should be 0).
+4. In Railway Variables set `KNOWLEDGE_SYNC_ENABLED` to `true`. Railway redeploys.
+5. Check: sign in to the app, open `/health` and look at `index`: `status` should read `ok`, and `last_result` shows
+   `files_seen` equal to the number of `Knowledge` notes.

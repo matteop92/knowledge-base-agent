@@ -221,6 +221,21 @@ class LivePassTests(unittest.TestCase):
         self.assertEqual(sum(before[key] != after[key] for key in before), 1)
         self.assertEqual(len(after), 3)
 
+    def test_a_pass_with_nothing_to_do_needs_no_model_client(self) -> None:
+        self.live()
+        # No client is passed and no OpenRouter key is needed: nothing changed, so nothing is embedded.
+        report = run_pass(self.vault.settings, conn=self.conn, live=True, max_usd=1.0)
+        self.assertEqual((report["to_ingest"], report["unchanged"], report["published"]), (0, 3, 0))
+
+    def test_retirement_can_be_skipped_for_the_first_pass_after_a_start(self) -> None:
+        self.live()
+        (self.vault.root / "Knowledge/Notes/plum.md").unlink()
+        report = run_pass(self.vault.settings, conn=self.conn, live=True, max_usd=1.0, retire=False)
+        self.assertEqual((report["retired"], report["retire_missing"]), (0, 1))
+        self.assertEqual(len(self.active_paths()), 3)
+        report = run_pass(self.vault.settings, conn=self.conn, live=True, max_usd=1.0, allow_mass_retire=True)
+        self.assertEqual(report["retired"], 1)
+
     def test_an_outage_is_retried_on_the_next_pass(self) -> None:
         self.vault.write("Knowledge/Notes/flaky.md", "# flaky\n\nThe outage hits this one.\n")
         report, _ = self.live(FakeEmbeddingClient(fail_on="outage"))
