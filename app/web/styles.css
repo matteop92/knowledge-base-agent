@@ -88,6 +88,7 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .capture-item .path { overflow-wrap: anywhere; }
 .capture-item[data-status="failed"] .muted { color: var(--danger); }
 .capture-title { font-weight: 600; }
+.capture-form .message.ok { color: var(--text); font-weight: 600; }
 
 @media (max-width: 899px) {
   .app { grid-template-columns: 1fr; }
