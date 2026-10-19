@@ -38,12 +38,12 @@ body { background: var(--ground); color: var(--ink); }
 [hidden] { display: none !important; }
 h1, h2, h3 { margin: 0; }
 button, input, textarea { font: inherit; color: inherit; }
-button { cursor: pointer; min-height: 44px; min-width: 44px; border: 0; border-radius: 22px; background: var(--chip); padding: 0 18px; font-size: 14px; font-weight: 500; }
+button { cursor: pointer; min-height: 44px; min-width: 44px; border: 1px solid transparent; border-radius: 22px; background: var(--chip); padding: 0 18px; font-size: 14px; font-weight: 500; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 a { color: var(--accent); }
 a:hover { color: #1f4238; }
-input, textarea { background: var(--ground); border: 0; border-radius: 12px; padding: 12px 14px; font-size: 15px; }
+input, textarea { background: var(--ground); border: 1px solid transparent; border-radius: 12px; padding: 12px 14px; font-size: 15px; }
 .primary { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .link { background: none; text-decoration: underline; padding: 0 4px; border-radius: 0; color: var(--ink-soft); }
 .icon-button { display: inline-flex; align-items: center; justify-content: center; padding: 0; background: transparent; width: 44px; height: 44px; }
@@ -99,10 +99,10 @@ input, textarea { background: var(--ground); border: 0; border-radius: 12px; pad
 .empty-state { margin-top: 18vh; }
 .empty-state h1 { font-family: var(--serif); font-weight: 500; font-size: 38px; line-height: 1.15; letter-spacing: -0.015em; }
 .empty-state p { margin: 12px 0 0; }
-.turns { list-style: none; margin: 0; padding: 0; display: grid; gap: 48px; }
-.question { font-family: var(--serif); font-weight: 500; font-size: 38px; line-height: 1.15; letter-spacing: -0.015em; margin: 0 0 24px; white-space: pre-wrap; }
+.turns { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 48px; }
+.question { font-family: var(--serif); font-weight: 500; font-size: 38px; line-height: 1.15; letter-spacing: -0.015em; margin: 0 0 24px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .answer { font-family: var(--serif); font-size: 19px; line-height: 1.65; }
-.answer p { margin: 0 0 16px; white-space: pre-wrap; }
+.answer p { margin: 0 0 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .marker { min-height: 28px; min-width: 28px; padding: 0 6px; margin: 0 2px; border-radius: 14px; background: var(--chip); font-family: var(--sans); font-size: 12px; font-weight: 600; vertical-align: baseline; position: relative; }
 /* Enlarge the touch target without changing the inline layout. */
 .marker::after { content: ""; position: absolute; inset: -8px; }
@@ -122,8 +122,8 @@ input, textarea { background: var(--ground); border: 0; border-radius: 12px; pad
 .turn[data-status="failed"] .turn-state { color: var(--danger); }
 .banner { margin: 0 auto; max-width: 640px; width: 100%; padding: 10px 16px; border-radius: 14px; background: var(--warn); color: var(--warn-ink); font-size: 14px; }
 .composer { width: 100%; max-width: 688px; margin: 0 auto; padding: 16px 24px calc(8px + env(safe-area-inset-bottom)); }
-.composer-box { min-height: 56px; border-radius: 28px; background: var(--surface); box-shadow: var(--shadow); display: flex; align-items: flex-end; gap: 8px; padding: 8px 8px 8px 24px; }
-.composer textarea { flex: 1; min-width: 0; resize: none; overflow-y: auto; scrollbar-width: none; min-height: 40px; max-height: 200px; padding: 9px 0; background: transparent; border-radius: 0; font-size: 16px; line-height: 1.4; }
+.composer-box { border: 1px solid transparent; min-height: 56px; border-radius: 28px; background: var(--surface); box-shadow: var(--shadow); display: flex; align-items: flex-end; gap: 8px; padding: 8px 8px 8px 24px; }
+.composer textarea { border: 0; flex: 1; min-width: 0; resize: none; overflow-y: auto; scrollbar-width: none; min-height: 40px; max-height: 200px; padding: 9px 0; background: transparent; border-radius: 0; font-size: 16px; line-height: 1.4; }
 .composer textarea:focus-visible { outline: none; }
 .composer-box:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
 .send { width: 40px; min-width: 40px; height: 40px; min-height: 40px; padding: 0; border-radius: 20px; background: var(--accent); color: var(--accent-ink); display: inline-flex; align-items: center; justify-content: center; }
@@ -133,13 +133,14 @@ input, textarea { background: var(--ground); border: 0; border-radius: 12px; pad
 .view-add { overflow-y: auto; padding: 64px 48px 24px; }
 .view-add h1 { font-family: var(--serif); font-weight: 500; font-size: 38px; line-height: 1.15; letter-spacing: -0.015em; margin: 0 0 28px; }
 .capture.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
-.card { background: var(--surface); border-radius: 24px; box-shadow: var(--shadow-card); padding: 20px; }
+.card { border: 1px solid transparent; background: var(--surface); border-radius: 24px; box-shadow: var(--shadow-card); padding: 20px; }
 .capture-form { display: flex; flex-direction: column; gap: 16px; }
-.capture-form > textarea { width: 100%; resize: vertical; background: transparent; padding: 0; border-radius: 0; font-size: 15px; line-height: 1.5; }
+.capture-form > textarea { border: 0; width: 100%; resize: vertical; background: transparent; padding: 0; border-radius: 0; font-size: 15px; line-height: 1.5; }
 .capture-form > textarea:focus-visible { outline: none; }
 .capture-form:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
 .capture-form .field { display: grid; gap: 6px; color: var(--muted); }
 .capture-form .field input:not([type="file"]) { width: 100%; color: var(--ink); }
+.capture-form .field input[type="file"] { min-width: 0; max-width: 100%; padding: 0; background: transparent; }
 .capture-form .message.ok { color: var(--ink); font-weight: 600; }
 .card-actions { display: flex; justify-content: flex-end; }
 .card-actions .primary { height: 48px; padding: 0 28px; border-radius: 24px; font-size: 15px; }
