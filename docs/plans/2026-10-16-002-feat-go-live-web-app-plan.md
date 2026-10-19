@@ -457,6 +457,8 @@ stateDiagram-v2
 
 ### Phase 3: Quality from real use
 
+> **Note (2026-10-19): plan the suggested-tags page first.** Matt decided on 2026-10-18 that tags the classifier proposes (stored in `knowledge.document_properties`) get a "Suggested tags" page: one tap approves a tag, adds it to `config/tags.yaml` and assigns it to every note it fits. It has no unit yet. Matt chose to build Phase 2 as written and plan this page at the start of Phase 3.
+
 ### U14. Eval set from thumbs-down and grader pre-ratings
 
 - **Goal:** Real failures become eval questions, and answer changes can be measured over repeat runs.
