@@ -135,6 +135,14 @@ Matt can use every flow he uses today on his phone and desktop, and calls the re
 - Release B (Add rebuild): the daily-limit banner and the "answer still running" notice sit in the Ask area, which is hidden while the Add tab is open, so they cannot be seen from Add. Give them a place that shows on both tabs.
 - Kept on purpose: the Android share target stores the shared item in the phone's browser storage until the app is opened and signed in, then deletes it (see `takeShared` in `capture.js`), so a share made while signed out is not lost. If the app is never signed in again, the item stays in that browser storage.
 
+### Release B decisions (made during the build)
+
+- Built from the "A Paper" boards' source plus the gaps and feedback mock. Where they differ from each other or from this plan: the gap icon is the mock's soft green chip with the accent text (the Ask board draws it amber; KTD5 and R11 say green, so green wins); the board's "Looked for:" line is not built (KTD14: nothing to show after the code is stripped, and the receipt has no such field); the Add board's "(filled in for you)" is "(optional)" because the app does not fill title and tags itself; the detected-type subtitle only says what is true ("Saved to Transcripts" for YouTube, otherwise "The app files it in the right folder").
+- Geist Mono (the Add box font on the board) is self-hosted like the other two fonts (Latin, variable, 23 KB, same Geist licence); the service worker cache is `ka-shell-v5`.
+- Source numbers in the row are 28 px to the eye and about 34 by 44 px to the finger (the board's 6 px gap leaves no room for 44 px wide targets); Release C may widen the gap.
+- The spending-cap and "answer still running" messages moved out of the Ask tab into one banner above the page, so they show on both tabs; the cap message stays, the other fades after 8 seconds.
+- Thumbs-down opens the bottom sheet on phones and the board's inline panel under the answer at 900 px and wider. On desktop the Source and Gaps panels sit on the right, push the page at 1100 px and wider, overlay it below that, and swap in place when another number or the gap icon is tapped.
+
 ### Open Questions (deferred)
 
 - OQ1. Exact starter text when "Add a note to fill this gap" opens Add; default is the cleaned gap sentence on the first line so Matt can answer it.
