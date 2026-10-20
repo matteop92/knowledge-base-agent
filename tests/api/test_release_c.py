@@ -148,7 +148,7 @@ console.log(JSON.stringify(out));"""
         probe = """
 const make = (tag) => ({ tag, children: [], dataset: {}, attrs: {}, className: "", textContent: "", title: "", href: "",
   append(...n) { this.children.push(...n); }, prepend(...n) { this.children.unshift(...n); },
-  replaceChildren(...n) { this.children = n; }, setAttribute(k, v) { this.attrs[k] = v; }, addEventListener() {} });
+  replaceChildren(...n) { this.children = n; }, setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(name, fn) { this.handlers = { ...this.handlers, [name]: fn }; } });
 const list = make("ul");
 const document = { createElement: make, querySelector: () => null };
 const CSS = { escape: (x) => x };
@@ -157,7 +157,9 @@ const icon = (name) => ({ icon: name });
 const STATUS = { running: "Saving…", indexed: "Saved and searchable", queued: "Queued" };
 const retries = new Map([["f1", {}]]);
 const obsidianLink = (path) => "obsidian://" + path;
-async function send() {}
+const sends = [];
+const retrying = new Set();
+async function send(body) { sends.push(body); return true; }
 """ + render + """
 const describe = (job) => {
   renderCapture(job, true);
@@ -168,13 +170,23 @@ const describe = (job) => {
   return { status: row.dataset.status, icon: state.children[0].icon, tip: state.title,
            title: body.children[0].textContent, meta: meta.children.map((c) => c.className + ":" + (c.textContent || c.children.map((x) => x.icon || x).join(""))) };
 };
-console.log(JSON.stringify({
+const out = ({
   done: describe({ id: "d1", kind: "text", status: "done", indexed: true, title: "Note", vault_path: "Knowledge/a.md" }),
   queued: describe({ id: "d2", kind: "markdown", status: "done", indexed: false, title: "Note", vault_path: "Knowledge/b.md" }),
   running: describe({ id: "r1", kind: "youtube", status: "running", title: "Video" }),
   failed: describe({ id: "f1", kind: "screenshot", status: "failed", error: "Could not read the image.", title: "Shot" }),
   reloaded: describe({ id: "f2", kind: "screenshot", status: "failed", error: "x", title: "Shot" }),
-}));"""
+});
+// Pressing Retry twice sends once; afterwards the failed row offers no second Retry.
+(async () => {
+  renderCapture({ id: "f1", kind: "screenshot", status: "failed", error: "x", title: "Shot" }, true);
+  const button = list.children[0].children[1].children[1].children[1];
+  const first = button.handlers.click();
+  const second = button.handlers.click();
+  await Promise.all([first, second]);
+  out.afterClicks = { sends: sends.length, disabled: button.disabled, again: describe({ id: "f1", kind: "screenshot", status: "failed", error: "x", title: "Shot" }).meta };
+  console.log(JSON.stringify(out));
+})();"""
         out = _node(probe)
         self.assertEqual(out["done"], {"status": "done", "icon": "saved", "tip": "Saved and searchable", "title": "Note",
                                        "meta": [":See in Obsidian", "type-pill:Text"]})
@@ -184,6 +196,7 @@ console.log(JSON.stringify({
         self.assertEqual(out["failed"], {"status": "failed", "icon": "failed", "tip": "Failed: Could not read the image.",
                                          "title": "Shot", "meta": ["type-pill:Screenshot", "retry-capture:retryRetry"]})
         self.assertEqual(out["reloaded"]["meta"], ["type-pill:Screenshot", "muted:Add it again"])
+        self.assertEqual(out["afterClicks"], {"sends": 1, "disabled": True, "again": ["type-pill:Screenshot", "muted:Add it again"]})
 
     def test_every_icon_the_scripts_draw_exists_in_the_sprite(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")
@@ -192,6 +205,12 @@ console.log(JSON.stringify({
             for icon_name in sorted(set(re.findall(r'icon\("([a-z-]+)"\)', script))):
                 with self.subTest(name=name, icon=icon_name):
                     self.assertIn(f'id="i-{icon_name}"', page)
+
+    def test_state_and_retry_icons_are_in_the_sprite(self) -> None:
+        page = (WEB / "index.html").read_text(encoding="utf-8")
+        for icon_name in ("saved", "saving", "failed", "retry"):
+            with self.subTest(icon=icon_name):
+                self.assertIn(f'id="i-{icon_name}"', page)
 
     def test_failed_icon_is_not_red_and_retry_is_not_taller_than_the_pill(self) -> None:
         css = (WEB / "styles.css").read_text(encoding="utf-8")
