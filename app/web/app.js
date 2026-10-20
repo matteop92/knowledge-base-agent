@@ -7,13 +7,31 @@ const CONVERSATION_KEY = "ka-conversation";
 const SIDEBAR_KEY = "ka-sidebar";
 const POLL_MS = 2000;
 
-const state = { conversationId: null, polling: new Map(), running: false, capReached: false, view: "ask", title: "New question" };
+const SVG_NS = "http://www.w3.org/2000/svg";
+// Messages the agent writes when it could not finish checking: a run problem, not a gap in the notes.
+const RUN_PROBLEMS = ["Hybrid retrieval failed.", "Document find failed.", "Document find provenance failed.",
+  "Original source read failed.", "Investigation budget ended before a valid grounded answer."];
+
+const state = { conversationId: null, polling: new Map(), running: false, capReached: false, view: "ask", loadSeq: 0 };
 
 function store(key, value) {
   try { value === null ? localStorage.removeItem(key) : localStorage.setItem(key, value); } catch (_) { /* private mode */ }
 }
 function load(key) {
   try { return localStorage.getItem(key); } catch (_) { return null; }
+}
+
+// What each answer on screen needs after it is drawn: its sources, gaps and saved feedback.
+const turnData = new Map();
+
+function icon(name) {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("class", "icon");
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS(SVG_NS, "use");
+  use.setAttribute("href", `#i-${name}`);
+  svg.append(use);
+  return svg;
 }
 
 class ApiError extends Error {
@@ -43,6 +61,8 @@ function showSignIn(message) {
   if (state.conversationId) store(CONVERSATION_KEY, state.conversationId);
   stopPolling();
   closeSheet();
+  setNavOpen(false);
+  setAccountOpen(false);
   window.captureScreen.reset();
   $("app").hidden = true;
   document.title = "Knowledge";
@@ -88,7 +108,7 @@ async function startApp() {
   $("app").hidden = false;
   setSidebarCollapsed(load(SIDEBAR_KEY) === "1");
   const draft = load(DRAFT_KEY);
-  if (draft) { $("question").value = draft; store(DRAFT_KEY, null); }
+  if (draft) { $("question").value = draft; autosize(); store(DRAFT_KEY, null); }
   await refreshConversations();
   const remembered = load(CONVERSATION_KEY);
   store(CONVERSATION_KEY, null);
@@ -98,7 +118,7 @@ async function startApp() {
 
 async function refreshConversations() {
   const { conversations } = await api("GET", "/api/conversations");
-  const list = $("sheet-conversation-list");
+  const list = $("conversation-list");
   list.replaceChildren();
   for (const item of conversations) {
     const li = document.createElement("li");
@@ -107,11 +127,17 @@ async function refreshConversations() {
     button.className = "conversation";
     button.textContent = item.title;
     if (item.id === state.conversationId) button.setAttribute("aria-current", "true");
-    button.addEventListener("click", () => closeSheet(() => openConversation(item.id)));
+    button.addEventListener("click", () => { setNavOpen(false); openConversation(item.id); });
     li.append(button);
     list.append(li);
   }
   document.querySelector(".conversation-empty").hidden = conversations.length > 0;
+}
+
+// A new question has no answers yet: the heading and the question bar sit together in the middle of the page.
+function setEmpty(empty) {
+  $("empty-state").hidden = !empty;
+  $("view-ask").classList.toggle("is-empty", empty);
 }
 
 function stopPolling() {
@@ -121,29 +147,32 @@ function stopPolling() {
 
 // The question itself is the Ask tab's heading; the window title follows the conversation.
 function setTitle(title) {
-  state.title = title;
   document.title = title === "New question" ? "Knowledge" : `${title} - Knowledge`;
 }
 
 function newQuestion() {
+  state.loadSeq += 1;
   stopPolling();
   state.conversationId = null;
+  turnData.clear();
   $("turns").replaceChildren();
   setTitle("New question");
-  $("empty-state").hidden = false;
+  setEmpty(true);
   setRunning(false);
-  setView("ask");
-  $("question").focus();
+  setView("ask").then(() => $("question").focus());
 }
 
 async function openConversation(id) {
+  const mine = ++state.loadSeq;  // a slower, older request must not replace what the user opened since
   setView("ask");
   stopPolling();
   try {
     const conversation = await api("GET", `/api/conversations/${encodeURIComponent(id)}`);
+    if (mine !== state.loadSeq) return;
     state.conversationId = conversation.id;
     setTitle(conversation.title);
-    $("empty-state").hidden = true;
+    setEmpty(false);
+    turnData.clear();
     $("turns").replaceChildren();
     let running = false;
     for (const turn of conversation.turns) {
@@ -153,6 +182,7 @@ async function openConversation(id) {
     setRunning(running);
     refreshConversations();
   } catch (error) {
+    if (mine !== state.loadSeq) return;
     if (error.status !== 401) newQuestion();
   }
 }
@@ -161,24 +191,28 @@ async function openConversation(id) {
 async function ask(question) {
   if (!question || state.running || state.capReached) return;
   setRunning(true);
+  const mine = state.loadSeq;
   try {
     const path = state.conversationId
       ? `/api/conversations/${encodeURIComponent(state.conversationId)}/turns` : "/api/conversations";
     const started = await api("POST", path, { question });
     $("question").value = "";
+    autosize();
+    // The user moved to another conversation while this was being sent: it shows up in History, not here.
+    if (mine !== state.loadSeq) { setRunning(false); refreshConversations(); return; }
     if (state.conversationId !== started.conversation_id) {
       state.conversationId = started.conversation_id;
       setTitle(question);
     }
-    $("empty-state").hidden = true;
+    setEmpty(false);
     renderTurn({ id: started.turn_id, question, status: "running", created_at: new Date().toISOString() });
     poll(started.turn_id);
     refreshConversations();
   } catch (error) {
     setRunning(false);
     if (error.status === 429) showCap(error.body);
-    else if (error.status === 409) announce("An answer is still running in this conversation.");
-    else if (error.status !== 401) announce(error.message);
+    else if (error.status === 409) notify("An answer is still running in this conversation.");
+    else if (error.status !== 401) notify(error.message);
   }
 }
 
@@ -211,21 +245,24 @@ function showCap(body) {
   state.capReached = true;
   setRunning(false);
   const cap = body && body.cap_usd ? `$${body.cap_usd}` : "the daily limit";
-  announce(`Daily spending cap of ${cap} reached. It resets at ${body && body.resets ? body.resets : "midnight UTC"}.`, true);
+  notify(`Daily spending cap of ${cap} reached. It resets at ${body && body.resets ? body.resets : "midnight UTC"}.`, true);
 }
 
-function announce(message, visible) {
+// A quiet message for screen readers only.
+function announce(message) {
   $("status").textContent = message;
-  if (visible) {
-    let banner = document.querySelector(".banner");
-    if (!banner) {
-      banner = document.createElement("p");
-      banner.className = "banner";
-      banner.setAttribute("role", "alert");
-      $("composer").before(banner);
-    }
-    banner.textContent = message;
-  }
+}
+
+// A visible notice that shows on both tabs. The spending-cap one stays; the others fade after a while.
+let noticeTimer = null;
+function notify(message, sticky) {
+  const banner = $("banner");
+  // The spending-cap notice stays; later passing notices must not replace it.
+  if (state.capReached && !sticky) return;
+  banner.textContent = message;
+  banner.hidden = false;
+  clearTimeout(noticeTimer);
+  if (!sticky) noticeTimer = setTimeout(() => { if (!state.capReached) banner.hidden = true; }, 8000);
 }
 
 // Rendering -----------------------------------------------------------------------------------
@@ -236,68 +273,116 @@ function turnElement(turn) {
     element.dataset.id = turn.id;
     element.querySelector(".question").textContent = turn.question;
     element.querySelector(".retry").addEventListener("click", () => ask(turn.question));
-    wireFeedback(element, turn.id);
+    element.querySelector(".gap-chip").addEventListener("click", (event) => openGaps(turn.id, event.currentTarget));
+    element.querySelector(".thumbs").addEventListener("click", (event) => openFeedback(element, turn.id, event.currentTarget));
     $("turns").append(element);
   }
   return element;
+}
+
+// Split the receipt's gap strings: real gaps lose their internal code prefix; run problems are set apart.
+function splitGaps(raw) {
+  const gaps = [];
+  const problems = [];
+  for (const entry of raw || []) {
+    const text = String(entry).trim();
+    if (RUN_PROBLEMS.includes(text) || text.startsWith("Model stopped:")) { problems.push(text); continue; }
+    const sentence = text.replace(/^(?:Unresolved need\s+)?N\d+\s*:\s*/, "").trim();
+    if (sentence) gaps.push(sentence);
+  }
+  return { gaps, problems };
 }
 
 function renderTurn(turn) {
   const element = turnElement(turn);
   const stateLine = element.querySelector(".turn-state");
   const answer = element.querySelector(".answer");
-  const gaps = element.querySelector(".gaps");
+  const row = element.querySelector(".answer-row");
   element.dataset.status = turn.status;
   element.querySelector(".retry").hidden = turn.status !== "failed";
-  element.querySelector(".thumbs").hidden = !["done", "done_with_gaps"].includes(turn.status);
+  stateLine.classList.remove("sr-only");
   if (turn.status === "running") {
     const seconds = Math.max(0, Math.round((Date.now() - Date.parse(turn.created_at)) / 1000));
     stateLine.textContent = `Answering… ${seconds}s`;
+    row.hidden = true;
     return;
   }
   if (turn.status === "failed") {
     stateLine.textContent = turn.error || "The answer failed.";
     answer.replaceChildren();
+    row.hidden = true;
     return;
   }
+  // The gap icon says it visually; the words stay for screen readers.
   stateLine.textContent = turn.status === "done_with_gaps" ? "Answered with gaps" : "";
-  renderAnswer(element, turn.receipt || {});
-  gaps.replaceChildren();
-  for (const gap of (turn.receipt && turn.receipt.gaps) || []) {
-    const li = document.createElement("li");
-    li.textContent = gap;
-    gaps.append(li);
-  }
-  const feedback = turn.feedback;
-  const thumbs = element.querySelector(".thumbs");
-  thumbs.setAttribute("aria-pressed", feedback ? "true" : "false");
-  element.querySelector(".feedback-form").hidden = !feedback;
-  if (feedback && feedback.note) element.querySelector(".feedback-form textarea").value = feedback.note;
+  stateLine.classList.toggle("sr-only", turn.status === "done_with_gaps");
+  const receipt = turn.receipt || {};
+  const sources = renderAnswer(element, receipt, turn.id);
+  const { gaps, problems } = splitGaps(receipt.gaps);
+  turnData.set(turn.id, { sources, gaps, feedback: turn.feedback || null });
+  const note = element.querySelector(".run-note");
+  note.textContent = problems.join(" ");
+  note.hidden = problems.length === 0;
+  renderRow(element, turn.id);
 }
 
-function renderAnswer(element, receipt) {
+function renderRow(element, turnId) {
+  const data = turnData.get(turnId);
+  const numbers = element.querySelector(".source-numbers");
+  numbers.replaceChildren();
+  for (const [index, source] of data.sources.entries()) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "source-number";
+    button.textContent = String(source.number);
+    button.setAttribute("aria-label", `Source ${source.number}`);
+    button.setAttribute("aria-haspopup", "dialog");
+    button.addEventListener("click", (event) => openSource(turnId, index, event.currentTarget));
+    numbers.append(button);
+  }
+  element.querySelector(".row-label").hidden = data.sources.length === 0;
+  const chip = element.querySelector(".gap-chip");
+  chip.hidden = data.gaps.length === 0;
+  element.querySelector(".gap-count").textContent = String(data.gaps.length);
+  chip.setAttribute("aria-label", `${data.gaps.length} ${data.gaps.length === 1 ? "gap" : "gaps"} in this answer`);
+  element.querySelector(".thumbs").setAttribute("aria-pressed", data.feedback ? "true" : "false");
+  // The row always shows for a finished answer, so one with no sources still has its feedback button.
+  element.querySelector(".answer-row").hidden = false;
+}
+
+// Draws the answer and returns its sources in numbering order: passages from one file share one number.
+function renderAnswer(element, receipt, turnId) {
   const container = element.querySelector(".answer");
   container.replaceChildren();
   const citations = receipt.citations || {};
-  const numbers = new Map();
+  const found = new Map();
   const paragraphs = String(receipt.answer || "").split(/\n{2,}/);
   for (const text of paragraphs) {
     const p = document.createElement("p");
     for (const part of text.split(/(\[E\d+\.\d+(?:@\d+)?\])/)) {
       const match = /^\[(E\d+\.\d+(?:@\d+)?)\]$/.exec(part);
       if (match && citations[match[1]]) {
-        const ref = match[1];
-        // Passages from the same source file share one number.
-        const source = citations[ref].relative_path || ref;
-        if (!numbers.has(source)) numbers.set(source, numbers.size + 1);
-        const number = numbers.get(source);
+        const citation = citations[match[1]];
+        const key = citation.relative_path || match[1];
+        let source = found.get(key);
+        if (!source) {
+          const path = String(citation.relative_path || "");
+          source = {
+            number: found.size + 1, title: citation.title || path || match[1],
+            folder: path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "",
+            url: String(citation.obsidian_url || ""), passages: [],
+          };
+          found.set(key, source);
+        }
+        if (citation.text && !source.passages.includes(citation.text)) source.passages.push(citation.text);
         const marker = document.createElement("button");
         marker.type = "button";
         marker.className = "marker";
-        marker.textContent = String(number);
-        marker.setAttribute("aria-expanded", "false");
-        marker.setAttribute("aria-label", `Show source ${number}`);
-        marker.addEventListener("click", () => toggleExcerpt(element, marker, citations[ref]));
+        marker.textContent = String(source.number);
+        marker.setAttribute("aria-label", `Source ${source.number}`);
+        marker.setAttribute("aria-haspopup", "dialog");
+        const index = source.number - 1;
+        marker.addEventListener("click", (event) => openSource(turnId, index, event.currentTarget));
         p.append(marker);
       } else {
         p.append(document.createTextNode(part));
@@ -305,47 +390,190 @@ function renderAnswer(element, receipt) {
     }
     container.append(p);
   }
+  return [...found.values()];
 }
 
-function toggleExcerpt(element, marker, citation) {
-  const panel = element.querySelector(".excerpt");
-  const wasOpen = marker.getAttribute("aria-expanded") === "true";
-  for (const other of element.querySelectorAll(".marker")) other.setAttribute("aria-expanded", "false");
-  if (wasOpen) { panel.hidden = true; return; }
-  marker.setAttribute("aria-expanded", "true");
-  panel.querySelector(".excerpt-title").textContent = citation.title || citation.relative_path;
-  panel.querySelector(".excerpt-path").textContent = citation.relative_path;
-  panel.querySelector(".excerpt-text").textContent = citation.text;
-  const link = panel.querySelector(".open-obsidian");
-  const url = String(citation.obsidian_url || "");
-  if (url.startsWith("obsidian://")) { link.href = url; link.hidden = false; } else { link.removeAttribute("href"); link.hidden = true; }
-  panel.hidden = false;
+// Sheet content --------------------------------------------------------------------------------
+function textElement(tag, className, text) {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  element.textContent = text;
+  return element;
 }
 
-function wireFeedback(element, turnId) {
-  const thumbs = element.querySelector(".thumbs");
-  const form = element.querySelector(".feedback-form");
-  thumbs.addEventListener("click", async () => {
-    const on = thumbs.getAttribute("aria-pressed") === "true";
-    try {
-      if (on) {
+function fillSource(section, data, index) {
+  const source = data.sources[index];
+  const intro = document.createElement("div");
+  intro.className = "source-titles";
+  intro.append(textElement("span", "kicker", `Source ${source.number}`), textElement("h3", "sheet-heading", source.title));
+  // The folder path, then a plain underlined link to the note in Obsidian beside it.
+  const where = document.createElement("p");
+  where.className = "sheet-sub";
+  if (source.folder) where.append(textElement("span", "", source.folder));
+  const url = source.url;
+  if (url.startsWith("obsidian://")) {
+    if (source.folder) where.append(textElement("span", "dot", "·"));
+    const link = textElement("a", "open-obsidian", "See in Obsidian");
+    link.href = url;
+    where.append(link);
+  }
+  if (where.childNodes.length) intro.append(where);
+  const parts = [intro];
+  for (const passage of source.passages) parts.push(textElement("blockquote", "passage", passage));
+  if (data.sources.length > 1) {
+    const numbers = document.createElement("div");
+    numbers.className = "sheet-numbers";
+    for (const [other, item] of data.sources.entries()) {
+      const button = textElement("button", "sheet-number", String(item.number));
+      button.type = "button";
+      button.setAttribute("aria-label", `Source ${item.number}`);
+      if (other === index) button.setAttribute("aria-current", "true");
+      button.addEventListener("click", () => openSheet("source", null, (target) => fillSource(target, data, other)));
+      numbers.append(button);
+    }
+    parts.push(numbers);
+  }
+  section.replaceChildren(...parts);
+}
+
+function openSource(turnId, index, opener) {
+  const data = turnData.get(turnId);
+  if (!data || !data.sources[index]) return;
+  openSheet("source", opener, (section) => fillSource(section, data, index));
+}
+
+function fillGaps(section, data) {
+  const count = data.gaps.length;
+  const head = document.createElement("div");
+  head.className = "gap-head";
+  head.append(textElement("span", "kicker kicker-gap", `${count} ${count === 1 ? "gap" : "gaps"} in this answer`),
+    textElement("h3", "sheet-heading", "What’s missing"));
+  const list = document.createElement("div");
+  list.className = "gap-list";
+  for (const gap of data.gaps) {
+    const item = document.createElement("div");
+    item.className = "gap-item";
+    const add = textElement("button", "add-gap", "+ Add a note to fill this gap");
+    add.type = "button";
+    add.addEventListener("click", () => closeSheet(() => window.captureScreen.openWith(gap)));
+    item.append(textElement("p", "gap-text", gap), add);
+    list.append(item);
+  }
+  section.replaceChildren(head, list);
+}
+
+function openGaps(turnId, opener) {
+  const data = turnData.get(turnId);
+  if (!data || !data.gaps.length) return;
+  openSheet("gaps", opener, (section) => fillGaps(section, data));
+}
+
+// Thumbs-down: a note box and Send. A bottom sheet on phones; a panel under the answer on desktop.
+function buildFeedback(turnId, inline, done) {
+  const data = turnData.get(turnId);
+  const saved = data.feedback;
+  const form = document.createElement("form");
+  form.className = inline ? "feedback-panel" : "feedback-sheet";
+  const noteId = `feedback-note-${inline ? "inline-" : "sheet-"}${turnId}`;
+  const label = document.createElement("label");
+  label.htmlFor = noteId;
+  if (inline) {
+    label.className = "feedback-label";
+    label.append("What was wrong? ", textElement("span", "muted", "(optional)"));
+  } else {
+    label.className = "feedback-note-label";
+    label.textContent = "Note (optional)";
+  }
+  const textarea = document.createElement("textarea");
+  textarea.id = noteId;
+  textarea.rows = inline ? 2 : 4;
+  textarea.maxLength = 2000;
+  textarea.placeholder = "e.g. It should have used my notes on pricing";
+  textarea.value = saved && saved.note ? saved.note : "";
+  const message = textElement("p", "message small", "");
+  message.setAttribute("role", "alert");
+  const send = textElement("button", "primary send-feedback", "Send feedback");
+  send.type = "submit";
+  const actions = document.createElement("div");
+  actions.className = "feedback-actions";
+  if (inline) {
+    const cancel = textElement("button", "plain", "Cancel");
+    cancel.type = "button";
+    cancel.addEventListener("click", () => done());
+    actions.append(cancel);
+  }
+  if (saved) {
+    const remove = textElement("button", "link", "Remove feedback");
+    remove.type = "button";
+    remove.addEventListener("click", async () => {
+      remove.disabled = true;
+      send.disabled = true;
+      try {
         await api("DELETE", `/api/turns/${encodeURIComponent(turnId)}/feedback`);
-        thumbs.setAttribute("aria-pressed", "false");
-        form.hidden = true;
-      } else {
-        await api("POST", `/api/turns/${encodeURIComponent(turnId)}/feedback`, {});
-        thumbs.setAttribute("aria-pressed", "true");
-        form.hidden = false;
-        form.querySelector("textarea").focus();
+        data.feedback = null;
+        refreshThumbs(turnId);
+        announce("Feedback removed.");
+        done();
+      } catch (error) {
+        if (error.status !== 401) message.textContent = error.message;
+        remove.disabled = false;
+        send.disabled = false;
       }
-    } catch (error) { if (error.status !== 401) announce(error.message, true); }
-  });
+    });
+    actions.append(remove);
+  }
+  actions.append(send);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
+    send.disabled = true;
+    message.textContent = "";
     try {
-      await api("POST", `/api/turns/${encodeURIComponent(turnId)}/feedback`, { note: form.querySelector("textarea").value });
-      announce("Note saved.");
-    } catch (error) { if (error.status !== 401) announce(error.message, true); }
+      await api("POST", `/api/turns/${encodeURIComponent(turnId)}/feedback`, { note: textarea.value });
+      data.feedback = { note: textarea.value };
+      refreshThumbs(turnId);
+      announce("Feedback saved.");
+      done();
+    } catch (error) {
+      if (error.status !== 401) message.textContent = error.message;
+    } finally { send.disabled = false; }
+  });
+  if (inline) {
+    form.append(label, textarea, message, actions);
+  } else {
+    const heading = document.createElement("div");
+    heading.className = "feedback-heading";
+    heading.append(textElement("h3", "sheet-heading", "What was wrong?"),
+      textElement("p", "sheet-note", "This answer is saved as a test question, so future answers can be checked against it."));
+    const field = document.createElement("div");
+    field.className = "feedback-field";
+    field.append(label, textarea);
+    form.append(heading, field, message, actions);
+  }
+  return form;
+}
+
+function refreshThumbs(turnId) {
+  const element = document.querySelector(`.turn[data-id="${CSS.escape(turnId)}"]`);
+  if (element) element.querySelector(".thumbs").setAttribute("aria-pressed", turnData.get(turnId).feedback ? "true" : "false");
+}
+
+function openFeedback(element, turnId, opener) {
+  if (!turnData.get(turnId)) return;
+  if (!phone.matches) {
+    const panel = element.querySelector(".feedback-inline");
+    if (!panel.hidden) { panel.hidden = true; panel.replaceChildren(); return; }
+    const close = () => { panel.hidden = true; panel.replaceChildren(); opener.focus(); };
+    panel.replaceChildren(buildFeedback(turnId, true, close));
+    panel.hidden = false;
+    panel.querySelector("textarea").focus();
+    return;
+  }
+  // The note may be saved after the sheet was dismissed; only close the sheet this form lives in.
+  const serial = sheet.serial + 1;
+  openSheet("feedback", opener, (section) => {
+    section.replaceChildren(buildFeedback(turnId, false, () => {
+      if (sheet.open && sheet.name === "feedback" && sheet.serial === serial) closeSheet();
+    }));
   });
 }
 
@@ -368,19 +596,43 @@ function setView(view) {
   return new Promise((resolve) => closeSheet(() => resolve(applyView(view))));
 }
 
-const SHEET_TITLES = { history: "History" };
-const sheet = { open: false, closing: false, opener: null, afterClose: [] };
+const SHEET_TITLES = { source: "Source", gaps: "What’s missing", feedback: "What was wrong?" };
+const sheet = { open: false, closing: false, opener: null, name: null, serial: 0, afterClose: [] };
+// Source and Gaps swap in place while the desktop panel stays open; the other sheets never do.
+const SWAPPABLE = new Set(["source", "gaps"]);
 
-function openSheet(name, opener) {
-  if (sheet.open) return;
+// `fill` builds the sheet's content (Source, Gaps, Feedback).
+// Source and Gaps can swap in place while open (the desktop panel stays beside the page): same history entry.
+function openSheet(name, opener, fill) {
+  const swapping = sheet.open && !sheet.closing && SWAPPABLE.has(name) && SWAPPABLE.has(sheet.name);
+  if ((sheet.open && !swapping) || sheet.closing) return;
+  const section = $("sheet").querySelector(`[data-sheet="${name}"]`);
+  if (fill) fill(section);
+  const root = $("sheet");
+  root.setAttribute("aria-label", SHEET_TITLES[name]);
+  root.dataset.kind = name;
+  $("app").dataset.sheet = name;
+  for (const other of root.querySelectorAll("[data-sheet]")) other.hidden = other.dataset.sheet !== name;
+  sheet.name = name;
+  syncModal();
+  if (swapping) {
+    // Keep keyboard focus on the number just chosen, or on the sheet itself.
+    (root.querySelector('.sheet-number[aria-current="true"]') || root).focus();
+    return;
+  }
   sheet.open = true;
+  sheet.serial += 1;
   sheet.opener = opener || document.activeElement;
   history.pushState({ ka: "sheet", name }, "");
-  $("sheet-title").textContent = SHEET_TITLES[name];
-  for (const section of $("sheet").querySelectorAll("[data-sheet]")) section.hidden = section.dataset.sheet !== name;
-  $("sheet").hidden = false;
+  root.hidden = false;
   $("sheet-scrim").hidden = false;
-  $("sheet-close").focus();
+  root.focus();
+}
+
+// On desktop the Source and Gaps panel sits beside the page: keyboard users can leave it with Tab.
+function syncModal() {
+  const beside = SWAPPABLE.has(sheet.name) && !phone.matches;
+  $("sheet").setAttribute("aria-modal", beside ? "false" : "true");
 }
 
 function teardownSheet() {
@@ -388,14 +640,19 @@ function teardownSheet() {
   sheet.closing = false;
   $("sheet").hidden = true;
   $("sheet-scrim").hidden = true;
+  delete $("app").dataset.sheet;
+  for (const section of $("sheet").querySelectorAll("[data-sheet]")) section.replaceChildren();
+  sheet.name = null;
   const opener = sheet.opener;
   sheet.opener = null;
   const after = sheet.afterClose.splice(0);
-  for (const run of after) run();
+  for (const run of after) {
+    try { run(); } catch (_) { /* one failing follow-up must not skip the others or the focus return */ }
+  }
   // Keep keyboard focus somewhere real: back on the opener unless a follow-up action already moved it.
   if (!document.activeElement || document.activeElement === document.body) {
     // The opener may have been hidden meanwhile (the window crossed the phone/desktop width).
-    const visible = [opener, $("history-button"), $("sidebar-history")].find((el) => el && el.isConnected && el.getClientRects().length);
+    const visible = [opener, $("sidebar-history")].find((el) => el && el.isConnected && el.getClientRects().length);
     if (visible) visible.focus();
   }
 }
@@ -411,7 +668,7 @@ function closeSheet(after) {
 }
 
 function trapFocus(event) {
-  if (!sheet.open || event.key !== "Tab") return;
+  if (!sheet.open || event.key !== "Tab" || $("sheet").getAttribute("aria-modal") === "false") return;
   const items = [...$("sheet").querySelectorAll("button, a[href], input, textarea")].filter((el) => !el.closest("[hidden]"));
   if (!items.length) return;
   const first = items[0];
@@ -421,10 +678,52 @@ function trapFocus(event) {
   else if (!$("sheet").contains(document.activeElement)) { event.preventDefault(); first.focus(); }
 }
 
+// Navigation -----------------------------------------------------------------------------------
+// Desktop: a sidebar beside the page. Phone: the same sidebar is a drawer opened by the icon at the top left.
+// History opens in place under its item; the account circle at the foot opens the sign-out options.
+const phone = window.matchMedia("(max-width: 899px)");
+const navState = { open: false, historyOpen: true };
+
+function syncHistory() {
+  const collapsed = !phone.matches && document.body.classList.contains("sidebar-collapsed");
+  document.body.classList.toggle("history-closed", !navState.historyOpen);
+  $("sidebar-history").setAttribute("aria-expanded", !collapsed && navState.historyOpen ? "true" : "false");
+}
+
+function setNavOpen(open) {
+  // Closing the drawer while focus is inside it: put focus back on the menu button.
+  const hadFocus = !open && phone.matches && $("sidebar").contains(document.activeElement);
+  navState.open = open;
+  // While the drawer is open on a phone, the page behind it cannot be reached or tabbed to.
+  document.querySelector(".main").inert = open && phone.matches;
+  document.body.classList.toggle("nav-open", open);
+  $("nav-scrim").hidden = !open;
+  $("nav-button").setAttribute("aria-expanded", open ? "true" : "false");
+  if (!open) setAccountOpen(false);
+  syncHistory();
+  if (hadFocus) $("nav-button").focus();
+}
+
+function toggleHistory() {
+  if (!phone.matches && document.body.classList.contains("sidebar-collapsed")) {
+    setSidebarCollapsed(false);
+    store(SIDEBAR_KEY, null);
+    navState.historyOpen = true;
+  } else {
+    navState.historyOpen = !navState.historyOpen;
+  }
+  syncHistory();
+}
+
+function setAccountOpen(open) {
+  $("account-menu").hidden = !open;
+  $("account-button").setAttribute("aria-expanded", open ? "true" : "false");
+}
+
 function setSidebarCollapsed(collapsed) {
   document.body.classList.toggle("sidebar-collapsed", collapsed);
   $("collapse").setAttribute("aria-expanded", collapsed ? "false" : "true");
-  $("collapse").setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
+  syncHistory();
 }
 
 // Only say "signed out" once the server has said so; a failed request must not look like success.
@@ -438,6 +737,9 @@ async function signOut(everywhere) {
     for (const notice of notices) notice.textContent = "Could not sign out. Check your connection and try again.";
     return;
   }
+  // A deliberate sign-out leaves no unsent draft behind for the next person on this browser.
+  $("question").value = "";
+  store(DRAFT_KEY, null);
   showSignIn(everywhere ? "Signed out on every device." : "");
 }
 
@@ -460,11 +762,32 @@ document.addEventListener("DOMContentLoaded", async () => {
       ask($("question").value.trim());
     }
   });
-  $("sheet-new").addEventListener("click", () => closeSheet(newQuestion));
-  for (const tab of document.querySelectorAll("[data-tab]")) tab.addEventListener("click", () => setView(tab.dataset.tab));
-  for (const id of ["history-button", "sidebar-history"]) {
-    $(id).addEventListener("click", (event) => openSheet("history", event.currentTarget));
+  $("new-question").addEventListener("click", () => { setNavOpen(false); newQuestion(); });
+  for (const tab of document.querySelectorAll("[data-tab]")) {
+    tab.addEventListener("click", () => { setNavOpen(false); setView(tab.dataset.tab); });
   }
+  $("sidebar-history").addEventListener("click", toggleHistory);
+  $("nav-button").addEventListener("click", () => { setNavOpen(!navState.open); if (navState.open) $("sidebar-history").focus(); });
+  $("nav-close").addEventListener("click", () => setNavOpen(false));
+  $("account-button").addEventListener("click", () => setAccountOpen($("account-menu").hidden));
+  // A click anywhere else folds the account menu away. The desktop panel has no dimmed backdrop: a click on the
+  // page behind it closes it, but not a click on the panel or on the controls that open or swap it. Where the click
+  // happened is read from the event path, because a control may already have been replaced by the time this runs.
+  const SHEET_CONTROLS = ["marker", "source-number", "gap-chip", "thumbs"];
+  let pressedInSheet = false;
+  document.addEventListener("pointerdown", (event) => {
+    pressedInSheet = event.composedPath().some((node) => node.id === "sheet");
+  }, true);
+  document.addEventListener("click", (event) => {
+    const path = event.composedPath();
+    if (!$("account-menu").hidden && !path.some((node) => node.classList && node.classList.contains("sidebar-foot"))) setAccountOpen(false);
+    const onSheet = path.some((node) => node.id === "sheet" || (node.classList && SHEET_CONTROLS.some((name) => node.classList.contains(name))));
+    // A text selection that starts inside the panel and ends outside it is not a click outside.
+    if (sheet.open && !sheet.closing && !onSheet && !pressedInSheet) closeSheet();
+    pressedInSheet = false;
+  });
+  $("nav-scrim").addEventListener("click", () => setNavOpen(false));
+  phone.addEventListener("change", () => { setNavOpen(false); syncModal(); });
   $("collapse").addEventListener("click", () => {
     const collapsed = !document.body.classList.contains("sidebar-collapsed");
     setSidebarCollapsed(collapsed);
@@ -474,7 +797,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("sheet-scrim").addEventListener("click", () => closeSheet());
   window.addEventListener("popstate", () => { if (sheet.open) teardownSheet(); });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeSheet();
+    if (event.key === "Escape") {
+      closeSheet();
+      if (!$("account-menu").hidden) { setAccountOpen(false); $("account-button").focus(); }
+      else if (navState.open) setNavOpen(false);
+    }
     trapFocus(event);
   });
   for (const button of document.querySelectorAll(".sign-out")) button.addEventListener("click", () => signOut(false));
