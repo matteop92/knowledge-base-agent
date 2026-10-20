@@ -11,7 +11,7 @@
   --surface: #ffffff;
   --ink: #1d1c1a;
   --ink-soft: #4e4b45;
-  --muted: #6b675f;
+  --muted: #625e57;
   --chip: #ece8df;
   --pill: #e6e1d6;
   --hover: rgba(29, 28, 26, 0.06);
@@ -41,6 +41,8 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body { background: var(--ground); color: var(--ink); }
+/* A landscape phone with a camera cut-out: keep content out from under it (needs viewport-fit=cover). */
+body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
 [hidden] { display: none !important; }
 h1, h2, h3 { margin: 0; }
 button, input, textarea { font: inherit; color: inherit; }
@@ -296,7 +298,7 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 @media (max-width: 899px) {
   .app { grid-template-columns: minmax(0, 1fr); }
   .topbar { display: flex; }
-  .sidebar { display: none; position: fixed; z-index: 45; left: 0; top: 0; bottom: 0; width: min(300px, 86vw); padding: 14px 8px calc(14px + env(safe-area-inset-bottom)); box-shadow: 12px 0 32px rgba(29, 28, 26, 0.14); }
+  .sidebar { display: none; position: fixed; z-index: 45; left: 0; top: 0; bottom: 0; width: min(300px, 86vw); padding: 14px 8px calc(14px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left)); box-shadow: 12px 0 32px rgba(29, 28, 26, 0.14); }
   .nav-open .sidebar { display: flex; }
   #collapse { display: none; }
   .nav-open .nav-close { display: inline-flex; }
