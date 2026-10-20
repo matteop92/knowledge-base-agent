@@ -111,8 +111,8 @@ class ShellSourceTests(unittest.TestCase):
         self.assertEqual(len(re.findall(r'id="nav-button"', page)), 1)  # the one icon at the top left on phones
         self.assertNotIn('class="tabbar"', page)
         # Sign-out options live in the account menu opened from the circle at the foot of the sidebar.
-        self.assertRegex(page, r'id="account-button"[^>]*aria-haspopup="menu"')
-        self.assertLess(page.index('id="account-button"'), page.index('id="sheet-new"'))
+        self.assertRegex(page, r'id="account-button"[^>]*aria-expanded="false"')
+        self.assertLess(page.index('id="account-button"'), page.index('id="new-question"'))
         self.assertEqual(script.count('addEventListener("popstate"'), 1)
         # The back-button contract: opening pushes one history entry, closing goes back once, and only
         # the popstate handler tears the sheet down (so a double tap cannot pop two entries).
@@ -155,6 +155,12 @@ console.log(JSON.stringify(splitGaps([
         result = json.loads(out)
         self.assertEqual(result["gaps"], ["Find advice on hiring", "No note covers X.", "Short one"])
         self.assertEqual(result["problems"], ["Investigation budget ended before a valid grounded answer.", "Model stopped: timeout."])
+
+    def test_click_outside_reads_the_event_path_not_the_live_dom(self) -> None:
+        # A source number inside the panel is replaced when it is clicked; the outside-click check must still see it.
+        script = (WEB / "app.js").read_text(encoding="utf-8")
+        self.assertIn("composedPath()", script)
+        self.assertNotIn('event.target.closest("#sheet', script)
 
     def test_notices_live_outside_the_ask_tab_so_the_add_tab_shows_them(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")

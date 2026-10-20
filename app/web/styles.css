@@ -79,7 +79,7 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 .signin input { min-height: 40px; background: var(--surface); box-shadow: var(--shadow); }
 .signin .primary { min-height: 40px; font-size: 14px; }
 
-/* Layout: one sidebar. Beside the page on desktop; a slim rail on phones that grows over the page. ---- */
+/* Layout: one sidebar. Beside the page on desktop; a drawer over the page on phones. ---- */
 .app { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); height: 100dvh; transition: grid-template-columns 200ms ease; }
 .main { display: grid; grid-template-rows: auto auto 1fr; min-width: 0; min-height: 0; }
 .topbar { display: none; grid-row: 1; align-items: center; padding: 6px 8px 0; }
@@ -89,7 +89,7 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 .column { width: 100%; max-width: 640px; margin: 0 auto; }
 
 /* Sidebar */
-.sidebar { display: flex; flex-direction: column; gap: 16px; padding: 14px 8px; background: var(--sidebar); overflow-y: auto; min-height: 0; }
+.sidebar { display: flex; flex-direction: column; gap: 16px; padding: 14px 8px; background: var(--sidebar); min-height: 0; }
 .sidebar-top { height: var(--ctl); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .sidebar-top .brand { padding: 0 10px; }
 #collapse { border-radius: 8px; color: var(--ink-soft); }
@@ -100,15 +100,16 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 .side-item .chevron { margin-left: auto; width: 16px; height: 16px; transition: transform 150ms ease; }
 .side-item[aria-expanded="false"] .chevron { transform: rotate(-90deg); }
 /* History opens in place under its item. */
-.history-panel { display: flex; flex-direction: column; gap: 2px; min-height: 0; padding-left: 8px; }
+.history-panel { display: flex; flex-direction: column; gap: 2px; min-height: 0; flex: 0 1 auto; overflow-y: auto; padding-left: 8px; }
 .history-closed .history-panel { display: none; }
 .conversation-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
 .conversation { width: 100%; height: auto; min-height: var(--ctl); padding: 6px 10px; border-radius: 8px; background: transparent; color: var(--ink-soft); text-align: left; font-size: 14px; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 .conversation:hover:not(:disabled) { background: var(--hover); }
 .conversation[aria-current="true"] { background: var(--ground); color: var(--ink); font-weight: 400; }
-.conversation-empty { margin: 0; padding: 4px 10px; font-size: 14px; }
+.conversation-empty { margin: 0; padding: 4px 10px; font-size: 14px; color: var(--ink-soft); }
 /* Foot of the sidebar: the account circle on the left, the New question pill on the right. */
 .sidebar-foot { position: relative; margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px; }
+.nav-close { display: none; }
 .avatar { width: var(--ctl); height: var(--ctl); padding: 0; flex: none; background: var(--pill); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; }
 .avatar:hover:not(:disabled), .avatar[aria-expanded="true"] { background: var(--handle); }
 .new-pill { padding: 0 14px; background: var(--accent); color: var(--accent-ink); font-weight: 400; display: inline-flex; align-items: center; gap: 6px; }
@@ -123,7 +124,6 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 /* Ask */
 .view-ask { display: grid; grid-template-rows: 1fr auto; }
 .thread { overflow-y: auto; padding: 48px 40px 20px; }
-.empty-state { margin-top: 16vh; }
 /* A new question: the heading and the question bar sit together in the middle. */
 .view-ask.is-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding-bottom: 8vh; }
 .view-ask.is-empty .thread { flex: none; overflow: visible; padding: 0 24px 4px; }
@@ -181,14 +181,14 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 .send .icon { width: 16px; height: 16px; }
 
 /* Add */
-.view-add { overflow-y: auto; padding: 48px 40px 24px; }
+.view-add { overflow-y: auto; padding: 64px 40px 24px; }
 /* Add keeps the compact phone proportions on desktop: one narrow column, centred. */
 .view-add .column { max-width: 480px; }
-.view-add { padding-top: 64px; }
 .view-add h1 { font-family: var(--serif); font-weight: 500; font-size: 26px; line-height: 1.2; letter-spacing: -0.015em; margin: 0 0 20px; }
 .capture.dragging { background: rgba(47, 93, 80, 0.06); }
 .card { background: var(--surface); border-radius: 16px; box-shadow: var(--shadow-card); padding: 16px; }
 .capture-form { display: flex; flex-direction: column; gap: 12px; }
+.capture-form:focus-within { box-shadow: var(--shadow-card), 0 0 0 1px rgba(29, 28, 26, 0.2); }
 .capture-form > textarea { border: 0; width: 100%; resize: none; background: transparent; padding: 0; border-radius: 0; font-size: 16px; line-height: 1.55; min-height: 40px; }
 .capture-form > textarea:focus-visible { outline: none; }
 .capture-form .message.ok { color: var(--ink); font-weight: 600; }
@@ -266,7 +266,7 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 .feedback-note-label { font-size: 12px; color: var(--muted); }
 .feedback-sheet textarea { width: 100%; resize: none; border-radius: 12px; padding: 10px 14px; font-size: 14px; line-height: 1.5; }
 .feedback-sheet .feedback-actions { flex-direction: column-reverse; align-items: stretch; }
-.feedback-sheet .send-feedback { height: 40px; }
+.feedback-sheet .send-feedback { height: var(--ctl); }
 
 /* Desktop only ------------------------------------------------------------------------------------ */
 @media (min-width: 900px) {
@@ -299,9 +299,9 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
   .sidebar { display: none; position: fixed; z-index: 45; left: 0; top: 0; bottom: 0; width: min(300px, 86vw); padding: 14px 8px calc(14px + env(safe-area-inset-bottom)); box-shadow: 12px 0 32px rgba(29, 28, 26, 0.14); }
   .nav-open .sidebar { display: flex; }
   #collapse { display: none; }
+  .nav-open .nav-close { display: inline-flex; }
   .nav-scrim { z-index: 44; }
   .thread, .view-add { padding: 12px 20px 16px; }
-  .empty-state { margin-top: 8vh; }
   .view-ask.is-empty .composer { padding-left: 14px; padding-right: 14px; }
   .question { font-size: 22px; }
   .composer { padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); }

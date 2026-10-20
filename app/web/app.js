@@ -12,7 +12,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const RUN_PROBLEMS = ["Hybrid retrieval failed.", "Document find failed.", "Document find provenance failed.",
   "Original source read failed.", "Investigation budget ended before a valid grounded answer."];
 
-const state = { conversationId: null, polling: new Map(), running: false, capReached: false, view: "ask", title: "New question" };
+const state = { conversationId: null, polling: new Map(), running: false, capReached: false, view: "ask", loadSeq: 0 };
 
 function store(key, value) {
   try { value === null ? localStorage.removeItem(key) : localStorage.setItem(key, value); } catch (_) { /* private mode */ }
@@ -24,9 +24,9 @@ function load(key) {
 // What each answer on screen needs after it is drawn: its sources, gaps and saved feedback.
 const turnData = new Map();
 
-function icon(name, className) {
+function icon(name) {
   const svg = document.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("class", className || "icon");
+  svg.setAttribute("class", "icon");
   svg.setAttribute("aria-hidden", "true");
   const use = document.createElementNS(SVG_NS, "use");
   use.setAttribute("href", `#i-${name}`);
@@ -108,7 +108,7 @@ async function startApp() {
   $("app").hidden = false;
   setSidebarCollapsed(load(SIDEBAR_KEY) === "1");
   const draft = load(DRAFT_KEY);
-  if (draft) { $("question").value = draft; store(DRAFT_KEY, null); }
+  if (draft) { $("question").value = draft; autosize(); store(DRAFT_KEY, null); }
   await refreshConversations();
   const remembered = load(CONVERSATION_KEY);
   store(CONVERSATION_KEY, null);
@@ -118,7 +118,7 @@ async function startApp() {
 
 async function refreshConversations() {
   const { conversations } = await api("GET", "/api/conversations");
-  const list = $("sheet-conversation-list");
+  const list = $("conversation-list");
   list.replaceChildren();
   for (const item of conversations) {
     const li = document.createElement("li");
@@ -147,11 +147,11 @@ function stopPolling() {
 
 // The question itself is the Ask tab's heading; the window title follows the conversation.
 function setTitle(title) {
-  state.title = title;
   document.title = title === "New question" ? "Knowledge" : `${title} - Knowledge`;
 }
 
 function newQuestion() {
+  state.loadSeq += 1;
   stopPolling();
   state.conversationId = null;
   turnData.clear();
@@ -159,15 +159,16 @@ function newQuestion() {
   setTitle("New question");
   setEmpty(true);
   setRunning(false);
-  setView("ask");
-  $("question").focus();
+  setView("ask").then(() => $("question").focus());
 }
 
 async function openConversation(id) {
+  const mine = ++state.loadSeq;  // a slower, older request must not replace what the user opened since
   setView("ask");
   stopPolling();
   try {
     const conversation = await api("GET", `/api/conversations/${encodeURIComponent(id)}`);
+    if (mine !== state.loadSeq) return;
     state.conversationId = conversation.id;
     setTitle(conversation.title);
     setEmpty(false);
@@ -181,6 +182,7 @@ async function openConversation(id) {
     setRunning(running);
     refreshConversations();
   } catch (error) {
+    if (mine !== state.loadSeq) return;
     if (error.status !== 401) newQuestion();
   }
 }
@@ -189,11 +191,15 @@ async function openConversation(id) {
 async function ask(question) {
   if (!question || state.running || state.capReached) return;
   setRunning(true);
+  const mine = state.loadSeq;
   try {
     const path = state.conversationId
       ? `/api/conversations/${encodeURIComponent(state.conversationId)}/turns` : "/api/conversations";
     const started = await api("POST", path, { question });
     $("question").value = "";
+    autosize();
+    // The user moved to another conversation while this was being sent: it shows up in History, not here.
+    if (mine !== state.loadSeq) { setRunning(false); refreshConversations(); return; }
     if (state.conversationId !== started.conversation_id) {
       state.conversationId = started.conversation_id;
       setTitle(question);
@@ -553,7 +559,7 @@ function refreshThumbs(turnId) {
 
 function openFeedback(element, turnId, opener) {
   if (!turnData.get(turnId)) return;
-  if (window.matchMedia("(min-width: 900px)").matches) {
+  if (!phone.matches) {
     const panel = element.querySelector(".feedback-inline");
     if (!panel.hidden) { panel.hidden = true; panel.replaceChildren(); return; }
     const close = () => { panel.hidden = true; panel.replaceChildren(); opener.focus(); };
@@ -595,7 +601,7 @@ const sheet = { open: false, closing: false, opener: null, name: null, serial: 0
 // Source and Gaps swap in place while the desktop panel stays open; the other sheets never do.
 const SWAPPABLE = new Set(["source", "gaps"]);
 
-// `fill` builds the sheet's content (Source, Gaps, Feedback); History is static markup.
+// `fill` builds the sheet's content (Source, Gaps, Feedback).
 // Source and Gaps can swap in place while open (the desktop panel stays beside the page): same history entry.
 function openSheet(name, opener, fill) {
   const swapping = sheet.open && !sheet.closing && SWAPPABLE.has(name) && SWAPPABLE.has(sheet.name);
@@ -605,11 +611,10 @@ function openSheet(name, opener, fill) {
   const root = $("sheet");
   root.setAttribute("aria-label", SHEET_TITLES[name]);
   root.dataset.kind = name;
-  // On desktop the Source and Gaps panel sits beside the page: keyboard users can leave it with Tab.
-  root.setAttribute("aria-modal", SWAPPABLE.has(name) && window.matchMedia("(min-width: 900px)").matches ? "false" : "true");
   $("app").dataset.sheet = name;
   for (const other of root.querySelectorAll("[data-sheet]")) other.hidden = other.dataset.sheet !== name;
   sheet.name = name;
+  syncModal();
   if (swapping) {
     // Keep keyboard focus on the number just chosen, or on the sheet itself.
     (root.querySelector('.sheet-number[aria-current="true"]') || root).focus();
@@ -624,13 +629,19 @@ function openSheet(name, opener, fill) {
   root.focus();
 }
 
+// On desktop the Source and Gaps panel sits beside the page: keyboard users can leave it with Tab.
+function syncModal() {
+  const beside = SWAPPABLE.has(sheet.name) && !phone.matches;
+  $("sheet").setAttribute("aria-modal", beside ? "false" : "true");
+}
+
 function teardownSheet() {
   sheet.open = false;
   sheet.closing = false;
   $("sheet").hidden = true;
   $("sheet-scrim").hidden = true;
   delete $("app").dataset.sheet;
-  for (const section of $("sheet").querySelectorAll("[data-sheet]:not([data-sheet='history'])")) section.replaceChildren();
+  for (const section of $("sheet").querySelectorAll("[data-sheet]")) section.replaceChildren();
   sheet.name = null;
   const opener = sheet.opener;
   sheet.opener = null;
@@ -680,12 +691,17 @@ function syncHistory() {
 }
 
 function setNavOpen(open) {
+  // Closing the drawer while focus is inside it: put focus back on the menu button.
+  const hadFocus = !open && phone.matches && $("sidebar").contains(document.activeElement);
   navState.open = open;
+  // While the drawer is open on a phone, the page behind it cannot be reached or tabbed to.
+  document.querySelector(".main").inert = open && phone.matches;
   document.body.classList.toggle("nav-open", open);
   $("nav-scrim").hidden = !open;
   $("nav-button").setAttribute("aria-expanded", open ? "true" : "false");
   if (!open) setAccountOpen(false);
   syncHistory();
+  if (hadFocus) $("nav-button").focus();
 }
 
 function toggleHistory() {
@@ -707,7 +723,6 @@ function setAccountOpen(open) {
 function setSidebarCollapsed(collapsed) {
   document.body.classList.toggle("sidebar-collapsed", collapsed);
   $("collapse").setAttribute("aria-expanded", collapsed ? "false" : "true");
-  $("collapse").setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
   syncHistory();
 }
 
@@ -722,6 +737,9 @@ async function signOut(everywhere) {
     for (const notice of notices) notice.textContent = "Could not sign out. Check your connection and try again.";
     return;
   }
+  // A deliberate sign-out leaves no unsent draft behind for the next person on this browser.
+  $("question").value = "";
+  store(DRAFT_KEY, null);
   showSignIn(everywhere ? "Signed out on every device." : "");
 }
 
@@ -744,21 +762,32 @@ document.addEventListener("DOMContentLoaded", async () => {
       ask($("question").value.trim());
     }
   });
-  $("sheet-new").addEventListener("click", () => { setNavOpen(false); newQuestion(); });
+  $("new-question").addEventListener("click", () => { setNavOpen(false); newQuestion(); });
   for (const tab of document.querySelectorAll("[data-tab]")) {
     tab.addEventListener("click", () => { setNavOpen(false); setView(tab.dataset.tab); });
   }
   $("sidebar-history").addEventListener("click", toggleHistory);
-  $("nav-button").addEventListener("click", () => { setNavOpen(true); $("sidebar-history").focus(); });
+  $("nav-button").addEventListener("click", () => { setNavOpen(!navState.open); if (navState.open) $("sidebar-history").focus(); });
+  $("nav-close").addEventListener("click", () => setNavOpen(false));
   $("account-button").addEventListener("click", () => setAccountOpen($("account-menu").hidden));
-  // A click anywhere else folds the account menu away.
+  // A click anywhere else folds the account menu away. The desktop panel has no dimmed backdrop: a click on the
+  // page behind it closes it, but not a click on the panel or on the controls that open or swap it. Where the click
+  // happened is read from the event path, because a control may already have been replaced by the time this runs.
+  const SHEET_CONTROLS = ["marker", "source-number", "gap-chip", "thumbs"];
+  let pressedInSheet = false;
+  document.addEventListener("pointerdown", (event) => {
+    pressedInSheet = event.composedPath().some((node) => node.id === "sheet");
+  }, true);
   document.addEventListener("click", (event) => {
-    if (!$("account-menu").hidden && !event.target.closest(".sidebar-foot")) setAccountOpen(false);
-    // The desktop panel has no dimmed backdrop: a click on the page behind it closes it. Controls that open or swap it do not.
-    if (sheet.open && !sheet.closing && !event.target.closest("#sheet, .marker, .source-number, .gap-chip, .thumbs")) closeSheet();
+    const path = event.composedPath();
+    if (!$("account-menu").hidden && !path.some((node) => node.classList && node.classList.contains("sidebar-foot"))) setAccountOpen(false);
+    const onSheet = path.some((node) => node.id === "sheet" || (node.classList && SHEET_CONTROLS.some((name) => node.classList.contains(name))));
+    // A text selection that starts inside the panel and ends outside it is not a click outside.
+    if (sheet.open && !sheet.closing && !onSheet && !pressedInSheet) closeSheet();
+    pressedInSheet = false;
   });
   $("nav-scrim").addEventListener("click", () => setNavOpen(false));
-  phone.addEventListener("change", () => setNavOpen(false));
+  phone.addEventListener("change", () => { setNavOpen(false); syncModal(); });
   $("collapse").addEventListener("click", () => {
     const collapsed = !document.body.classList.contains("sidebar-collapsed");
     setSidebarCollapsed(collapsed);
@@ -771,7 +800,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (event.key === "Escape") {
       closeSheet();
       if (!$("account-menu").hidden) { setAccountOpen(false); $("account-button").focus(); }
-      else if (navState.open) { setNavOpen(false); $("nav-button").focus(); }
+      else if (navState.open) setNavOpen(false);
     }
     trapFocus(event);
   });
