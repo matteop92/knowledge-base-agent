@@ -201,6 +201,26 @@ class CaptureApiTests(unittest.TestCase):
         self.assertEqual((job["status"], job["error"]), ("failed", "this video is private or unavailable"))
         self.assertEqual(self.spend(), [])
 
+    def test_a_youtube_failure_after_naming_speakers_still_reaches_the_ledger(self):
+        def fail(item):
+            exc = CaptureError("YouTube transcripts are busy right now; try again in a few minutes")
+            exc.cost_usd = 0.002
+            raise exc
+        self.transcriber.extract = fail
+        job = self.finished(self.client.post("/api/captures", json={"kind": "youtube", "content": "youtu.be/jNQXAC9IVRw"})
+                            .json()["capture_id"])
+        self.assertEqual(job["status"], "failed")
+        self.assertEqual(self.spend(), [("transcript", Decimal("0.002"))])
+
+    def test_the_speaker_naming_check_counts_the_classification_still_to_come(self):
+        from app.storage.spend import SpendCapError
+        with psycopg.connect(os.environ["KNOWLEDGE_TEST_DATABASE_URL"], autocommit=True) as conn:
+            conn.execute("insert into knowledge.spend (source, estimated_usd) values ('answer', 1.98)")
+        captures = self.app.state.captures
+        captures._approve_transcript(0.005)  # 1.98 + 0.005 + the fake classifier's 0.01 fits under 2
+        with self.assertRaises(SpendCapError):
+            captures._approve_transcript(0.02)
+
     def test_capture_needs_a_session(self):
         self.client.cookies.clear()
         self.assertEqual(self.capture().status_code, 401)

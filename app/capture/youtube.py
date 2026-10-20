@@ -1,7 +1,8 @@
 """A YouTube link becomes a transcript note in Knowledge/Transcripts.
 
 Title and channel come from YouTube's public oEmbed endpoint, not from the model. The transcript uses the
-bold-speaker-label format the transcript parser routes. Only the public link leaves the server.
+bold-speaker-label format the transcript parser routes. It comes from YouTube's own captions when they can be
+used (app/capture/captions.py) and from Gemini otherwise; only the public link goes to Gemini.
 """
 
 from __future__ import annotations
@@ -64,16 +65,22 @@ def clean_transcript(text: str) -> str:
 
 
 def transcribe_youtube(link: str, client: GeminiClient, *, title: str | None = None, tags: list[str] | None = None,
-                       details=video_details) -> Draft:
+                       details=video_details, captions=None) -> Draft:
+    """captions(video_id, title, channel) returns a bold-speaker transcript from YouTube's own captions, or None
+    to fall back to Gemini, which transcribes the whole video."""
     url = video_url(link)
     info = details(url)
-    try:
-        result = client.transcribe(url, PROMPT)
-    except GeminiError as exc:
-        raise CaptureError(str(exc)) from None
-    body = clean_transcript(result.text)
-    if result.finish_reason == "MAX_TOKENS":
-        body += "\n\n*(Transcript cut off: the video is longer than one request can transcribe.)*"
+    body = captions(url.rsplit("=", 1)[1], str(info.get("title") or ""), str(info.get("channel") or "")) if captions else None
+    if body:
+        body = clean_transcript(body)
+    else:
+        try:
+            result = client.transcribe(url, PROMPT)
+        except GeminiError as exc:
+            raise CaptureError(str(exc)) from None
+        body = clean_transcript(result.text)
+        if result.finish_reason == "MAX_TOKENS":
+            body += "\n\n*(Transcript cut off: the video is longer than one request can transcribe.)*"
     body = body.encode("utf-8")[:MAX_TEXT_BYTES].decode("utf-8", "ignore")
     own = {"source": "YouTube"}
     if info.get("channel"):
