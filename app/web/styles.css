@@ -50,7 +50,10 @@ button { cursor: pointer; min-height: var(--ctl); min-width: var(--ctl); border:
 button:hover:not(:disabled) { background: var(--pill); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 /* Keyboard focus only: a thin dark ring, never a heavy coloured box. */
-button:focus-visible, a:focus-visible, summary:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+/* Text boxes: no outline at all, just a hairline edge while typing. */
+textarea:focus, input:focus { outline: none; }
+input:focus-visible, .feedback-panel textarea:focus-visible, .feedback-sheet textarea:focus-visible { outline: none; box-shadow: inset 0 0 0 1px rgba(29, 28, 26, 0.28); }
 a { color: var(--accent); }
 a:hover { color: #1f4238; }
 input, textarea { background: var(--ground); border: 0; border-radius: 10px; padding: 8px 12px; font-size: 14px; }
