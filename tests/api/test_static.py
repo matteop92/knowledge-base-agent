@@ -108,8 +108,11 @@ class ShellSourceTests(unittest.TestCase):
         # One sidebar serves both widths (a rail on phones), so each tab appears once.
         self.assertEqual(len(re.findall(r'data-tab="ask"', page)), 1)
         self.assertEqual(len(re.findall(r'data-tab="add"', page)), 1)
-        self.assertNotIn('class="topbar"', page)
+        self.assertEqual(len(re.findall(r'id="nav-button"', page)), 1)  # the one icon at the top left on phones
         self.assertNotIn('class="tabbar"', page)
+        # Sign-out options live in the account menu opened from the circle at the foot of the sidebar.
+        self.assertRegex(page, r'id="account-button"[^>]*aria-haspopup="menu"')
+        self.assertLess(page.index('id="account-button"'), page.index('id="sheet-new"'))
         self.assertEqual(script.count('addEventListener("popstate"'), 1)
         # The back-button contract: opening pushes one history entry, closing goes back once, and only
         # the popstate handler tears the sheet down (so a double tap cannot pop two entries).
