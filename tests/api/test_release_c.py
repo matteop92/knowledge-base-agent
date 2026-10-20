@@ -159,6 +159,7 @@ const retries = new Map([["f1", {}]]);
 const obsidianLink = (path) => "obsidian://" + path;
 const sends = [];
 const retrying = new Set();
+const keepRetry = () => {};
 async function send(body) { sends.push(body); return true; }
 """ + render + """
 const describe = (job) => {
@@ -219,6 +220,39 @@ const out = ({
         self.assertNotIn("danger", css[css.index(".capture-item {"):css.index(".retry-capture")])
         retry = re.search(r"\.capture-meta \.retry-capture \{[^}]*\}", css).group(0)
         self.assertIn("height: 20px", retry)  # the pill is 12 px text plus 4 px above and below
+
+    def test_failed_saves_are_kept_for_an_hour_and_forgotten_after(self) -> None:
+        capture = (WEB / "capture.js").read_text(encoding="utf-8").replace(chr(13), "")
+        kept = capture[capture.index("  const RETRY_KEY"):capture.index("  const STATUS")]
+        probe = """
+const disk = {};
+const load = (key) => (key in disk ? disk[key] : null);
+const store = (key, value) => { if (value === null) delete disk[key]; else disk[key] = value; };
+let clock = 1000;
+const realNow = Date.now;
+Date.now = () => clock;
+""" + kept + """
+const out = {};
+keepRetry("a", { kind: "text", content: "first" });
+keepRetry("b", { kind: "text", content: "second" });
+out.both = Object.keys(keptRetries()).sort();
+clock += 30 * 60 * 1000;
+keepRetry("c", { kind: "text", content: "third" });
+clock += 40 * 60 * 1000;  // a and b are now 70 minutes old, c is 40
+out.later = Object.keys(keptRetries()).sort();
+keepRetry("c", null);     // forgotten once it succeeds
+out.empty = Object.keys(disk);
+disk[RETRY_KEY] = "not json";
+out.broken = Object.keys(keptRetries());
+console.log(JSON.stringify(out));"""
+        out = _node(probe)
+        self.assertEqual(out["both"], ["a", "b"])
+        self.assertEqual(out["later"], ["c"])
+        self.assertEqual(out["empty"], [])
+        self.assertEqual(out["broken"], [])
+        # Signing out (reset) clears the kept copies, and a reload gives Retry back to failed rows.
+        self.assertIn("store(RETRY_KEY, null);", capture[capture.index("function reset()"):capture.index("async function openWith")])
+        self.assertIn("retries.set(job.id, kept[job.id].body)", capture)
 
 
 class PageStructureTests(unittest.TestCase):
