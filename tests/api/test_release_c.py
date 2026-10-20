@@ -159,7 +159,13 @@ const retries = new Map([["f1", {}]]);
 const obsidianLink = (path) => "obsidian://" + path;
 const sends = [];
 const retrying = new Set();
-const keepRetry = () => {};
+const keepRetry = () => true;
+const store = () => {};
+const RETRY_PREFIX = "ka-retry:";
+const persisted = new Set();
+let storedCopy = null;  // the kept copy; another tab may have taken it away
+const readRetry = () => storedCopy;
+let resets = 0;
 async function send(body) { sends.push(body); return true; }
 """ + render + """
 const describe = (job) => {
@@ -186,6 +192,19 @@ const out = ({
   const second = button.handlers.click();
   await Promise.all([first, second]);
   out.afterClicks = { sends: sends.length, disabled: button.disabled, again: describe({ id: "f1", kind: "screenshot", status: "failed", error: "x", title: "Shot" }).meta };
+  // After a reload a failed row gets its Retry back from the kept copy.
+  storedCopy = { kind: "text" };
+  out.restored = describe({ id: "f3", kind: "text", status: "failed", error: "x", title: "Note" }).meta;
+  persisted.delete("f3");
+  // Another tab already resent this one: its kept copy is gone, so this tab sends nothing and shows no Retry.
+  retries.set("g1", { kind: "text" });
+  persisted.add("g1");
+  storedCopy = null;
+  const before = sends.length;
+  renderCapture({ id: "g1", kind: "text", status: "failed", error: "x", title: "Note" }, true);
+  const other = list.children[0].children[1].children[1].children[1];
+  await other.handlers.click();
+  out.otherTab = { sent: sends.length - before, again: describe({ id: "g1", kind: "text", status: "failed", error: "x", title: "Note" }).meta };
   console.log(JSON.stringify(out));
 })();"""
         out = _node(probe)
@@ -197,6 +216,8 @@ const out = ({
         self.assertEqual(out["failed"], {"status": "failed", "icon": "failed", "tip": "Failed: Could not read the image.",
                                          "title": "Shot", "meta": ["type-pill:Screenshot", "retry-capture:retryRetry"]})
         self.assertEqual(out["reloaded"]["meta"], ["type-pill:Screenshot", "muted:Add it again"])
+        self.assertEqual(out["restored"], ["type-pill:Text", "retry-capture:retryRetry"])
+        self.assertEqual(out["otherTab"], {"sent": 0, "again": ["type-pill:Text", "muted:Add it again"]})
         self.assertEqual(out["afterClicks"], {"sends": 1, "disabled": True, "again": ["type-pill:Screenshot", "muted:Add it again"]})
 
     def test_every_icon_the_scripts_draw_exists_in_the_sprite(self) -> None:
@@ -223,36 +244,57 @@ const out = ({
 
     def test_failed_saves_are_kept_for_an_hour_and_forgotten_after(self) -> None:
         capture = (WEB / "capture.js").read_text(encoding="utf-8").replace(chr(13), "")
-        kept = capture[capture.index("  const RETRY_KEY"):capture.index("  const STATUS")]
+        kept = capture[capture.index("  const RETRY_PREFIX"):capture.index("  const STATUS")]
         probe = """
 const disk = {};
+let full = false;
 const load = (key) => (key in disk ? disk[key] : null);
-const store = (key, value) => { if (value === null) delete disk[key]; else disk[key] = value; };
+const store = (key, value) => { if (value === null) delete disk[key]; else if (!full) disk[key] = value; };
+const localStorage = { get length() { return Object.keys(disk).length; }, key: (i) => Object.keys(disk)[i] };
 let clock = 1000;
-const realNow = Date.now;
 Date.now = () => clock;
 """ + kept + """
 const out = {};
 keepRetry("a", { kind: "text", content: "first" });
 keepRetry("b", { kind: "text", content: "second" });
-out.both = Object.keys(keptRetries()).sort();
+disk["ka-draft"] = "an unsent question";
+out.both = Object.keys(disk).sort();
 clock += 30 * 60 * 1000;
 keepRetry("c", { kind: "text", content: "third" });
 clock += 40 * 60 * 1000;  // a and b are now 70 minutes old, c is 40
-out.later = Object.keys(keptRetries()).sort();
-keepRetry("c", null);     // forgotten once it succeeds
-out.empty = Object.keys(disk);
-disk[RETRY_KEY] = "not json";
-out.broken = Object.keys(keptRetries());
+sweepRetries(false);
+out.swept = Object.keys(disk).sort();  // expired bodies leave the disk, not just the screen
+out.read = readRetry("c");
+keepRetry("c", null);
+out.forgotten = Object.keys(disk).sort();
+disk["ka-retry:bad"] = "not json";
+disk["ka-retry:old"] = JSON.stringify({ body: { kind: "text" } });  // no timestamp: never trusted
+disk["ka-retry:str"] = JSON.stringify({ at: clock, body: "x" });      // body is not an object
+out.poisoned = [readRetry("bad"), readRetry("old"), readRetry("str")];
+out.afterPoison = Object.keys(disk).sort();
+keepRetry("big", { kind: "screenshot", image: "x".repeat(2000000) });
+out.big = Object.keys(disk).includes("ka-retry:big");
+keepRetry("d", { kind: "text", content: "kept" });
+sweepRetries(true);
+out.cleared = Object.keys(disk).sort();   // sign-out clears the retries and leaves the draft alone
+full = true;
+keepRetry("e", { kind: "text" });
+out.full = Object.keys(disk).sort();      // a full store just skips keeping
 console.log(JSON.stringify(out));"""
         out = _node(probe)
-        self.assertEqual(out["both"], ["a", "b"])
-        self.assertEqual(out["later"], ["c"])
-        self.assertEqual(out["empty"], [])
-        self.assertEqual(out["broken"], [])
-        # Signing out (reset) clears the kept copies, and a reload gives Retry back to failed rows.
-        self.assertIn("store(RETRY_KEY, null);", capture[capture.index("function reset()"):capture.index("async function openWith")])
-        self.assertIn("retries.set(job.id, kept[job.id].body)", capture)
+        self.assertEqual(out["both"], ["ka-draft", "ka-retry:a", "ka-retry:b"])
+        self.assertEqual(out["swept"], ["ka-draft", "ka-retry:c"])
+        self.assertEqual(out["read"], {"kind": "text", "content": "third"})
+        self.assertEqual(out["forgotten"], ["ka-draft"])
+        self.assertEqual(out["poisoned"], [None, None, None])
+        self.assertEqual(out["afterPoison"], ["ka-draft"])
+        self.assertFalse(out["big"])
+        self.assertEqual(out["cleared"], ["ka-draft"])
+        self.assertEqual(out["full"], ["ka-draft"])
+        # Sign-out (reset) clears every kept body, and a save answering after it writes nothing back.
+        reset = capture[capture.index("function reset()"):capture.index("async function openWith")]
+        self.assertIn("sweepRetries(true)", reset)
+        self.assertIn("if (session !== resets) return false;", capture)
 
 
 class PageStructureTests(unittest.TestCase):
