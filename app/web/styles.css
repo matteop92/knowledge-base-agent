@@ -80,9 +80,10 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 
 /* Layout: one sidebar. Beside the page on desktop; a slim rail on phones that grows over the page. ---- */
 .app { display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); height: 100dvh; transition: grid-template-columns 200ms ease; }
-.main { display: grid; grid-template-rows: auto 1fr; min-width: 0; min-height: 0; }
-.banner { grid-row: 1; }
-.views { grid-row: 2; min-height: 0; display: grid; }
+.main { display: grid; grid-template-rows: auto auto 1fr; min-width: 0; min-height: 0; }
+.topbar { display: none; grid-row: 1; align-items: center; padding: 6px 8px 0; }
+.banner { grid-row: 2; }
+.views { grid-row: 3; min-height: 0; display: grid; }
 .view { min-height: 0; }
 .column { width: 100%; max-width: 640px; margin: 0 auto; }
 
@@ -100,26 +101,32 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 /* History opens in place under its item. */
 .history-panel { display: flex; flex-direction: column; gap: 2px; min-height: 0; padding-left: 8px; }
 .history-closed .history-panel { display: none; }
-.side-new { height: var(--ctl); padding: 0 10px; border-radius: 8px; background: transparent; color: var(--ink); display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 500; text-align: left; }
-.side-new:hover:not(:disabled) { background: var(--hover); }
 .conversation-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
 .conversation { width: 100%; height: auto; min-height: var(--ctl); padding: 6px 10px; border-radius: 8px; background: transparent; color: var(--ink-soft); text-align: left; font-size: 13px; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 .conversation:hover:not(:disabled) { background: var(--hover); }
 .conversation[aria-current="true"] { background: var(--ground); color: var(--ink); font-weight: 600; }
 .conversation-empty { margin: 0; padding: 4px 10px; font-size: 13px; }
-.sidebar-foot { margin-top: auto; display: flex; flex-wrap: wrap; gap: 0 4px; padding: 0 2px; font-size: 12px; }
-.sidebar-foot .link { font-size: 12px; min-height: 28px; }
-.sidebar-foot .message { flex-basis: 100%; min-height: 0; }
-.sidebar-foot .sign-out-message:empty { display: none; }
+/* Foot of the sidebar: the account circle on the left, the New question pill on the right. */
+.sidebar-foot { position: relative; margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px; }
+.avatar { width: var(--ctl); height: var(--ctl); padding: 0; flex: none; background: var(--pill); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; }
+.avatar:hover:not(:disabled), .avatar[aria-expanded="true"] { background: var(--handle); }
+.new-pill { padding: 0 14px; background: var(--accent); color: var(--accent-ink); font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.new-pill:hover:not(:disabled) { background: #264c42; }
+.new-pill .icon { width: 16px; height: 16px; }
+.account-menu { position: absolute; left: 0; bottom: calc(100% + 8px); min-width: 210px; padding: 6px; background: var(--surface); border-radius: 12px; box-shadow: var(--shadow-card), 0 0 0 1px rgba(29, 28, 26, 0.05); display: flex; flex-direction: column; z-index: 5; }
+.menu-item { height: var(--ctl); justify-content: flex-start; padding: 0 10px; border-radius: 8px; background: transparent; text-align: left; font-size: 13px; }
+.menu-item:hover:not(:disabled) { background: var(--hover); }
+.account-menu .message { padding: 0 10px; min-height: 0; }
+.account-menu .sign-out-message:empty { display: none; }
 
 /* Ask */
 .view-ask { display: grid; grid-template-rows: 1fr auto; }
 .thread { overflow-y: auto; padding: 48px 40px 20px; }
 .empty-state { margin-top: 16vh; }
-.empty-state h1 { font-family: var(--serif); font-weight: 500; font-size: 30px; line-height: 1.2; letter-spacing: -0.015em; }
+.empty-state h1 { font-family: var(--serif); font-weight: 500; font-size: 24px; line-height: 1.2; letter-spacing: -0.015em; }
 .empty-state p { margin: 10px 0 0; }
 .turns { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 40px; }
-.question { font-family: var(--serif); font-weight: 500; font-size: 30px; line-height: 1.2; letter-spacing: -0.015em; margin: 0 0 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.question { font-family: var(--serif); font-weight: 500; font-size: 22px; line-height: 1.25; letter-spacing: -0.01em; margin: 0 0 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .answer { font-family: var(--serif); font-size: 18px; line-height: 1.65; }
 .answer p { margin: 0 0 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .answer p:last-child { margin-bottom: 0; }
@@ -168,7 +175,7 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 
 /* Add */
 .view-add { overflow-y: auto; padding: 48px 40px 24px; }
-.view-add h1 { font-family: var(--serif); font-weight: 500; font-size: 30px; line-height: 1.2; letter-spacing: -0.015em; margin: 0 0 20px; }
+.view-add h1 { font-family: var(--serif); font-weight: 500; font-size: 24px; line-height: 1.2; letter-spacing: -0.015em; margin: 0 0 20px; }
 .capture.dragging { background: rgba(47, 93, 80, 0.06); }
 .card { background: var(--surface); border-radius: 16px; box-shadow: var(--shadow-card); padding: 16px; }
 .capture-form { display: flex; flex-direction: column; gap: 12px; }
@@ -253,6 +260,9 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
   .sidebar-collapsed .sidebar .label, .sidebar-collapsed .history-panel { display: none; }
   .sidebar-collapsed .sidebar-top { justify-content: center; }
   .sidebar-collapsed .side-item { justify-content: center; padding: 0; }
+  .sidebar-collapsed .sidebar-foot { flex-direction: column-reverse; align-items: center; }
+  .sidebar-collapsed .new-pill { width: var(--ctl); padding: 0; justify-content: center; }
+  .sidebar-collapsed .account-menu { left: 4px; }
   /* Source and Gaps: a full-height panel from the right edge. */
   .scrim { background: transparent; }
   .sheet { left: auto; right: 0; top: 0; bottom: 0; width: var(--panel-w); max-height: none; border-radius: 0; padding: 0; box-shadow: -1px 0 0 rgba(29, 28, 26, 0.06), -12px 0 32px rgba(29, 28, 26, 0.05); }
@@ -268,18 +278,17 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
   .app[data-sheet="source"] .main, .app[data-sheet="gaps"] .main { margin-right: var(--panel-w); }
 }
 
-/* Phone: the sidebar is a slim rail; History grows it over the page. ---------------------------- */
+/* Phone: one icon at the top left opens the sidebar as a drawer over the page. ---------------------- */
 @media (max-width: 899px) {
-  .app { grid-template-columns: var(--sidebar-w-collapsed) minmax(0, 1fr); }
-  .app > .main { grid-column: 2; }
-  .sidebar { position: fixed; z-index: 20; left: 0; top: 0; bottom: 0; width: var(--sidebar-w-collapsed); padding: 10px 8px; transition: width 200ms ease; }
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .topbar { display: flex; }
+  .sidebar { display: none; position: fixed; z-index: 45; left: 0; top: 0; bottom: 0; width: min(300px, 86vw); padding: 14px 8px calc(14px + env(safe-area-inset-bottom)); box-shadow: 12px 0 32px rgba(29, 28, 26, 0.14); }
+  .nav-open .sidebar { display: flex; }
   #collapse { display: none; }
-  body:not(.nav-open) .sidebar .label, body:not(.nav-open) .sidebar-top, body:not(.nav-open) .history-panel { display: none; }
-  body:not(.nav-open) .side-item { justify-content: center; padding: 0; }
-  .nav-open .sidebar { width: min(288px, 86vw); z-index: 45; padding: 14px 8px; box-shadow: 12px 0 32px rgba(29, 28, 26, 0.14); }
   .nav-scrim { z-index: 44; }
-  .thread, .view-add { padding: 20px 20px 16px; }
-  .empty-state { margin-top: 10vh; }
+  .thread, .view-add { padding: 12px 20px 16px; }
+  .empty-state { margin-top: 8vh; }
+  .question { font-size: 20px; }
   .composer { padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); }
   .answer { font-size: 17px; line-height: 1.6; }
 }

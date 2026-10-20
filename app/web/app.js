@@ -62,6 +62,7 @@ function showSignIn(message) {
   stopPolling();
   closeSheet();
   setNavOpen(false);
+  setAccountOpen(false);
   window.captureScreen.reset();
   $("app").hidden = true;
   document.title = "Knowledge";
@@ -660,28 +661,28 @@ function trapFocus(event) {
 }
 
 // Navigation -----------------------------------------------------------------------------------
-// Desktop: a sidebar with History opening in place beneath its item. Phone: the same sidebar is a slim rail
-// that grows over the page when History is tapped.
+// Desktop: a sidebar beside the page. Phone: the same sidebar is a drawer opened by the icon at the top left.
+// History opens in place under its item; the account circle at the foot opens the sign-out options.
 const phone = window.matchMedia("(max-width: 899px)");
 const navState = { open: false, historyOpen: true };
 
 function syncHistory() {
-  const collapsed = document.body.classList.contains("sidebar-collapsed");
-  const visible = phone.matches ? navState.open : !collapsed && navState.historyOpen;
+  const collapsed = !phone.matches && document.body.classList.contains("sidebar-collapsed");
   document.body.classList.toggle("history-closed", !navState.historyOpen);
-  $("sidebar-history").setAttribute("aria-expanded", visible ? "true" : "false");
+  $("sidebar-history").setAttribute("aria-expanded", !collapsed && navState.historyOpen ? "true" : "false");
 }
 
 function setNavOpen(open) {
   navState.open = open;
   document.body.classList.toggle("nav-open", open);
   $("nav-scrim").hidden = !open;
+  $("nav-button").setAttribute("aria-expanded", open ? "true" : "false");
+  if (!open) setAccountOpen(false);
   syncHistory();
 }
 
 function toggleHistory() {
-  if (phone.matches) { navState.historyOpen = true; setNavOpen(!navState.open); return; }
-  if (document.body.classList.contains("sidebar-collapsed")) {
+  if (!phone.matches && document.body.classList.contains("sidebar-collapsed")) {
     setSidebarCollapsed(false);
     store(SIDEBAR_KEY, null);
     navState.historyOpen = true;
@@ -689,6 +690,11 @@ function toggleHistory() {
     navState.historyOpen = !navState.historyOpen;
   }
   syncHistory();
+}
+
+function setAccountOpen(open) {
+  $("account-menu").hidden = !open;
+  $("account-button").setAttribute("aria-expanded", open ? "true" : "false");
 }
 
 function setSidebarCollapsed(collapsed) {
@@ -736,6 +742,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     tab.addEventListener("click", () => { setNavOpen(false); setView(tab.dataset.tab); });
   }
   $("sidebar-history").addEventListener("click", toggleHistory);
+  $("nav-button").addEventListener("click", () => { setNavOpen(true); $("sidebar-history").focus(); });
+  $("account-button").addEventListener("click", () => setAccountOpen($("account-menu").hidden));
+  // A click anywhere else folds the account menu away.
+  document.addEventListener("click", (event) => {
+    if (!$("account-menu").hidden && !event.target.closest(".sidebar-foot")) setAccountOpen(false);
+  });
   $("nav-scrim").addEventListener("click", () => setNavOpen(false));
   phone.addEventListener("change", () => setNavOpen(false));
   $("collapse").addEventListener("click", () => {
@@ -747,7 +759,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("sheet-scrim").addEventListener("click", () => closeSheet());
   window.addEventListener("popstate", () => { if (sheet.open) teardownSheet(); });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") { closeSheet(); if (navState.open) { setNavOpen(false); $("sidebar-history").focus(); } }
+    if (event.key === "Escape") {
+      closeSheet();
+      if (!$("account-menu").hidden) { setAccountOpen(false); $("account-button").focus(); }
+      else if (navState.open) { setNavOpen(false); $("nav-button").focus(); }
+    }
     trapFocus(event);
   });
   for (const button of document.querySelectorAll(".sign-out")) button.addEventListener("click", () => signOut(false));

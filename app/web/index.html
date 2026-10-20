@@ -30,6 +30,8 @@
     <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-gap" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7.5v5.5M12 16.5h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
     <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
     <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
   </svg>
 
@@ -64,19 +66,26 @@
         <button type="button" id="sidebar-history" class="side-item" aria-label="History" aria-expanded="true" aria-controls="history-panel"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg><span class="label">History</span><svg class="icon chevron label" aria-hidden="true"><use href="#i-chevron"/></svg></button>
       </nav>
       <div id="history-panel" class="history-panel">
-        <button type="button" id="sheet-new" class="side-new"><svg class="icon" aria-hidden="true"><use href="#i-add"/></svg>New question</button>
         <ul id="sheet-conversation-list" class="conversation-list"></ul>
         <p class="conversation-empty muted" hidden>No conversations yet.</p>
       </div>
-      <div class="sidebar-foot label">
-        <button type="button" class="link sign-out">Sign out</button>
-        <button type="button" class="link sign-out-everywhere">Sign out everywhere</button>
-        <p class="message small sign-out-message" role="alert"></p>
+      <div class="sidebar-foot">
+        <button type="button" id="account-button" class="avatar" aria-label="Account" aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu"><svg class="icon" aria-hidden="true"><use href="#i-user"/></svg></button>
+        <button type="button" id="sheet-new" class="new-pill" aria-label="New question"><svg class="icon" aria-hidden="true"><use href="#i-add"/></svg><span class="label">New question</span></button>
+        <div id="account-menu" class="account-menu" role="menu" aria-label="Account" hidden>
+          <button type="button" class="menu-item sign-out" role="menuitem">Sign out</button>
+          <button type="button" class="menu-item sign-out-everywhere" role="menuitem">Sign out everywhere</button>
+          <p class="message small sign-out-message" role="alert"></p>
+        </div>
       </div>
     </aside>
     <div id="nav-scrim" class="scrim nav-scrim" hidden></div>
 
     <div class="main">
+      <header class="topbar">
+        <button type="button" id="nav-button" class="icon-button" aria-label="Open navigation" aria-expanded="false" aria-controls="sidebar"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button>
+      </header>
+
       <p id="banner" class="banner" role="alert" hidden></p>
       <div id="status" class="sr-only" aria-live="polite"></div>
 
