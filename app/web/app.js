@@ -61,6 +61,7 @@ function showSignIn(message) {
   if (state.conversationId) store(CONVERSATION_KEY, state.conversationId);
   stopPolling();
   closeSheet();
+  setNavOpen(false);
   window.captureScreen.reset();
   $("app").hidden = true;
   document.title = "Knowledge";
@@ -125,7 +126,7 @@ async function refreshConversations() {
     button.className = "conversation";
     button.textContent = item.title;
     if (item.id === state.conversationId) button.setAttribute("aria-current", "true");
-    button.addEventListener("click", () => closeSheet(() => openConversation(item.id)));
+    button.addEventListener("click", () => { setNavOpen(false); openConversation(item.id); });
     li.append(button);
     list.append(li);
   }
@@ -581,7 +582,7 @@ function setView(view) {
   return new Promise((resolve) => closeSheet(() => resolve(applyView(view))));
 }
 
-const SHEET_TITLES = { history: "History", source: "Source", gaps: "What’s missing", feedback: "What was wrong?" };
+const SHEET_TITLES = { source: "Source", gaps: "What’s missing", feedback: "What was wrong?" };
 const sheet = { open: false, closing: false, opener: null, name: null, serial: 0, afterClose: [] };
 // Source and Gaps swap in place while the desktop panel stays open; the other sheets never do.
 const SWAPPABLE = new Set(["source", "gaps"]);
@@ -594,18 +595,11 @@ function openSheet(name, opener, fill) {
   const section = $("sheet").querySelector(`[data-sheet="${name}"]`);
   if (fill) fill(section);
   const root = $("sheet");
-  if (name === "history") {
-    root.setAttribute("aria-labelledby", "sheet-title");
-    root.removeAttribute("aria-label");
-  } else {
-    root.removeAttribute("aria-labelledby");
-    root.setAttribute("aria-label", SHEET_TITLES[name]);
-  }
+  root.setAttribute("aria-label", SHEET_TITLES[name]);
   root.dataset.kind = name;
   // On desktop the Source and Gaps panel sits beside the page: keyboard users can leave it with Tab.
   root.setAttribute("aria-modal", SWAPPABLE.has(name) && window.matchMedia("(min-width: 900px)").matches ? "false" : "true");
   $("app").dataset.sheet = name;
-  $("sheet-title").textContent = SHEET_TITLES[name];
   for (const other of root.querySelectorAll("[data-sheet]")) other.hidden = other.dataset.sheet !== name;
   sheet.name = name;
   if (swapping) {
@@ -619,7 +613,7 @@ function openSheet(name, opener, fill) {
   history.pushState({ ka: "sheet", name }, "");
   root.hidden = false;
   $("sheet-scrim").hidden = false;
-  (name === "history" ? $("sheet-close") : root).focus();
+  root.focus();
 }
 
 function teardownSheet() {
@@ -639,7 +633,7 @@ function teardownSheet() {
   // Keep keyboard focus somewhere real: back on the opener unless a follow-up action already moved it.
   if (!document.activeElement || document.activeElement === document.body) {
     // The opener may have been hidden meanwhile (the window crossed the phone/desktop width).
-    const visible = [opener, $("history-button"), $("sidebar-history")].find((el) => el && el.isConnected && el.getClientRects().length);
+    const visible = [opener, $("sidebar-history")].find((el) => el && el.isConnected && el.getClientRects().length);
     if (visible) visible.focus();
   }
 }
@@ -665,10 +659,43 @@ function trapFocus(event) {
   else if (!$("sheet").contains(document.activeElement)) { event.preventDefault(); first.focus(); }
 }
 
+// Navigation -----------------------------------------------------------------------------------
+// Desktop: a sidebar with History opening in place beneath its item. Phone: the same sidebar is a slim rail
+// that grows over the page when History is tapped.
+const phone = window.matchMedia("(max-width: 899px)");
+const navState = { open: false, historyOpen: true };
+
+function syncHistory() {
+  const collapsed = document.body.classList.contains("sidebar-collapsed");
+  const visible = phone.matches ? navState.open : !collapsed && navState.historyOpen;
+  document.body.classList.toggle("history-closed", !navState.historyOpen);
+  $("sidebar-history").setAttribute("aria-expanded", visible ? "true" : "false");
+}
+
+function setNavOpen(open) {
+  navState.open = open;
+  document.body.classList.toggle("nav-open", open);
+  $("nav-scrim").hidden = !open;
+  syncHistory();
+}
+
+function toggleHistory() {
+  if (phone.matches) { navState.historyOpen = true; setNavOpen(!navState.open); return; }
+  if (document.body.classList.contains("sidebar-collapsed")) {
+    setSidebarCollapsed(false);
+    store(SIDEBAR_KEY, null);
+    navState.historyOpen = true;
+  } else {
+    navState.historyOpen = !navState.historyOpen;
+  }
+  syncHistory();
+}
+
 function setSidebarCollapsed(collapsed) {
   document.body.classList.toggle("sidebar-collapsed", collapsed);
   $("collapse").setAttribute("aria-expanded", collapsed ? "false" : "true");
   $("collapse").setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
+  syncHistory();
 }
 
 // Only say "signed out" once the server has said so; a failed request must not look like success.
@@ -704,15 +731,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       ask($("question").value.trim());
     }
   });
-  $("sheet-new").addEventListener("click", () => closeSheet(newQuestion));
-  for (const tab of document.querySelectorAll("[data-tab]")) tab.addEventListener("click", () => setView(tab.dataset.tab));
-  for (const id of ["history-button", "sidebar-history"]) {
-    $(id).addEventListener("click", (event) => {
-      const opener = event.currentTarget;
-      if (sheet.open && sheet.name !== "history") closeSheet(() => openSheet("history", opener));
-      else openSheet("history", opener);
-    });
+  $("sheet-new").addEventListener("click", () => { setNavOpen(false); newQuestion(); });
+  for (const tab of document.querySelectorAll("[data-tab]")) {
+    tab.addEventListener("click", () => { setNavOpen(false); setView(tab.dataset.tab); });
   }
+  $("sidebar-history").addEventListener("click", toggleHistory);
+  $("nav-scrim").addEventListener("click", () => setNavOpen(false));
+  phone.addEventListener("change", () => setNavOpen(false));
   $("collapse").addEventListener("click", () => {
     const collapsed = !document.body.classList.contains("sidebar-collapsed");
     setSidebarCollapsed(collapsed);
@@ -722,7 +747,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("sheet-scrim").addEventListener("click", () => closeSheet());
   window.addEventListener("popstate", () => { if (sheet.open) teardownSheet(); });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeSheet();
+    if (event.key === "Escape") { closeSheet(); if (navState.open) { setNavOpen(false); $("sidebar-history").focus(); } }
     trapFocus(event);
   });
   for (const button of document.querySelectorAll(".sign-out")) button.addEventListener("click", () => signOut(false));

@@ -55,7 +55,7 @@ class ShellSourceTests(unittest.TestCase):
         # A deploy must reach an installed app: never answer from the browser's own HTTP cache.
         self.assertIn('fetch(event.request, { cache: "no-cache" })', worker)
         script = (WEB / "app.js").read_text(encoding="utf-8")
-        self.assertEqual(script.count("SIDEBAR_KEY"), 3)  # declaration, read at start, write on collapse
+        self.assertEqual(script.count("SIDEBAR_KEY"), 4)  # declaration, read at start, write on collapse and on expand
 
     def test_sign_out_clears_the_add_box_and_a_shared_item_opens_add(self) -> None:
         capture = (WEB / "capture.js").read_text(encoding="utf-8")
@@ -105,8 +105,11 @@ class ShellSourceTests(unittest.TestCase):
     def test_navigation_is_two_tabs_with_names_and_one_back_handler(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")
         script = (WEB / "app.js").read_text(encoding="utf-8")
-        self.assertEqual(len(re.findall(r'data-tab="ask"', page)), 2)
-        self.assertEqual(len(re.findall(r'data-tab="add"', page)), 2)
+        # One sidebar serves both widths (a rail on phones), so each tab appears once.
+        self.assertEqual(len(re.findall(r'data-tab="ask"', page)), 1)
+        self.assertEqual(len(re.findall(r'data-tab="add"', page)), 1)
+        self.assertNotIn('class="topbar"', page)
+        self.assertNotIn('class="tabbar"', page)
         self.assertEqual(script.count('addEventListener("popstate"'), 1)
         # The back-button contract: opening pushes one history entry, closing goes back once, and only
         # the popstate handler tears the sheet down (so a double tap cannot pop two entries).
