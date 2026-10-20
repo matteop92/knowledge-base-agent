@@ -208,10 +208,12 @@
   function pollCapture(id, announceResult) {
     if (pollers.has(id)) return;
     const later = (ms) => pollers.set(id, setTimeout(tick, ms));
+    let failures = 0;
     const tick = async () => {
       pollers.delete(id);
       try {
         const job = await api("GET", `/api/captures/${encodeURIComponent(id)}`);
+        failures = 0;
         renderCapture(job);
         if (job.status === "running") { later(POLL_MS); return; }
         if (announceResult) {
@@ -219,7 +221,10 @@
                   job.status !== "failed");
         }
       } catch (error) {
-        if (error.status !== 401) later(POLL_MS * 2);
+        if (error.status === 401) return;
+        failures += 1;
+        if (failures < POLL_RETRIES) later(POLL_MS * 2);
+        else message("Lost touch while checking this save. Open Add again to see where it got to.");
       }
     };
     later(POLL_MS);
