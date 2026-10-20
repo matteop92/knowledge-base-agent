@@ -57,7 +57,8 @@
     <aside id="sidebar" class="sidebar" aria-label="Navigation">
       <div class="sidebar-top">
         <span class="brand label">Knowledge</span>
-        <button type="button" id="collapse" class="icon-button" aria-label="Collapse sidebar" aria-expanded="true"><svg class="icon"><use href="#i-panel"/></svg></button>
+        <button type="button" id="collapse" class="icon-button" aria-label="Sidebar" aria-expanded="true"><svg class="icon"><use href="#i-panel"/></svg></button>
+        <button type="button" id="nav-close" class="icon-button nav-close" aria-label="Close navigation"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button>
       </div>
       <nav class="side-nav" aria-label="Main">
         <button type="button" class="side-item" data-tab="ask" aria-label="Ask"><svg class="icon" aria-hidden="true"><use href="#i-ask"/></svg><span class="label">Ask</span></button>
@@ -65,17 +66,18 @@
         <button type="button" id="sidebar-history" class="side-item" aria-label="History" aria-expanded="true" aria-controls="history-panel"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg><span class="label">History</span><svg class="icon chevron label" aria-hidden="true"><use href="#i-chevron"/></svg></button>
       </nav>
       <div id="history-panel" class="history-panel">
-        <ul id="sheet-conversation-list" class="conversation-list"></ul>
-        <p class="conversation-empty muted" hidden>No conversations yet.</p>
+        <ul id="conversation-list" class="conversation-list"></ul>
+        <p class="conversation-empty" hidden>No conversations yet.</p>
       </div>
       <div class="sidebar-foot">
-        <button type="button" id="account-button" class="avatar" aria-label="Account" aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu"><svg class="icon" aria-hidden="true"><use href="#i-user"/></svg></button>
-        <button type="button" id="sheet-new" class="new-pill" aria-label="New question"><svg class="icon" aria-hidden="true"><use href="#i-add"/></svg><span class="label">New question</span></button>
-        <div id="account-menu" class="account-menu" role="menu" aria-label="Account" hidden>
-          <button type="button" class="menu-item sign-out" role="menuitem">Sign out</button>
-          <button type="button" class="menu-item sign-out-everywhere" role="menuitem">Sign out everywhere</button>
+        <button type="button" id="account-button" class="avatar" aria-label="Account" aria-expanded="false" aria-controls="account-menu"><svg class="icon" aria-hidden="true"><use href="#i-user"/></svg></button>
+        <div id="account-menu" class="account-menu" aria-label="Account" hidden>
+          <button type="button" class="menu-item sign-out">Sign out</button>
+          <button type="button" class="menu-item sign-out-everywhere">Sign out everywhere</button>
           <p class="message small sign-out-message" role="alert"></p>
         </div>
+        <button type="button" id="new-question" class="new-pill" aria-label="New question"><svg class="icon" aria-hidden="true"><use href="#i-add"/></svg><span class="label">New question</span></button>
+      </div>
       </div>
     </aside>
     <div id="nav-scrim" class="scrim nav-scrim" hidden></div>

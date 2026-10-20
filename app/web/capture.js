@@ -8,7 +8,7 @@
   const YOUTUBE = /^(https?:\/\/)?(www\.|m\.|music\.)?(youtube\.com\/(watch|shorts|live|embed)|youtu\.be\/)/i;
   let pending = null;  // {kind, content?, image?, label}
   let fileLabel = null;  // "Markdown file" or "Text file" while the box holds a loaded file
-  let sending = false;  // a save is in flight, so Save cannot be pressed twice
+  let inFlight = 0;  // saves being sent; Save stays disabled until all are done
   let fileToken = 0;  // bumped by reset(), so a file still being read cannot fill a cleared box
   const retries = new Map();  // capture id -> request body, for Retry
   const pollers = new Map();  // capture id -> timer, so one save is never polled twice
@@ -51,7 +51,7 @@
       $("capture-detect-title").textContent = found.title;
       $("capture-detect-sub").textContent = found.sub;
     }
-    $("capture-save").disabled = sending || !state.captureEnabled || !found;
+    $("capture-save").disabled = inFlight > 0 || !state.captureEnabled || !found;
   }
 
   function message(text, ok) {
@@ -123,7 +123,7 @@
     if (!text) return null;
     const kind = classify(text);
     if (kind === "youtube" || kind === "markdown") return { kind, content: text, title, tags };
-    return { kind: "text", content: text, url: kind === "link" ? text : null, title, tags };
+    return { kind: "text", content: text, url: /^https?:\/\/\S+$/.test(text) ? text : null, title, tags };
   }
 
   async function save() {
@@ -133,7 +133,7 @@
 
   // `fromForm` is true for a normal Save (the box is cleared after it); Retry resends the stored body and leaves the box alone.
   async function send(body, fromForm) {
-    sending = true;
+    inFlight += 1;
     refresh();
     try {
       const { capture_id: id } = await api("POST", "/api/captures", body);
@@ -156,7 +156,7 @@
     } catch (error) {
       message(error.status === 429 ? "The daily spending cap was reached." : error.message);
     } finally {
-      sending = false;
+      inFlight = Math.max(0, inFlight - 1);
       refresh();
     }
   }
@@ -249,7 +249,7 @@
     pending = null;
     fileLabel = null;
     fileToken += 1;
-    sending = false;
+    inFlight = 0;
     retries.clear();
     for (const timer of pollers.values()) clearTimeout(timer);
     pollers.clear();
