@@ -140,7 +140,7 @@ Matt can use every flow he uses today on his phone and desktop, and calls the re
 ### Release B decisions (made during the build)
 
 - Built from the "A Paper" boards' source plus the gaps and feedback mock. Where they differ from each other or from this plan: the gap icon is the mock's soft green chip with the accent text (the Ask board draws it amber; KTD5 and R11 say green, so green wins); the board's "Looked for:" line is not built (KTD14: nothing to show after the code is stripped, and the receipt has no such field); the Add board's "(filled in for you)" is "(optional)" because the app does not fill title and tags itself; the detected-type subtitle only says what is true ("Saved to Transcripts" for YouTube, otherwise "The app files it in the right folder").
-- Type: two typefaces, Newsreader and Geist (Matt chose this over keeping Geist Mono for the Add box, 2026-10-20), on a six-step size scale: 12 labels, 14 controls and lists, 16 inputs, 18 answer text, 22 question titles, 26 page titles. Button text is never bold. The service worker cache is `ka-shell-v6`.
+- Type: two typefaces, Newsreader and Geist (Matt chose this over keeping Geist Mono for the Add box, 2026-10-20), on a six-step size scale: 12 labels, 14 controls and lists, 16 inputs, 18 answer text, 22 question titles, 26 page titles. Button text is never bold. The service worker cache is `ka-shell-v7`.
 - Source numbers in the row are drawn 24 px; their touch area is larger than what is drawn (about 44 px tall on touch screens).
 - The spending-cap and "answer still running" messages moved out of the Ask tab into one banner above the page, so they show on both tabs; the cap message stays, the other fades after 8 seconds.
 - Thumbs-down opens the bottom sheet on phones and the board's inline panel under the answer at 900 px and wider. On desktop the Source and Gaps panels sit on the right, push the page at 1200 px and wider, overlay it below that, and swap in place when another number or the gap icon is tapped.
@@ -153,7 +153,7 @@ Matt reviewed the Release B build and asked for these; they override the earlier
 - **Right-edge panel on desktop.** Source and Gaps open as a full-height panel from the right edge; clicking outside closes it. Feedback is inline under the answer on desktop and a bottom sheet on phones.
 - **Gaps look** follows Matt's screenshot: green "N gaps in this answer" line, "What's missing", entries between hairlines, a plain "+ Add a note to fill this gap" link under each. The Obsidian link is the words "See in Obsidian", underlined, beside the folder path.
 - **Compact controls.** 32 px with a mouse (44 px on touch), smaller headings, a 48 px question bar; no thick or coloured outlines on text boxes; button text is never bold.
-- **Type and icons.** Two typefaces and six sizes (12, 14, 16, 18, 22, 26); Geist Mono dropped (the Add box uses Geist); Phosphor Light icons with a meh face for feedback and the YouTube logo for video. The service worker cache is `ka-shell-v6`.
+- **Type and icons.** Two typefaces and six sizes (12, 14, 16, 18, 22, 26); Geist Mono dropped (the Add box uses Geist); Phosphor Light icons with a meh face for feedback and the YouTube logo for video. The service worker cache is `ka-shell-v7`.
 - **Empty conversation:** the heading and the question bar sit together in the middle of the page; the bar drops to the bottom once a question is asked. The Add column is 480 px wide and centred on desktop.
 
 ### Release C (open, to be re-scoped by Matt)
