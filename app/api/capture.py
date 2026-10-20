@@ -120,7 +120,7 @@ class YouTubeTranscriber:
         captions = CaptionTranscriber(approve=self.approve)
         try:
             draft = transcribe_youtube(item.url, GeminiClient(), title=item.title, tags=item.tags,
-                                       captions=captions.transcript)
+                                       captions=captions.transcript, backup=captions.fallback)
         except CaptureError as exc:
             exc.cost_usd = captions.cost_usd
             raise
