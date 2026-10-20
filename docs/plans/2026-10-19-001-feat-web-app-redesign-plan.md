@@ -156,7 +156,7 @@ Matt reviewed the Release B build and asked for these; they override the earlier
 - **Type and icons.** Two typefaces and six sizes (12, 14, 16, 18, 22, 26); Geist Mono dropped (the Add box uses Geist); Phosphor Light icons with a meh face for feedback and the YouTube logo for video. The service worker cache is `ka-shell-v7`.
 - **Empty conversation:** the heading and the question bar sit together in the middle of the page; the bar drops to the bottom once a question is asked. The Add column is 480 px wide and centred on desktop.
 
-### Release C (open, to be re-scoped by Matt)
+### Release C (built on `claude/web-redesign-release-c`; waits for Matt's device checks)
 
 U10 below was written before the design review; much of its polish was folded into Release B. What is genuinely left, in the order Matt may want it:
 
@@ -164,6 +164,8 @@ U10 below was written before the design review; much of its polish was folded in
 2. The accessibility checklist in U10 (contrast pairs, tab and focus order in the drawer, account menu and panel, screen-reader announcements).
 3. Small hardening items found in review and left on purpose: polling loops retry forever on a non-sign-in error, the sheet closes only when the browser's Back event fires (no fallback), `afterClose` callbacks can queue twice on a double tap.
 4. More JavaScript runner coverage: gap clean-up already runs under node in `tests/api/test_static.py`; source numbering and add-box classification still need it.
+
+Done in Release C: items 2, 3 and 4 above, plus Android Back closing the phone drawer (the open drawer takes one history entry; the sheet takes priority when both could close). The muted text colour went from `#6b675f` to `#625e57` because the old one was 4.3:1 on the pill background (AA needs 4.5:1); a test now checks every text colour against every background it sits on. Polls (answers and saves) stop after five failed checks in a row and say so; a stale poll from another conversation does nothing. A sheet closes by itself after half a second if the browser never reports Back. The sheet and side panel keep clear of a landscape camera cut-out. Still Matt's hands: item 1 (installed Android app, landscape phone, 200 percent text zoom, reduced motion) and a screen-reader pass (tabs named with the active one, answer-ready announcement, sheets close with Escape and return focus). Known and left on purpose: reopening the drawer within about 100 ms of closing it can let the late Back event close the new one; the 500 ms fallback leaves one stale history entry if Back never came.
 
 Not in Release C: dark mode and the suggested-tags page (separate work). If Matt's device checks find nothing, Release C can shrink to items 2 and 4 or be dropped.
 
