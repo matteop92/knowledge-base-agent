@@ -15,7 +15,7 @@ def _script() -> str:
 
 
 def _node(probe: str) -> dict:
-    out = subprocess.run(["node", "-e", probe], capture_output=True, text=True, check=True).stdout
+    out = subprocess.run(["node", "-e", probe], capture_output=True, text=True, encoding="utf-8", check=True).stdout
     return json.loads(out)
 
 
@@ -141,6 +141,65 @@ console.log(JSON.stringify(out));"""
         self.assertEqual(out["both"], ["sheet"])
         self.assertEqual(out["drawer"], ["nav:false:true"])
         self.assertEqual(out["none"], [])
+
+    def test_recent_rows_show_state_icon_link_type_and_retry(self) -> None:
+        capture = (WEB / "capture.js").read_text(encoding="utf-8").replace("\r", "")
+        render = capture[capture.index("  const KINDS"):capture.index("  function pollCapture")]
+        probe = """
+const make = (tag) => ({ tag, children: [], dataset: {}, attrs: {}, className: "", textContent: "", title: "", href: "",
+  append(...n) { this.children.push(...n); }, prepend(...n) { this.children.unshift(...n); },
+  replaceChildren(...n) { this.children = n; }, setAttribute(k, v) { this.attrs[k] = v; }, addEventListener() {} });
+const list = make("ul");
+const document = { createElement: make, querySelector: () => null };
+const CSS = { escape: (x) => x };
+const $ = () => list;
+const icon = (name) => ({ icon: name });
+const STATUS = { running: "Saving…", indexed: "Saved and searchable", queued: "Queued" };
+const retries = new Map([["f1", {}]]);
+const obsidianLink = (path) => "obsidian://" + path;
+async function send() {}
+""" + render + """
+const describe = (job) => {
+  renderCapture(job, true);
+  const row = list.children[0];
+  list.children = [];
+  const [state, body] = row.children;
+  const meta = body.children[1];
+  return { status: row.dataset.status, icon: state.children[0].icon, tip: state.title,
+           title: body.children[0].textContent, meta: meta.children.map((c) => c.className + ":" + (c.textContent || c.children.map((x) => x.icon || x).join(""))) };
+};
+console.log(JSON.stringify({
+  done: describe({ id: "d1", kind: "text", status: "done", indexed: true, title: "Note", vault_path: "Knowledge/a.md" }),
+  queued: describe({ id: "d2", kind: "markdown", status: "done", indexed: false, title: "Note", vault_path: "Knowledge/b.md" }),
+  running: describe({ id: "r1", kind: "youtube", status: "running", title: "Video" }),
+  failed: describe({ id: "f1", kind: "screenshot", status: "failed", error: "Could not read the image.", title: "Shot" }),
+  reloaded: describe({ id: "f2", kind: "screenshot", status: "failed", error: "x", title: "Shot" }),
+}));"""
+        out = _node(probe)
+        self.assertEqual(out["done"], {"status": "done", "icon": "saved", "tip": "Saved and searchable", "title": "Note",
+                                       "meta": [":See in Obsidian", "type-pill:Text"]})
+        self.assertEqual(out["queued"]["tip"], "Queued")  # the "searchable soon" detail lives in the tooltip
+        self.assertEqual(out["running"], {"status": "running", "icon": "saving", "tip": "Saving…", "title": "Video",
+                                          "meta": ["muted:Saving…", "type-pill:YouTube"]})
+        self.assertEqual(out["failed"], {"status": "failed", "icon": "failed", "tip": "Failed: Could not read the image.",
+                                         "title": "Shot", "meta": ["type-pill:Screenshot", "retry-capture:retryRetry"]})
+        self.assertEqual(out["reloaded"]["meta"], ["type-pill:Screenshot", "muted:Add it again"])
+
+    def test_every_icon_the_scripts_draw_exists_in_the_sprite(self) -> None:
+        page = (WEB / "index.html").read_text(encoding="utf-8")
+        for name in ("app.js", "capture.js"):
+            script = (WEB / name).read_text(encoding="utf-8")
+            for icon_name in sorted(set(re.findall(r'icon\("([a-z-]+)"\)', script))):
+                with self.subTest(name=name, icon=icon_name):
+                    self.assertIn(f'id="i-{icon_name}"', page)
+
+    def test_failed_icon_is_not_red_and_retry_is_not_taller_than_the_pill(self) -> None:
+        css = (WEB / "styles.css").read_text(encoding="utf-8")
+        failed = re.search(r"\.capture-state \{[^}]*\}", css).group(0)
+        self.assertNotIn("danger", failed)
+        self.assertNotIn("danger", css[css.index(".capture-item {"):css.index(".retry-capture")])
+        retry = re.search(r"\.capture-meta \.retry-capture \{[^}]*\}", css).group(0)
+        self.assertIn("height: 20px", retry)  # the pill is 12 px text plus 4 px above and below
 
 
 class PageStructureTests(unittest.TestCase):
