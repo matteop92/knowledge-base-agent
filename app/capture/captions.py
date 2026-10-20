@@ -184,13 +184,10 @@ class CaptionTranscriber:
     models: list[str] = field(default_factory=speaker_models)
     cost_usd: float = 0.0
     source: str = "not tried"
+    backup: str | None = None
 
     def transcript(self, video_id: str, title: str, channel: str) -> str | None:
         """A bold-speaker transcript, or None when the caller should fall back to Gemini."""
-        from app.ingestion.vault_sync import measured_cost, openrouter_client, usage_mark
-        from app.models.routes import PRICE_CEILINGS
-        from app.storage.spend import SpendCapError
-
         try:
             turns = caption_turns((self.fetch or fetch_caption_text)(video_id))
         except Exception as exc:  # noqa: BLE001 - any caption failure (blocked, missing, unparsable) means Gemini
@@ -200,9 +197,25 @@ class CaptionTranscriber:
             self.source = "gemini (captions: empty)"
             return None
         if len(turns) == 1 and len(turns[0]) > MONOLOGUE_CHARS:
-            # A long video with no speaker marks may still have several speakers; Gemini can tell the voices apart.
+            # A long video with no speaker marks may still have several speakers, and Gemini can tell the voices
+            # apart, so it goes first; the captions under one name are kept in case Gemini fails.
+            body = self._named(video_id, title, channel, turns)
+            self.backup = body or f"**{clean_name(channel) or 'Speaker 1'}:** {turns[0]}"
             self.source = "gemini (captions: no speaker marks)"
             return None
+        return self._named(video_id, title, channel, turns)
+
+    def fallback(self) -> str | None:
+        """The captions under one speaker name when Gemini failed on a video without speaker marks."""
+        if self.backup:
+            self.source = "captions, one speaker (gemini failed)"
+        return self.backup
+
+    def _named(self, video_id: str, title: str, channel: str, turns: list[str]) -> str | None:
+        from app.ingestion.vault_sync import measured_cost, openrouter_client, usage_mark
+        from app.models.routes import PRICE_CEILINGS
+        from app.storage.spend import SpendCapError
+
         description = (self.describe or fetch_description)(video_id)
         deadline = time.monotonic() + CAPTION_BUDGET_SECONDS
         for model_id in self.models:
