@@ -8,6 +8,7 @@
   const YOUTUBE = /^(https?:\/\/)?(www\.|m\.|music\.)?(youtube\.com\/(watch|shorts|live|embed)|youtu\.be\/)/i;
   let pending = null;  // {kind, content?, image?, label}
   const retries = new Map();  // capture id -> request body, for Retry
+  const pollers = new Map();  // capture id -> timer, so one save is never polled twice
 
   const STATUS = {
     running: "Saving…",
@@ -138,26 +139,27 @@
   }
 
   function pollCapture(id, announceResult) {
+    if (pollers.has(id)) return;
+    const later = (ms) => pollers.set(id, setTimeout(tick, ms));
     const tick = async () => {
+      pollers.delete(id);
       try {
         const job = await api("GET", `/api/captures/${encodeURIComponent(id)}`);
         renderCapture(job);
-        if (job.status === "running") { setTimeout(tick, POLL_MS); return; }
+        if (job.status === "running") { later(POLL_MS); return; }
         if (announceResult) {
           message(job.status === "failed" ? `Not saved: ${job.error || "unknown reason"}` : `Saved to ${job.vault_path}`,
                   job.status !== "failed");
         }
       } catch (error) {
-        if (error.status !== 401) setTimeout(tick, POLL_MS * 2);
+        if (error.status !== 401) later(POLL_MS * 2);
       }
     };
-    setTimeout(tick, POLL_MS);
+    later(POLL_MS);
   }
 
-  async function openCapture() {
-    closeSidebar();
-    document.body.classList.add("capturing");
-    $("capture").hidden = false;
+  // Called by the shell when the Add tab is shown: load the setting and the recent saves.
+  async function show() {
     try {
       const { captures, enabled, vault_name: vaultName } = await api("GET", "/api/captures");
       state.captureEnabled = enabled;
@@ -173,9 +175,25 @@
     $("capture-text").focus();
   }
 
-  function closeCapture() {
-    document.body.classList.remove("capturing");
-    $("capture").hidden = true;
+  // Sign-out and a 401 clear whatever was half-typed, so the next person sees an empty box.
+  function reset() {
+    pending = null;
+    retries.clear();
+    for (const timer of pollers.values()) clearTimeout(timer);
+    pollers.clear();
+    $("capture-kind").value = "text";
+    for (const id of ["capture-text", "capture-title", "capture-tags", "capture-file"]) $(id).value = "";
+    $("capture-pending").textContent = "";
+    $("capture-preview").hidden = true;
+    $("capture-preview").removeAttribute("src");
+    $("capture-list").replaceChildren();
+    message("");
+  }
+
+  // Open Add with some text already in the box (used when a gap asks for a note).
+  async function openWith(text) {
+    await setView("add");
+    takeText(text);
   }
 
   // Android share sheet: the service worker keeps the shared item until the app (and sign-in) picks it up.
@@ -187,7 +205,7 @@
       const meta = await cache.match("/share/meta");
       if (!meta) return;
       const { title, text, url } = await meta.json();
-      await openCapture();
+      await setView("add");
       const file = await cache.match("/share/file");
       if (file) {
         const blob = await file.blob();
@@ -203,9 +221,6 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    $("add").addEventListener("click", openCapture);
-    $("sidebar-add").addEventListener("click", openCapture);
-    $("capture-close").addEventListener("click", closeCapture);
     $("capture-form").addEventListener("submit", (event) => { event.preventDefault(); save(); });
     $("capture-file").addEventListener("change", (event) => takeFile(event.target.files[0]));
     const drop = $("capture");
@@ -221,8 +236,7 @@
       const image = [...event.clipboardData.files].find((file) => file.type.startsWith("image/"));
       if (image) { event.preventDefault(); takeFile(image); }
     });
-    document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeCapture(); });
   });
 
-  window.captureScreen = { takeShared, closeCapture };
+  window.captureScreen = { takeShared, show, reset, openWith };
 })();
