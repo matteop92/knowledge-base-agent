@@ -229,11 +229,11 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 
 /* Sheet: Source, Gaps and Feedback share one component ------------------------------------------- */
 .scrim { position: fixed; inset: 0; background: rgba(29, 28, 26, 0.34); z-index: 30; }
-.sheet { position: fixed; z-index: 40; left: 0; right: 0; bottom: 0; max-height: 80dvh; background: var(--surface); border-radius: 24px 24px 0 0; padding: 10px 0 calc(24px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; box-shadow: 0 -8px 32px rgba(29, 28, 26, 0.12); }
+.sheet { position: fixed; z-index: 40; left: 0; right: 0; bottom: 0; max-height: 80dvh; background: var(--surface); border-radius: 24px 24px 0 0; padding: 10px env(safe-area-inset-right) calc(24px + env(safe-area-inset-bottom)) env(safe-area-inset-left); display: flex; flex-direction: column; box-shadow: 0 -8px 32px rgba(29, 28, 26, 0.12); }
 .sheet:focus { outline: none; }
 .sheet-handle { align-self: center; width: 36px; height: 4px; border-radius: 2px; background: var(--handle); flex: none; }
 /* The boards have no header bar. The close button is hidden on phones (the scrim and Back close it) but stays reachable by keyboard. */
-.sheet-head { position: absolute; top: 6px; right: 8px; }
+.sheet-head { position: absolute; top: 6px; right: calc(8px + env(safe-area-inset-right)); }
 #sheet-close:not(:focus-visible) { opacity: 0; pointer-events: none; }
 .sheet-body { overflow-y: auto; padding: 16px 24px 0; }
 .sheet-body section { display: flex; flex-direction: column; gap: 16px; }
@@ -281,9 +281,9 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
   .sidebar-collapsed .account-menu { left: 4px; }
   /* Source and Gaps: a full-height panel from the right edge. */
   .scrim { background: transparent; }
-  .sheet { left: auto; right: 0; top: 0; bottom: 0; width: var(--panel-w); max-height: none; border-radius: 0; padding: 0; box-shadow: -1px 0 0 rgba(29, 28, 26, 0.06), -12px 0 32px rgba(29, 28, 26, 0.05); }
+  .sheet { left: auto; right: 0; top: 0; bottom: 0; width: var(--panel-w); max-height: none; border-radius: 0; padding: 0 env(safe-area-inset-right) 0 0; box-shadow: -1px 0 0 rgba(29, 28, 26, 0.06), -12px 0 32px rgba(29, 28, 26, 0.05); }
   .sheet-handle { display: none; }
-  .sheet-head { top: 12px; right: 12px; }
+  .sheet-head { top: 12px; right: calc(12px + env(safe-area-inset-right)); }
   #sheet-close:not(:focus-visible) { opacity: 1; pointer-events: auto; color: var(--muted); }
   .sheet-body { padding: 28px 28px 24px; flex: 1; }
   .sheet-body .source-titles { padding-right: 32px; }
