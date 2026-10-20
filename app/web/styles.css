@@ -233,11 +233,11 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 .sheet-heading { font-family: var(--serif); font-weight: 500; font-size: 22px; line-height: 1.2; }
 .sheet-sub { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .sheet-note { margin: 0; font-size: 13px; line-height: 1.45; color: var(--muted); }
-.source-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .source-titles { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .source-titles .sheet-heading { overflow-wrap: anywhere; }
-.icon-link { width: var(--ctl); height: var(--ctl); flex: none; margin: -6px -8px 0 0; border-radius: 999px; color: var(--muted); display: flex; align-items: center; justify-content: center; }
-.icon-link:hover { background: var(--hover); color: var(--ink); }
+.sheet-sub .dot { margin: 0 6px; }
+.sheet-sub a { color: var(--ink-soft); text-decoration: underline; }
+.sheet-sub a:hover { color: var(--ink); }
 .passage { margin: 0; padding: 14px 16px; border-radius: 12px; background: var(--ground); font-family: var(--serif); font-size: 16px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; quotes: "\201C" "\201D"; }
 .passage::before { content: open-quote; }
 .passage::after { content: close-quote; }
@@ -273,7 +273,7 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
   .sheet-head { top: 12px; right: 12px; }
   #sheet-close:not(:focus-visible) { opacity: 1; pointer-events: auto; color: var(--muted); }
   .sheet-body { padding: 28px 28px 24px; flex: 1; }
-  .sheet-body .source-head { padding-right: 32px; }
+  .sheet-body .source-titles { padding-right: 32px; }
   .app[data-sheet="source"] .scrim, .app[data-sheet="gaps"] .scrim { pointer-events: none; }
 }
 /* Wide windows push the page over so nothing is covered; narrower ones let the panel overlay it. */

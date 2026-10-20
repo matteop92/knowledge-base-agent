@@ -392,21 +392,20 @@ function textElement(tag, className, text) {
 function fillSource(section, data, index) {
   const source = data.sources[index];
   const intro = document.createElement("div");
-  intro.className = "source-head";
-  const titles = document.createElement("div");
-  titles.className = "source-titles";
-  titles.append(textElement("span", "kicker", `Source ${source.number}`), textElement("h3", "sheet-heading", source.title));
-  if (source.folder) titles.append(textElement("span", "sheet-sub", source.folder));
-  intro.append(titles);
+  intro.className = "source-titles";
+  intro.append(textElement("span", "kicker", `Source ${source.number}`), textElement("h3", "sheet-heading", source.title));
+  // The folder path, then a plain underlined link to the note in Obsidian beside it.
+  const where = document.createElement("p");
+  where.className = "sheet-sub";
+  if (source.folder) where.append(textElement("span", "", source.folder));
   const url = source.url;
   if (url.startsWith("obsidian://")) {
-    const link = document.createElement("a");
-    link.className = "icon-link";
+    if (source.folder) where.append(textElement("span", "dot", "·"));
+    const link = textElement("a", "open-obsidian", "See in Obsidian");
     link.href = url;
-    link.setAttribute("aria-label", "Open in Obsidian");
-    link.append(icon("external"));
-    intro.append(link);
+    where.append(link);
   }
+  if (where.childNodes.length) intro.append(where);
   const parts = [intro];
   for (const passage of source.passages) parts.push(textElement("blockquote", "passage", passage));
   if (data.sources.length > 1) {
@@ -747,6 +746,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   // A click anywhere else folds the account menu away.
   document.addEventListener("click", (event) => {
     if (!$("account-menu").hidden && !event.target.closest(".sidebar-foot")) setAccountOpen(false);
+    // The desktop panel has no dimmed backdrop: a click on the page behind it closes it. Controls that open or swap it do not.
+    if (sheet.open && !sheet.closing && !event.target.closest("#sheet, .marker, .source-number, .gap-chip, .thumbs")) closeSheet();
   });
   $("nav-scrim").addEventListener("click", () => setNavOpen(false));
   phone.addEventListener("change", () => setNavOpen(false));
