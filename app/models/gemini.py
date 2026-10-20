@@ -55,6 +55,8 @@ class GeminiClient:
                 raise GeminiError("Gemini's free daily limit was reached; try again later", quota=True) from None
             if exc.code in (400, 403, 404):
                 raise GeminiError("Gemini could not open this video (it may be private, age-restricted or too long)") from None
+            if exc.code >= 500:
+                raise GeminiError("YouTube transcripts are busy right now; try again in a few minutes") from None
             raise GeminiError(f"Gemini returned HTTP {exc.code}") from None
         except (error.URLError, TimeoutError, OSError, ValueError):
             raise GeminiError("Gemini could not be reached; try again") from None
