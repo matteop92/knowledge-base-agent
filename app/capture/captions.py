@@ -9,8 +9,10 @@ captions, title, channel and description are sent. When a video has no English a
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -18,6 +20,8 @@ from urllib import request
 
 from app.models.client import ModelSpec
 from app.models.routes import price_usd
+
+log = logging.getLogger("knowledge.capture.captions")
 
 PROMPT_VERSION = "youtube_speakers_v1"
 PROMPT = (Path(__file__).resolve().parents[2] / "prompts" / f"{PROMPT_VERSION}.md").read_text(encoding="utf-8")
@@ -29,6 +33,9 @@ CHUNK_CHARS = 60_000
 NAME_TOKENS = 20  # per turn: the number, the name and JSON punctuation
 MAX_MISSING = 0.1
 REQUEST_TIMEOUT = 30
+# Naming stops after this, so the Gemini fallback (10 minutes at most) still fits the capture job's time limit.
+CAPTION_BUDGET_SECONDS = 240
+MONOLOGUE_CHARS = 3 * 1500
 DESCRIPTION_CHARS = 2000
 DESCRIPTION = re.compile(r'"shortDescription":"((?:[^"\\]|\\.)*)"')
 NOISE = re.compile(r"\[(?:music|applause|laughter|__)\]\s*", re.IGNORECASE)
@@ -77,7 +84,7 @@ def fetch_description(video_id: str) -> str:
                                timeout=REQUEST_TIMEOUT).read(3_000_000).decode("utf-8", "ignore")
         match = DESCRIPTION.search(page)
         return json.loads(f'"{match.group(1)}"')[:DESCRIPTION_CHARS] if match else ""
-    except (OSError, ValueError):
+    except Exception:  # noqa: BLE001 - the description only helps spell names
         return ""
 
 
@@ -157,7 +164,8 @@ def name_turns(turns: list[str], title: str, channel: str, client, model: ModelS
         if sum(label is None for label in labels) > MAX_MISSING * len(group):
             raise ValueError("too many turns came back without a speaker")
         for label in labels:
-            names.append(label or (names[-1] if names else "Speaker 1"))
+            # Turns alternate, so a turn left unnamed is more likely the speaker from two turns back.
+            names.append(label or (names[-2] if len(names) > 1 else "Unknown speaker"))
         people = list(dict.fromkeys(people + [clean_name(person) for person in data.get("people") or []
                                               if clean_name(person)] + names))[:20]
     return names
@@ -180,36 +188,49 @@ class CaptionTranscriber:
     def transcript(self, video_id: str, title: str, channel: str) -> str | None:
         """A bold-speaker transcript, or None when the caller should fall back to Gemini."""
         from app.ingestion.vault_sync import measured_cost, openrouter_client, usage_mark
+        from app.models.routes import PRICE_CEILINGS
         from app.storage.spend import SpendCapError
 
         try:
             turns = caption_turns((self.fetch or fetch_caption_text)(video_id))
-        except CaptionsUnavailable as exc:
-            self.source = f"gemini (captions: {exc})"
+        except Exception as exc:  # noqa: BLE001 - any caption failure (blocked, missing, unparsable) means Gemini
+            self.source = f"gemini (captions: {exc if isinstance(exc, CaptionsUnavailable) else type(exc).__name__})"
             return None
         if not turns:
             self.source = "gemini (captions: empty)"
             return None
+        if len(turns) == 1 and len(turns[0]) > MONOLOGUE_CHARS:
+            # A long video with no speaker marks may still have several speakers; Gemini can tell the voices apart.
+            self.source = "gemini (captions: no speaker marks)"
+            return None
         description = (self.describe or fetch_description)(video_id)
+        deadline = time.monotonic() + CAPTION_BUDGET_SECONDS
         for model_id in self.models:
+            if model_id not in PRICE_CEILINGS or time.monotonic() >= deadline:
+                continue
             worst = worst_case_usd(model_id, title, channel, turns)
             try:
-                self.approve(worst)
+                # Money a failed earlier model already cost in this job is not in the ledger yet.
+                self.approve(worst + self.cost_usd)
             except SpendCapError:
                 self.source = "gemini (captions: daily cap)"
                 return None
             model = ModelSpec(provider="openrouter", model_id=model_id, model_version="current")
             client = mark = None
+            names = None
             try:
                 client = openrouter_client([model_id], requests=len(chunks(turns)),
                                            input_bytes=input_bytes(title, channel, turns), structured={model_id})
+                client.set_deadline(deadline)
                 mark = usage_mark(client)
                 names = name_turns(turns, title, channel, client, model, description)
-            except Exception:  # noqa: BLE001 - any failure moves on to the next model, then Gemini
-                self.cost_usd += measured_cost(client, mark, worst) if client is not None else 0.0
-                continue
-            self.cost_usd += measured_cost(client, mark, worst)
-            self.source = f"captions ({model_id})"
-            return "\n\n".join(f"**{name}:** {turn}" for name, turn in zip(names, turns))
+            except Exception as exc:  # noqa: BLE001 - any failure moves on to the next model, then Gemini
+                log.warning("youtube speaker naming failed model=%s error=%s", model_id, type(exc).__name__)
+            finally:
+                if client is not None:
+                    self.cost_usd += measured_cost(client, mark, worst)
+            if names is not None:
+                self.source = f"captions ({model_id})"
+                return "\n\n".join(f"**{name}:** {turn}" for name, turn in zip(names, turns))
         self.source = "gemini (captions: speakers not named)"
         return None

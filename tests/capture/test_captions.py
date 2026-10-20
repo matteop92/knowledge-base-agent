@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from app.api.capture import CaptureCostError, YouTubeInput, YouTubeTranscriber
 from app.capture.captions import (CHUNK_CHARS, CaptionsUnavailable, CaptionTranscriber, caption_turns, chunks,
-                                  request_text, worst_case_usd)
+                                  fetch_caption_text, fetch_description, request_text, worst_case_usd)
 from app.capture.notes import CaptureError, Draft
 from app.capture.youtube import transcribe_youtube
 from app.models.gemini import Transcription
@@ -21,7 +21,10 @@ class FakeModel:
     """Answers with one name per turn; `names` maps a turn number to a name, `fail` raises instead."""
 
     def __init__(self, names=None, fail=False, people=("Claire Vo", "John Lindquist")):
-        self.names, self.fail, self.people, self.inputs = names, fail, list(people), []
+        self.names, self.fail, self.people, self.inputs, self.deadline = names, fail, list(people), [], None
+
+    def set_deadline(self, deadline):
+        self.deadline = deadline
 
     def generate_json(self, *, input_text, **kwargs):
         self.inputs.append(input_text)
@@ -127,15 +130,65 @@ class CaptionTranscriberTests(unittest.TestCase):
             self.assertIsNone(captions.transcript("dAIIaepNhQM", "Jev", "How I AI"))
         self.assertEqual((harness.opened, captions.cost_usd), ([], 0.0))
 
-    def test_a_few_unnamed_turns_take_the_previous_name_but_many_move_on(self):
-        many_turns = " >> ".join(f"turn {number}" for number in range(20))
-        few_missing = FakeModel(names={number: "Ann" for number in range(1, 21) if number != 5})
+    def test_an_unnamed_turn_takes_the_speaker_from_two_turns_back_but_many_move_on(self):
+        many_turns = " >> ".join(f"turn {number}" for number in range(1, 21))
+        alternating = {number: ("Ann" if number % 2 else "Bo") for number in range(1, 21)}
+        few_missing = FakeModel(names={number: name for number, name in alternating.items() if number not in (1, 5)})
         with Harness({"deepseek/deepseek-v4.1-flash": few_missing}):
             body = transcriber(fetch=lambda video: many_turns).transcript("x", "t", "c")
-        self.assertIn("**Ann:** turn 4", body)
+        self.assertIn("**Unknown speaker:** turn 1\n", body)
+        self.assertIn("**Ann:** turn 5\n", body)
         mostly_missing = FakeModel(names={1: "Ann"})
         with Harness({"deepseek/deepseek-v4.1-flash": mostly_missing, "openai/gpt-6-luna": FakeModel(fail=True)}):
             self.assertIsNone(transcriber(fetch=lambda video: many_turns).transcript("x", "t", "c"))
+
+    def test_any_caption_failure_or_a_long_unmarked_video_goes_to_gemini(self):
+        from xml.etree.ElementTree import ParseError
+
+        def broken(video):
+            raise ParseError("no element found")
+        for fetch, source in ((broken, "gemini (captions: ParseError)"),
+                              (lambda video: "[music]", "gemini (captions: empty)"),
+                              (lambda video: "word " * 2000, "gemini (captions: no speaker marks)")):
+            with Harness({}) as harness:
+                captions = transcriber(fetch=fetch)
+                self.assertIsNone(captions.transcript("x", "t", "c"))
+            self.assertEqual((harness.opened, captions.source), ([], source))
+        with Harness({"deepseek/deepseek-v4.1-flash": FakeModel()}):
+            self.assertIsNotNone(transcriber(fetch=lambda video: "A short solo clip.").transcript("x", "t", "c"))
+
+    def test_an_unpriced_model_is_skipped_and_the_next_cap_check_counts_earlier_spend(self):
+        approved = []
+        models = ["vendor/unknown", "deepseek/deepseek-v4.1-flash", "openai/gpt-6-luna"]
+        with Harness({"deepseek/deepseek-v4.1-flash": FakeModel(fail=True), "openai/gpt-6-luna": FakeModel()}) as harness:
+            captions = transcriber(models=models, approve=approved.append)
+            self.assertIsNotNone(captions.transcript("x", "t", "c"))
+        self.assertEqual(harness.opened, ["deepseek/deepseek-v4.1-flash", "openai/gpt-6-luna"])
+        luna_worst = worst_case_usd("openai/gpt-6-luna", "t", "c", caption_turns(CAPTIONS))
+        self.assertAlmostEqual(approved[1], luna_worst + 0.001)
+
+    def test_the_cap_can_stop_the_second_model_and_keeps_the_first_cost(self):
+        calls = []
+
+        def second_refused(usd):
+            calls.append(usd)
+            if len(calls) == 2:
+                raise SpendCapError("cap")
+        with Harness({"deepseek/deepseek-v4.1-flash": FakeModel(fail=True), "openai/gpt-6-luna": FakeModel()}):
+            captions = transcriber(approve=second_refused)
+            self.assertIsNone(captions.transcript("x", "t", "c"))
+        self.assertEqual((captions.cost_usd, captions.source), (0.001, "gemini (captions: daily cap)"))
+
+    def test_long_videos_name_each_chunk_and_carry_the_names_forward(self):
+        long_turns = " >> ".join(f"turn {number} " + "word " * 300 for number in range(1, 81))
+        model = FakeModel()
+        with Harness({"deepseek/deepseek-v4.1-flash": model}):
+            body = transcriber(fetch=lambda video: long_turns).transcript("x", "t", "c")
+        self.assertGreater(len(model.inputs), 1)
+        self.assertNotIn("Names already found:", model.inputs[0])
+        self.assertIn("Names already found: Claire Vo, John Lindquist", model.inputs[1])
+        self.assertEqual(body.count("\n\n**"), 79)
+        self.assertIsNotNone(model.deadline)
 
     def test_names_cannot_break_the_bold_label(self):
         model = FakeModel(names={1: "**Ann: Lee**", 2: "Ann *Lee*", 3: "Bo\nB"})
@@ -144,6 +197,28 @@ class CaptionTranscriberTests(unittest.TestCase):
         self.assertTrue(body.startswith("**Ann Lee:** In some ways"))
         self.assertIn("**Ann Lee:** Whenever", body)
         self.assertIn("**Bo B:** Right", body)
+
+
+class FetchTests(unittest.TestCase):
+    def test_library_and_network_errors_become_captions_unavailable(self):
+        import requests
+        from youtube_transcript_api import TranscriptsDisabled
+
+        for error in (TranscriptsDisabled("x"), requests.ConnectionError("down")):
+            with patch("youtube_transcript_api.YouTubeTranscriptApi.list", side_effect=error):
+                with self.assertRaises(CaptionsUnavailable):
+                    fetch_caption_text("dAIIaepNhQM")
+
+    def test_the_description_is_read_from_the_page_or_left_empty(self):
+        import io
+        page = rb'..."shortDescription":"Claire Vo talks to \"John\" Lindquist.\nMore",...'
+        with patch("app.capture.captions.request.urlopen", return_value=io.BytesIO(page)):
+            self.assertEqual(fetch_description("x"), 'Claire Vo talks to "John" Lindquist.\nMore')
+        with patch("app.capture.captions.request.urlopen", return_value=io.BytesIO(b"<html></html>")):
+            self.assertEqual(fetch_description("x"), "")
+        from http.client import IncompleteRead
+        with patch("app.capture.captions.request.urlopen", side_effect=IncompleteRead(b"")):
+            self.assertEqual(fetch_description("x"), "")
 
 
 class FakeGemini:
