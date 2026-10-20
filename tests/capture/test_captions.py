@@ -148,14 +148,28 @@ class CaptionTranscriberTests(unittest.TestCase):
         def broken(video):
             raise ParseError("no element found")
         for fetch, source in ((broken, "gemini (captions: ParseError)"),
-                              (lambda video: "[music]", "gemini (captions: empty)"),
-                              (lambda video: "word " * 2000, "gemini (captions: no speaker marks)")):
+                              (lambda video: "[music]", "gemini (captions: empty)")):
             with Harness({}) as harness:
                 captions = transcriber(fetch=fetch)
                 self.assertIsNone(captions.transcript("x", "t", "c"))
             self.assertEqual((harness.opened, captions.source), ([], source))
         with Harness({"deepseek/deepseek-v4.1-flash": FakeModel()}):
             self.assertIsNotNone(transcriber(fetch=lambda video: "A short solo clip.").transcript("x", "t", "c"))
+
+    def test_a_long_unmarked_video_tries_gemini_first_and_keeps_the_captions_as_a_backup(self):
+        solo = "word " * 2000
+        with Harness({"deepseek/deepseek-v4.1-flash": FakeModel(names={1: "Tim Ferriss"})}):
+            captions = transcriber(fetch=lambda video: solo)
+            self.assertIsNone(captions.transcript("x", "t", "The Tim Ferriss Show"))
+        self.assertEqual(captions.source, "gemini (captions: no speaker marks)")
+        self.assertTrue(captions.fallback().startswith("**Tim Ferriss:** word word"))
+        self.assertEqual(captions.source, "captions, one speaker (gemini failed)")
+        failing = {"deepseek/deepseek-v4.1-flash": FakeModel(fail=True), "openai/gpt-6-luna": FakeModel(fail=True)}
+        with Harness(failing):
+            captions = transcriber(fetch=lambda video: solo)
+            captions.transcript("x", "t", "The Tim Ferriss Show")
+        self.assertTrue(captions.fallback().startswith("**The Tim Ferriss Show:** word"))
+        self.assertIsNone(transcriber().fallback())
 
     def test_an_unpriced_model_is_skipped_and_the_next_cap_check_counts_earlier_spend(self):
         approved = []
@@ -240,6 +254,28 @@ class TranscribeTests(unittest.TestCase):
                                    captions=lambda video, title, channel: seen.append((video, title, channel)))
         self.assertEqual(seen, [("dAIIaepNhQM", "Jev: 8 real use cases", "How I AI")])
         self.assertEqual((draft.body, gemini.calls), ("**Jawed:** All right.", [URL]))
+
+
+class BusyGemini:
+    def __init__(self, text=None):
+        self.text = text
+
+    def transcribe(self, url, prompt, **kwargs):
+        from app.models.gemini import GeminiError
+        if self.text is None:
+            raise GeminiError("YouTube transcripts are busy right now; try again in a few minutes")
+        return Transcription(self.text, "STOP", {})
+
+
+class BackupTests(unittest.TestCase):
+    def test_the_backup_saves_the_add_when_gemini_is_busy_or_unlabelled(self):
+        for gemini in (BusyGemini(), BusyGemini("no speaker labels here")):
+            draft = transcribe_youtube(URL, gemini, details=DETAILS, captions=lambda video, title, channel: None,
+                                       backup=lambda: "**Ann:** Hello.")
+            self.assertEqual(draft.body, "**Ann:** Hello.")
+        with self.assertRaisesRegex(CaptureError, "busy"):
+            transcribe_youtube(URL, BusyGemini(), details=DETAILS, captions=lambda video, title, channel: None,
+                               backup=lambda: None)
 
 
 class YouTubeTranscriberTests(unittest.TestCase):

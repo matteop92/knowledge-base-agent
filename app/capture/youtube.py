@@ -72,9 +72,10 @@ def clean_transcript(text: str) -> str:
 
 def transcribe_youtube(link: str, client: GeminiClient, *, title: str | None = None, tags: list[str] | None = None,
                        details=video_details,
-                       captions: Callable[[str, str, str], str | None] | None = None) -> Draft:
+                       captions: Callable[[str, str, str], str | None] | None = None,
+                       backup: Callable[[], str | None] | None = None) -> Draft:
     """captions(video_id, title, channel) returns a bold-speaker transcript from YouTube's own captions, or None
-    to fall back to Gemini, which transcribes the whole video."""
+    to fall back to Gemini, which transcribes the whole video. backup() supplies a transcript when Gemini fails."""
     url = video_url(link)
     info = details(url)
     body = captions(video_id(url), str(info.get("title") or ""), str(info.get("channel") or "")) if captions else None
@@ -82,12 +83,18 @@ def transcribe_youtube(link: str, client: GeminiClient, *, title: str | None = N
         body = clean_transcript(body)
     else:
         try:
-            result = client.transcribe(url, PROMPT)
-        except GeminiError as exc:
-            raise CaptureError(str(exc)) from None
-        body = clean_transcript(result.text)
-        if result.finish_reason == "MAX_TOKENS":
-            body += "\n\n*(Transcript cut off: the video is longer than one request can transcribe.)*"
+            try:
+                result = client.transcribe(url, PROMPT)
+            except GeminiError as exc:
+                raise CaptureError(str(exc)) from None
+            body = clean_transcript(result.text)
+            if result.finish_reason == "MAX_TOKENS":
+                body += "\n\n*(Transcript cut off: the video is longer than one request can transcribe.)*"
+        except CaptureError:
+            spare = backup() if backup else None
+            if not spare:
+                raise
+            body = clean_transcript(spare)
     body = body.encode("utf-8")[:MAX_TEXT_BYTES].decode("utf-8", "ignore")
     own = {"source": "YouTube"}
     if info.get("channel"):
