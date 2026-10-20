@@ -134,6 +134,12 @@ async function refreshConversations() {
   document.querySelector(".conversation-empty").hidden = conversations.length > 0;
 }
 
+// A new question has no answers yet: the heading and the question bar sit together in the middle of the page.
+function setEmpty(empty) {
+  $("empty-state").hidden = !empty;
+  $("view-ask").classList.toggle("is-empty", empty);
+}
+
 function stopPolling() {
   for (const timer of state.polling.values()) clearTimeout(timer);
   state.polling.clear();
@@ -151,7 +157,7 @@ function newQuestion() {
   turnData.clear();
   $("turns").replaceChildren();
   setTitle("New question");
-  $("empty-state").hidden = false;
+  setEmpty(true);
   setRunning(false);
   setView("ask");
   $("question").focus();
@@ -164,7 +170,7 @@ async function openConversation(id) {
     const conversation = await api("GET", `/api/conversations/${encodeURIComponent(id)}`);
     state.conversationId = conversation.id;
     setTitle(conversation.title);
-    $("empty-state").hidden = true;
+    setEmpty(false);
     turnData.clear();
     $("turns").replaceChildren();
     let running = false;
@@ -192,7 +198,7 @@ async function ask(question) {
       state.conversationId = started.conversation_id;
       setTitle(question);
     }
-    $("empty-state").hidden = true;
+    setEmpty(false);
     renderTurn({ id: started.turn_id, question, status: "running", created_at: new Date().toISOString() });
     poll(started.turn_id);
     refreshConversations();
@@ -432,20 +438,22 @@ function openSource(turnId, index, opener) {
 
 function fillGaps(section, data) {
   const count = data.gaps.length;
-  const parts = [
-    textElement("span", "kicker kicker-gap", `${count} ${count === 1 ? "gap" : "gaps"} in this answer`),
-    textElement("h3", "sheet-heading", "What’s missing"),
-  ];
+  const head = document.createElement("div");
+  head.className = "gap-head";
+  head.append(textElement("span", "kicker kicker-gap", `${count} ${count === 1 ? "gap" : "gaps"} in this answer`),
+    textElement("h3", "sheet-heading", "What’s missing"));
+  const list = document.createElement("div");
+  list.className = "gap-list";
   for (const gap of data.gaps) {
-    parts.push(textElement("p", "gap-card", gap));
-    const add = document.createElement("button");
+    const item = document.createElement("div");
+    item.className = "gap-item";
+    const add = textElement("button", "add-gap", "+ Add a note to fill this gap");
     add.type = "button";
-    add.className = "pill";
-    add.append(icon("add"), document.createTextNode("Add a note to fill this gap"));
     add.addEventListener("click", () => closeSheet(() => window.captureScreen.openWith(gap)));
-    parts.push(add);
+    item.append(textElement("p", "gap-text", gap), add);
+    list.append(item);
   }
-  section.replaceChildren(...parts);
+  section.replaceChildren(head, list);
 }
 
 function openGaps(turnId, opener) {
