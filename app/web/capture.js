@@ -12,6 +12,48 @@
   let fileToken = 0;  // bumped by reset(), so a file still being read cannot fill a cleared box
   const retries = new Map();  // capture id -> request body, for Retry
   const pollers = new Map();  // capture id -> timer, so one save is never polled twice
+  const retrying = new Set();  // failed saves being resent, so a re-drawn row cannot offer a second Retry
+
+  // What was sent is kept in this browser for an hour so Retry still works after a reload. Only this device ever holds it:
+  // one key per save, forgotten when the save is done, when it expires, and on sign-out or a 401.
+  const RETRY_PREFIX = "ka-retry:";
+  const RETRY_KEEP_MS = 60 * 60 * 1000;
+  const RETRY_MAX_CHARS = 1500000;  // a bigger screenshot is not kept, so it cannot fill the store the draft also lives in
+  const persisted = new Set();  // ids whose body is in storage, so a copy another tab already used is not sent twice
+  let resets = 0;  // bumped by reset(), so a save that answers after sign-out cannot write anything back
+
+  function readRetry(id) {
+    let entry = null;
+    try { entry = JSON.parse(load(RETRY_PREFIX + id)); } catch (_) { entry = null; }
+    const fresh = entry && typeof entry.at === "number" && Date.now() - entry.at <= RETRY_KEEP_MS &&
+      entry.body && typeof entry.body === "object";
+    if (!fresh) { store(RETRY_PREFIX + id, null); return null; }
+    return entry.body;
+  }
+
+  function keepRetry(id, body) {
+    const json = body ? JSON.stringify({ body, at: Date.now() }) : null;
+    store(RETRY_PREFIX + id, json && json.length <= RETRY_MAX_CHARS ? json : null);  // a full browser store just skips this
+    return Boolean(json) && load(RETRY_PREFIX + id) === json;
+  }
+
+  function retryKeys() {
+    const keys = [];
+    try {
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(RETRY_PREFIX)) keys.push(key);
+      }
+    } catch (_) { /* private mode */ }
+    return keys;
+  }
+
+  // Drops everything that has expired, so nothing outlives its hour on disk; `all` clears the lot.
+  function sweepRetries(all) {
+    for (const key of retryKeys()) {
+      if (all) store(key, null); else readRetry(key.slice(RETRY_PREFIX.length));
+    }
+  }
 
   const STATUS = {
     running: "Saving…",
@@ -135,9 +177,13 @@
   async function send(body, fromForm) {
     inFlight += 1;
     refresh();
+    const session = resets;
+    let sent = false;
     try {
       const { capture_id: id } = await api("POST", "/api/captures", body);
+      if (session !== resets) return false;  // signed out meanwhile: nothing from this save may reappear
       retries.set(id, body);
+      if (keepRetry(id, body)) persisted.add(id);
       if (fromForm) {
         pending = null;
         fileLabel = null;
@@ -151,7 +197,8 @@
         $("capture-more").open = false;
       }
       message("Saving… it appears under Recent below.", true);
-      renderCapture({ id, status: "running", title: body.title || "New capture" }, true);
+      sent = true;
+      renderCapture({ id, kind: body.kind, status: "running", title: body.title || "New capture" }, true);
       pollCapture(id, true);
     } catch (error) {
       message(error.status === 429 ? "The daily spending cap was reached." : error.message);
@@ -159,8 +206,12 @@
       inFlight = Math.max(0, inFlight - 1);
       refresh();
     }
+    return sent;
   }
 
+  const KINDS = { text: "Text", markdown: "Markdown", screenshot: "Screenshot", youtube: "YouTube" };
+
+  // One row per save: the icon says the state (its tooltip has the detail), then the title, then the link, the type and Retry.
   function renderCapture(job, prepend) {
     let item = document.querySelector(`.capture-item[data-id="${CSS.escape(job.id)}"]`);
     if (!item) {
@@ -170,48 +221,95 @@
       prepend ? $("capture-list").prepend(item) : $("capture-list").append(item);
     }
     item.replaceChildren();
+    if (job.status === "done") store(RETRY_PREFIX + job.id, null);
+    // A save still running at reload that then fails gets its Retry back from the kept copy.
+    if (job.status === "failed" && !retries.has(job.id)) {
+      const kept = readRetry(job.id);
+      if (kept) { retries.set(job.id, kept); persisted.add(job.id); }
+    }
+    item.dataset.status = job.status === "failed" ? "failed" : job.status === "running" ? "running" : "done";
+    const detail = job.status === "running" ? STATUS.running :
+      job.status === "failed" ? `Failed: ${job.error || "unknown reason"}` :
+      job.indexed ? STATUS.indexed : STATUS.queued;
+    const state = document.createElement("span");
+    state.className = "capture-state";
+    state.title = detail;
+    state.setAttribute("role", "img");
+    state.setAttribute("aria-label", detail);
+    state.append(icon(job.status === "running" ? "saving" : job.status === "failed" ? "failed" : "saved"));
     const body = document.createElement("div");
     body.className = "capture-body";
     const title = document.createElement("p");
     title.className = "capture-title";
     title.textContent = job.title || "Capture";
-    const line = document.createElement("p");
-    line.className = "muted small";
-    line.textContent = job.status === "running" ? STATUS.running :
-      job.status === "failed" ? `Failed: ${job.error || "unknown reason"}` :
-      job.indexed ? STATUS.indexed : STATUS.queued;
-    item.dataset.status = job.status;
-    body.append(title, line);
-    item.append(icon("doc"), body);
-    if (job.vault_path) {
-      const path = document.createElement("p");
-      path.className = "muted small path";
-      path.textContent = job.vault_path;
+    const meta = document.createElement("div");
+    meta.className = "capture-meta";
+    if (job.status === "running") {
+      const saving = document.createElement("span");
+      saving.className = "muted";
+      saving.textContent = STATUS.running;
+      meta.append(saving);
+    } else if (job.vault_path) {
       const open = document.createElement("a");
       open.href = obsidianLink(job.vault_path);
-      open.textContent = "Open in Obsidian";
-      body.append(path, open);
+      open.textContent = "See in Obsidian";
+      meta.append(open);
     }
-    if (job.status === "failed" && retries.has(job.id)) {
-      const retry = document.createElement("button");
-      retry.type = "button";
-      retry.textContent = "Retry";
-      retry.addEventListener("click", async () => {
-        retry.disabled = true;
-        await send(retries.get(job.id), false);
-        retry.disabled = false;
-      });
-      body.append(retry);
+    if (KINDS[job.kind]) {
+      const pill = document.createElement("span");
+      pill.className = "type-pill";
+      pill.textContent = KINDS[job.kind];
+      meta.append(pill);
     }
+    if (job.status === "failed") {
+      if (retries.has(job.id)) {
+        const retry = document.createElement("button");
+        retry.type = "button";
+        retry.className = "retry-capture";
+        retry.append(icon("retry"), "Retry");
+        retry.disabled = retrying.has(job.id);
+        retry.addEventListener("click", async () => {
+          if (retrying.has(job.id)) return;
+          retrying.add(job.id);
+          retry.disabled = true;
+          // Another tab may have resent this one already: its kept copy is gone, so this tab must not send it again.
+          if (persisted.has(job.id) && !readRetry(job.id)) {
+            retrying.delete(job.id);
+            retries.delete(job.id);
+            persisted.delete(job.id);
+            renderCapture(job);
+            return;
+          }
+          const body = retries.get(job.id);
+          const session = resets;
+          keepRetry(job.id, null);
+          persisted.delete(job.id);  // gone from storage before the resend, so a reload mid-way cannot offer it twice
+          const sent = await send(body, false);
+          retrying.delete(job.id);
+          // Resent: this failed row keeps no Retry, so the note cannot be added twice.
+          if (sent) retries.delete(job.id); else { if (session === resets && keepRetry(job.id, body)) persisted.add(job.id); retry.disabled = false; }
+        });
+        meta.append(retry);
+      } else {
+        const again = document.createElement("span");
+        again.className = "muted";
+        again.textContent = "Add it again";
+        meta.append(again);
+      }
+    }
+    body.append(title, meta);
+    item.append(state, body);
   }
 
   function pollCapture(id, announceResult) {
     if (pollers.has(id)) return;
     const later = (ms) => pollers.set(id, setTimeout(tick, ms));
+    let failures = 0;
     const tick = async () => {
       pollers.delete(id);
       try {
         const job = await api("GET", `/api/captures/${encodeURIComponent(id)}`);
+        failures = 0;
         renderCapture(job);
         if (job.status === "running") { later(POLL_MS); return; }
         if (announceResult) {
@@ -219,7 +317,10 @@
                   job.status !== "failed");
         }
       } catch (error) {
-        if (error.status !== 401) later(POLL_MS * 2);
+        if (error.status === 401) return;
+        failures += 1;
+        if (failures < POLL_RETRIES) later(POLL_MS * 2);
+        else message("Lost touch while checking this save. Open Add again to see where it got to.");
       }
     };
     later(POLL_MS);
@@ -233,6 +334,7 @@
       state.vaultName = vaultName;
       $("capture-disabled").hidden = enabled;
       $("capture-list").replaceChildren();
+      sweepRetries(false);
       for (const job of captures) {
         renderCapture(job);
         if (job.status === "running") pollCapture(job.id);
@@ -251,6 +353,10 @@
     fileToken += 1;
     inFlight = 0;
     retries.clear();
+    retrying.clear();
+    persisted.clear();
+    resets += 1;
+    sweepRetries(true);
     for (const timer of pollers.values()) clearTimeout(timer);
     pollers.clear();
     $("capture-kind").value = "text";

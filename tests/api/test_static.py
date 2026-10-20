@@ -51,7 +51,7 @@ class ShellSourceTests(unittest.TestCase):
 
     def test_shell_cache_is_bumped_and_the_sidebar_choice_is_remembered(self) -> None:
         worker = (WEB / "sw.js").read_text(encoding="utf-8")
-        self.assertIn('const CACHE = "ka-shell-v7"', worker)
+        self.assertIn('const CACHE = "ka-shell-v14"', worker)
         # A deploy must reach an installed app: never answer from the browser's own HTTP cache.
         self.assertIn('fetch(event.request, { cache: "no-cache" })', worker)
         script = (WEB / "app.js").read_text(encoding="utf-8")
@@ -117,9 +117,9 @@ class ShellSourceTests(unittest.TestCase):
         # The back-button contract: opening pushes one history entry, closing goes back once, and only
         # the popstate handler tears the sheet down (so a double tap cannot pop two entries).
         self.assertIn("history.pushState", script)
-        self.assertEqual(script.count("history.back()"), 1)
+        self.assertEqual(script.count("history.back()"), 2)  # one for a sheet, one for the phone drawer
         self.assertIn("if (sheet.closing) return;", script)
-        self.assertEqual(script.count("teardownSheet()"), 2)  # definition + the popstate handler
+        self.assertEqual(script.count("teardownSheet()"), 3)  # definition, the popstate handler, the no-Back fallback
         self.assertNotIn("capture-close", page)
         self.assertNotIn('id="sidebar-add"', page)
         # Every icon-only button needs an accessible name.
@@ -188,6 +188,108 @@ console.log(JSON.stringify(splitGaps([
         self.assertIn('id="capture-attach"', page)
         self.assertRegex(page, r'<details id="capture-more"')
         self.assertRegex(page, r'id="capture-save"[^>]*disabled')
+
+
+def _luminance(hex_colour: str) -> float:
+    channels = [int(hex_colour[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    linear = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def _contrast(foreground: str, background: str) -> float:
+    high, low = sorted((_luminance(foreground), _luminance(background)), reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
+class ReleaseCTests(unittest.TestCase):
+    def test_text_colours_meet_wcag_aa_on_every_ground_they_sit_on(self) -> None:
+        css = (WEB / "styles.css").read_text(encoding="utf-8")
+        tokens = dict(re.findall(r"--([a-z-]+):\s*(#[0-9a-fA-F]{6})\s*;", css))
+        grounds = ("ground", "sidebar", "surface", "chip", "pill", "gap-bg")
+        for ink in ("ink", "ink-soft", "muted", "accent", "danger"):
+            for ground in grounds:
+                with self.subTest(ink=ink, ground=ground):
+                    self.assertGreaterEqual(_contrast(tokens[ink], tokens[ground]), 4.5)
+        self.assertGreaterEqual(_contrast(tokens["accent-ink"], tokens["accent"]), 4.5)
+        self.assertGreaterEqual(_contrast(tokens["warn-ink"], tokens["warn"]), 4.5)
+
+    @unittest.skipUnless(shutil.which("node"), "needs node")
+    def test_source_numbering_runs_as_written(self) -> None:
+        script = (WEB / "app.js").read_text(encoding="utf-8").replace("\r", "")
+        function = re.search(r"function renderAnswer.*?\n}\n", script, re.S).group(0)
+        probe = """
+const make = (tag) => ({ tag, children: [], attrs: {}, className: "", textContent: "",
+  append(...n) { this.children.push(...n); }, replaceChildren(...n) { this.children = n; },
+  setAttribute(k, v) { this.attrs[k] = v; }, addEventListener() {} });
+const document = { createElement: make, createTextNode: (text) => ({ text }) };
+""" + function + """
+const container = make("div");
+const element = { querySelector: () => container };
+const receipt = {
+  answer: ["A [E1.1] and B [E2.1] again A [E1.2].", "Unknown [E9.9] stays text. A twice [E1.1]."].join(String.fromCharCode(10, 10)),
+  citations: {
+    "E1.1": { relative_path: "Knowledge/a.md", title: "Note A", text: "first", obsidian_url: "obsidian://open?x=1" },
+    "E1.2": { relative_path: "Knowledge/a.md", title: "Note A", text: "second" },
+    "E2.1": { relative_path: "Other/b.md", text: "bee" },
+  },
+};
+const sources = renderAnswer(element, receipt, "t1");
+const markers = container.children.map((p) => p.children.filter((c) => c.className === "marker").map((c) => c.textContent));
+const texts = container.children.map((p) => p.children.filter((c) => c.text !== undefined).map((c) => c.text).join(""));
+console.log(JSON.stringify({ sources, markers, texts }));"""
+        out = subprocess.run(["node", "-e", probe], capture_output=True, text=True, check=True).stdout
+        import json
+        result = json.loads(out)
+        # Passages from one file share one number, in order of first appearance.
+        self.assertEqual([(s["number"], s["title"], s["folder"]) for s in result["sources"]],
+                         [(1, "Note A", "Knowledge"), (2, "Other/b.md", "Other")])
+        self.assertEqual(result["sources"][0]["passages"], ["first", "second"])
+        self.assertEqual(result["markers"], [["1", "2", "1"], ["1"]])
+        self.assertIn("Unknown [E9.9] stays text.", result["texts"][1])
+
+    @unittest.skipUnless(shutil.which("node"), "needs node")
+    def test_add_box_classification_runs_as_written(self) -> None:
+        capture = (WEB / "capture.js").read_text(encoding="utf-8").replace("\r", "")
+        youtube = re.search(r"const YOUTUBE = .*?;", capture).group(0)
+        function = re.search(r"function classify.*?\n  }\n", capture, re.S).group(0)
+        probe = youtube + "let fileLabel = null; let kind = 'text'; const $ = () => ({ value: kind });" + function + """
+const out = {};
+for (const text of ["https://youtu.be/abc", "https://www.youtube.com/watch?v=1", "see https://youtu.be/abc",
+                    "https://example.com/page", "https://example.com a b", "plain words"]) out[text] = classify(text);
+fileLabel = "Markdown file"; kind = "markdown"; out.md = classify("# Title");
+kind = "text"; out.txt = classify("some text"); out.ytInFile = classify("https://youtu.be/abc");
+console.log(JSON.stringify(out));"""
+        import json
+        out = json.loads(subprocess.run(["node", "-e", probe], capture_output=True, text=True, check=True).stdout)
+        self.assertEqual(out, {
+            "https://youtu.be/abc": "youtube", "https://www.youtube.com/watch?v=1": "youtube",
+            "see https://youtu.be/abc": "text", "https://example.com/page": "link",
+            "https://example.com a b": "text", "plain words": "text",
+            "md": "markdown", "txt": "textfile", "ytInFile": "youtube"})
+
+    @unittest.skipUnless(shutil.which("node"), "needs node")
+    def test_phone_drawer_takes_one_history_entry_and_back_closes_it(self) -> None:
+        script = (WEB / "app.js").read_text(encoding="utf-8").replace("\r", "")
+        function = re.search(r"function setNavOpen.*?\n}\n", script, re.S).group(0)
+        probe = """
+const log = [];
+const el = () => ({ hidden: false, inert: false, contains: () => false, setAttribute() {}, focus() {} });
+const els = {}; const $ = (id) => (els[id] ||= el());
+const document = { activeElement: null, querySelector: () => el(), body: { classList: { toggle() {} } } };
+const phone = { matches: true };
+const history = { pushState: () => log.push("push"), back: () => log.push("back") };
+const navState = { open: false, historyOpen: true, pushed: false };
+function setAccountOpen() {} function syncHistory() {}
+""" + function + """
+setNavOpen(true); setNavOpen(true);   // opening twice still pushes once
+setNavOpen(false); setNavOpen(false); // closing by hand goes back once
+setNavOpen(true); setNavOpen(false, true); // Back already happened: no second Back
+phone.matches = false; setNavOpen(true); setNavOpen(false); // desktop never touches history
+console.log(JSON.stringify(log));"""
+        import json
+        out = json.loads(subprocess.run(["node", "-e", probe], capture_output=True, text=True, check=True).stdout)
+        self.assertEqual(out, ["push", "back", "push"])
+        self.assertIn("else if (navState.open) setNavOpen(false, true);", script)
 
 
 @unittest.skipUnless(TestClient, "needs fastapi")

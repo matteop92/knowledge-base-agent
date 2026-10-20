@@ -6,6 +6,8 @@ const DRAFT_KEY = "ka-draft";
 const CONVERSATION_KEY = "ka-conversation";
 const SIDEBAR_KEY = "ka-sidebar";
 const POLL_MS = 2000;
+const POLL_RETRIES = 5;  // failed checks in a row before a poll gives up
+const BACK_FALLBACK_MS = 500;  // a sheet is closed by hand if the browser never reports Back
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 // Messages the agent writes when it could not finish checking: a run problem, not a gap in the notes.
@@ -65,7 +67,7 @@ function showSignIn(message) {
   setAccountOpen(false);
   window.captureScreen.reset();
   $("app").hidden = true;
-  document.title = "Knowledge";
+  document.title = "Knowledge Agent";
   $("signin").hidden = false;
   $("signin-message").textContent = message || "";
   $("email").focus();
@@ -147,7 +149,7 @@ function stopPolling() {
 
 // The question itself is the Ask tab's heading; the window title follows the conversation.
 function setTitle(title) {
-  document.title = title === "New question" ? "Knowledge" : `${title} - Knowledge`;
+  document.title = title === "New question" ? "Knowledge Agent" : `${title} - Knowledge Agent`;
 }
 
 function newQuestion() {
@@ -218,9 +220,12 @@ async function ask(question) {
 
 function poll(turnId) {
   clearTimeout(state.polling.get(turnId));
+  let failures = 0;
+  const conversation = state.conversationId;
   const tick = async () => {
     try {
       const turn = await api("GET", `/api/turns/${encodeURIComponent(turnId)}`);
+      failures = 0;
       // The user may have switched conversations while this answer was running.
       if (turn.conversation_id !== state.conversationId) { state.polling.delete(turnId); return; }
       renderTurn(turn);
@@ -229,7 +234,14 @@ function poll(turnId) {
       setRunning(false);
       announce(turn.status === "failed" ? "The answer failed." : "The answer is ready.");
     } catch (error) {
-      if (error.status !== 401) state.polling.set(turnId, setTimeout(tick, POLL_MS * 2));
+      // The user opened another conversation meanwhile: this poll must not touch what is on screen now.
+      if (error.status === 401 || state.conversationId !== conversation) return;
+      failures += 1;
+      if (failures < POLL_RETRIES) { state.polling.set(turnId, setTimeout(tick, POLL_MS * 2)); return; }
+      // Give up quietly: the answer keeps running on the server and shows when the conversation is opened again.
+      state.polling.delete(turnId);
+      setRunning(false);
+      notify("Lost touch while checking your answer. Open the conversation again to see it.");
     }
   };
   state.polling.set(turnId, setTimeout(tick, POLL_MS));
@@ -455,7 +467,8 @@ function fillGaps(section, data) {
     item.className = "gap-item";
     const add = textElement("button", "add-gap", "+ Add a note to fill this gap");
     add.type = "button";
-    add.addEventListener("click", () => closeSheet(() => window.captureScreen.openWith(gap)));
+    // A double tap must not queue the note twice.
+    add.addEventListener("click", () => { add.disabled = true; closeSheet(() => window.captureScreen.openWith(gap)); });
     item.append(textElement("p", "gap-text", gap), add);
     list.append(item);
   }
@@ -664,7 +677,10 @@ function closeSheet(after) {
   // One Back per sheet: a repeat trigger before popstate arrives must not pop a second history entry.
   if (sheet.closing) return;
   sheet.closing = true;
+  const serial = sheet.serial;
   history.back();
+  // If the browser never reports Back, close the sheet by hand rather than leave it stuck.
+  setTimeout(() => { if (sheet.open && sheet.closing && sheet.serial === serial) teardownSheet(); }, BACK_FALLBACK_MS);
 }
 
 function trapFocus(event) {
@@ -682,7 +698,7 @@ function trapFocus(event) {
 // Desktop: a sidebar beside the page. Phone: the same sidebar is a drawer opened by the icon at the top left.
 // History opens in place under its item; the account circle at the foot opens the sign-out options.
 const phone = window.matchMedia("(max-width: 899px)");
-const navState = { open: false, historyOpen: true };
+const navState = { open: false, historyOpen: true, pushed: false };
 
 function syncHistory() {
   const collapsed = !phone.matches && document.body.classList.contains("sidebar-collapsed");
@@ -690,9 +706,18 @@ function syncHistory() {
   $("sidebar-history").setAttribute("aria-expanded", !collapsed && navState.historyOpen ? "true" : "false");
 }
 
-function setNavOpen(open) {
+// On a phone the open drawer takes one history entry, so Android Back closes it before it leaves the app.
+// `fromBack` is true when the browser already went back (the popstate handler), so no second Back is made.
+function setNavOpen(open, fromBack) {
   // Closing the drawer while focus is inside it: put focus back on the menu button.
   const hadFocus = !open && phone.matches && $("sidebar").contains(document.activeElement);
+  if (open && phone.matches && !navState.pushed) {
+    history.pushState({ ka: "nav" }, "");
+    navState.pushed = true;
+  } else if (!open && navState.pushed) {
+    navState.pushed = false;
+    if (!fromBack) history.back();
+  }
   navState.open = open;
   // While the drawer is open on a phone, the page behind it cannot be reached or tabbed to.
   document.querySelector(".main").inert = open && phone.matches;
@@ -750,7 +775,7 @@ function autosize() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
-  if (history.state && history.state.ka === "sheet") history.replaceState(null, "", location.href);
+  if (history.state && history.state.ka) history.replaceState(null, "", location.href);
   $("email-form").addEventListener("submit", (event) => { event.preventDefault(); sendCode(); });
   $("code-form").addEventListener("submit", (event) => { event.preventDefault(); verifyCode(); });
   $("resend").addEventListener("click", sendCode);
@@ -795,7 +820,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   $("sheet-close").addEventListener("click", () => closeSheet());
   $("sheet-scrim").addEventListener("click", () => closeSheet());
-  window.addEventListener("popstate", () => { if (sheet.open) teardownSheet(); });
+  window.addEventListener("popstate", () => {
+    if (sheet.open) teardownSheet();
+    else if (navState.open) setNavOpen(false, true);
+  });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeSheet();
