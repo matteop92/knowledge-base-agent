@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -132,6 +134,21 @@ class ReleaseBTests(unittest.TestCase):
                 self.assertIn(f'"{message}"', script)
         self.assertIn('startsWith("Model stopped:")', script)
         self.assertIn("Unresolved need", script)  # the internal code prefix is stripped
+
+    @unittest.skipUnless(shutil.which("node"), "needs node")
+    def test_gap_clean_up_runs_as_written(self) -> None:
+        script = (WEB / "app.js").read_text(encoding="utf-8").replace("\r", "")
+        problems = re.search(r"const RUN_PROBLEMS = .*?\];", script, re.S).group(0)
+        function = re.search(r"function splitGaps.*?\n}\n", script, re.S).group(0)
+        probe = problems + function + """
+console.log(JSON.stringify(splitGaps([
+  "Unresolved need N2: Find advice on hiring", "No note covers X.", "N4: Short one", "Unresolved need N3:",
+  "Investigation budget ended before a valid grounded answer.", "Model stopped: timeout."])));"""
+        out = subprocess.run(["node", "-e", probe], capture_output=True, text=True, check=True).stdout
+        import json
+        result = json.loads(out)
+        self.assertEqual(result["gaps"], ["Find advice on hiring", "No note covers X.", "Short one"])
+        self.assertEqual(result["problems"], ["Investigation budget ended before a valid grounded answer.", "Model stopped: timeout."])
 
     def test_notices_live_outside_the_ask_tab_so_the_add_tab_shows_them(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")

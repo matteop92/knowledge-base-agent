@@ -126,13 +126,13 @@ Matt can use every flow he uses today on his phone and desktop, and calls the re
 ### Matched to the design canvas (Release A)
 
 - The first Release A build followed this plan's wording and did not match the canvas; it was rebuilt from the "A Paper" boards' own values. Where the canvas and this plan differ, the canvas won: the phone top bar shows the word "Knowledge" and a History button, and the question itself is the page heading; the desktop sidebar (`#EDE9E0`, 232 px, 68 px collapsed) holds Ask, Add and History as three items, and History opens a panel beside it rather than a list always shown (R2); New question and sign-out live in that History panel; muted text is the canvas's `#6B675F` and sidebar text `#4E4B45`.
-- Left for U5 (the Add rebuild): the canvas's Add box uses Geist Mono 14 px with a detected-type row and folded Title and tags; Release A keeps the existing form, restyled, in the white card.
+- Built in Release B (U5): the canvas's Add box with Geist Mono 14 px, the detected-type row and folded Title and tags.
 - Newsreader keeps its optical-size axis so large headings match the canvas: the font pair is now 162 KB (OQ2's 150 KB guide is exceeded on purpose; italics stay dropped).
 
 ### Known gaps carried out of the Release A review
 
 - Fixed in Release A: sign-out used to say "signed out" even when the request failed; it now waits for the server and shows "Could not sign out" otherwise.
-- Release B (Add rebuild): the daily-limit banner and the "answer still running" notice sit in the Ask area, which is hidden while the Add tab is open, so they cannot be seen from Add. Give them a place that shows on both tabs.
+- Fixed in Release B: the daily-limit banner and the "answer still running" notice now sit above the page and show on both tabs.
 - Kept on purpose: the Android share target stores the shared item in the phone's browser storage until the app is opened and signed in, then deletes it (see `takeShared` in `capture.js`), so a share made while signed out is not lost. If the app is never signed in again, the item stays in that browser storage.
 
 ### Release B decisions (made during the build)

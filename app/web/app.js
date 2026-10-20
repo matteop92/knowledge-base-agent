@@ -243,6 +243,8 @@ function announce(message) {
 let noticeTimer = null;
 function notify(message, sticky) {
   const banner = $("banner");
+  // The spending-cap notice stays; later passing notices must not replace it.
+  if (state.capReached && !sticky) return;
   banner.textContent = message;
   banner.hidden = false;
   clearTimeout(noticeTimer);
@@ -397,7 +399,7 @@ function fillSource(section, data, index) {
   const url = source.url;
   if (url.startsWith("obsidian://")) {
     const link = document.createElement("a");
-    link.className = "icon-link open-obsidian";
+    link.className = "icon-link";
     link.href = url;
     link.setAttribute("aria-label", "Open in Obsidian");
     link.append(icon("external"));
@@ -457,7 +459,7 @@ function buildFeedback(turnId, inline, done) {
   const saved = data.feedback;
   const form = document.createElement("form");
   form.className = inline ? "feedback-panel" : "feedback-sheet";
-  const noteId = `feedback-note-${inline ? "inline" : "sheet"}`;
+  const noteId = `feedback-note-${inline ? "inline-" : "sheet-"}${turnId}`;
   const label = document.createElement("label");
   label.htmlFor = noteId;
   if (inline) {
@@ -489,13 +491,19 @@ function buildFeedback(turnId, inline, done) {
     const remove = textElement("button", "link", "Remove feedback");
     remove.type = "button";
     remove.addEventListener("click", async () => {
+      remove.disabled = true;
+      send.disabled = true;
       try {
         await api("DELETE", `/api/turns/${encodeURIComponent(turnId)}/feedback`);
         data.feedback = null;
         refreshThumbs(turnId);
         announce("Feedback removed.");
         done();
-      } catch (error) { if (error.status !== 401) message.textContent = error.message; }
+      } catch (error) {
+        if (error.status !== 401) message.textContent = error.message;
+        remove.disabled = false;
+        send.disabled = false;
+      }
     });
     actions.append(remove);
   }
@@ -545,8 +553,12 @@ function openFeedback(element, turnId, opener) {
     panel.querySelector("textarea").focus();
     return;
   }
+  // The note may be saved after the sheet was dismissed; only close the sheet this form lives in.
+  const serial = sheet.serial + 1;
   openSheet("feedback", opener, (section) => {
-    section.replaceChildren(buildFeedback(turnId, false, () => closeSheet()));
+    section.replaceChildren(buildFeedback(turnId, false, () => {
+      if (sheet.open && sheet.name === "feedback" && sheet.serial === serial) closeSheet();
+    }));
   });
 }
 
@@ -570,12 +582,14 @@ function setView(view) {
 }
 
 const SHEET_TITLES = { history: "History", source: "Source", gaps: "What’s missing", feedback: "What was wrong?" };
-const sheet = { open: false, closing: false, opener: null, name: null, afterClose: [] };
+const sheet = { open: false, closing: false, opener: null, name: null, serial: 0, afterClose: [] };
+// Source and Gaps swap in place while the desktop panel stays open; the other sheets never do.
+const SWAPPABLE = new Set(["source", "gaps"]);
 
 // `fill` builds the sheet's content (Source, Gaps, Feedback); History is static markup.
 // Source and Gaps can swap in place while open (the desktop panel stays beside the page): same history entry.
 function openSheet(name, opener, fill) {
-  const swapping = sheet.open && !sheet.closing && name !== "history" && sheet.name !== "history" && sheet.name !== "feedback" && name !== "feedback";
+  const swapping = sheet.open && !sheet.closing && SWAPPABLE.has(name) && SWAPPABLE.has(sheet.name);
   if ((sheet.open && !swapping) || sheet.closing) return;
   const section = $("sheet").querySelector(`[data-sheet="${name}"]`);
   if (fill) fill(section);
@@ -588,6 +602,8 @@ function openSheet(name, opener, fill) {
     root.setAttribute("aria-label", SHEET_TITLES[name]);
   }
   root.dataset.kind = name;
+  // On desktop the Source and Gaps panel sits beside the page: keyboard users can leave it with Tab.
+  root.setAttribute("aria-modal", SWAPPABLE.has(name) && window.matchMedia("(min-width: 900px)").matches ? "false" : "true");
   $("app").dataset.sheet = name;
   $("sheet-title").textContent = SHEET_TITLES[name];
   for (const other of root.querySelectorAll("[data-sheet]")) other.hidden = other.dataset.sheet !== name;
@@ -598,6 +614,7 @@ function openSheet(name, opener, fill) {
     return;
   }
   sheet.open = true;
+  sheet.serial += 1;
   sheet.opener = opener || document.activeElement;
   history.pushState({ ka: "sheet", name }, "");
   root.hidden = false;
@@ -616,7 +633,9 @@ function teardownSheet() {
   const opener = sheet.opener;
   sheet.opener = null;
   const after = sheet.afterClose.splice(0);
-  for (const run of after) run();
+  for (const run of after) {
+    try { run(); } catch (_) { /* one failing follow-up must not skip the others or the focus return */ }
+  }
   // Keep keyboard focus somewhere real: back on the opener unless a follow-up action already moved it.
   if (!document.activeElement || document.activeElement === document.body) {
     // The opener may have been hidden meanwhile (the window crossed the phone/desktop width).
@@ -636,7 +655,7 @@ function closeSheet(after) {
 }
 
 function trapFocus(event) {
-  if (!sheet.open || event.key !== "Tab") return;
+  if (!sheet.open || event.key !== "Tab" || $("sheet").getAttribute("aria-modal") === "false") return;
   const items = [...$("sheet").querySelectorAll("button, a[href], input, textarea")].filter((el) => !el.closest("[hidden]"));
   if (!items.length) return;
   const first = items[0];
@@ -688,7 +707,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("sheet-new").addEventListener("click", () => closeSheet(newQuestion));
   for (const tab of document.querySelectorAll("[data-tab]")) tab.addEventListener("click", () => setView(tab.dataset.tab));
   for (const id of ["history-button", "sidebar-history"]) {
-    $(id).addEventListener("click", (event) => openSheet("history", event.currentTarget));
+    $(id).addEventListener("click", (event) => {
+      const opener = event.currentTarget;
+      if (sheet.open && sheet.name !== "history") closeSheet(() => openSheet("history", opener));
+      else openSheet("history", opener);
+    });
   }
   $("collapse").addEventListener("click", () => {
     const collapsed = !document.body.classList.contains("sidebar-collapsed");
