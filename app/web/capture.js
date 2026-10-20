@@ -14,6 +14,27 @@
   const pollers = new Map();  // capture id -> timer, so one save is never polled twice
   const retrying = new Set();  // failed saves being resent, so a re-drawn row cannot offer a second Retry
 
+  // What was sent is kept in this browser for an hour so Retry still works after a reload. Only this device ever holds it;
+  // a done save is forgotten at once, and signing out (or a 401) clears the lot.
+  const RETRY_KEY = "ka-retries";
+  const RETRY_KEEP_MS = 60 * 60 * 1000;
+
+  function keptRetries() {
+    let kept = {};
+    try { kept = JSON.parse(load(RETRY_KEY) || "{}") || {}; } catch (_) { kept = {}; }
+    const now = Date.now();
+    for (const [id, entry] of Object.entries(kept)) {
+      if (!entry || now - entry.at > RETRY_KEEP_MS) delete kept[id];
+    }
+    return kept;
+  }
+
+  function keepRetry(id, body) {
+    const kept = keptRetries();
+    if (body) kept[id] = { body, at: Date.now() }; else delete kept[id];
+    store(RETRY_KEY, Object.keys(kept).length ? JSON.stringify(kept) : null);  // a full browser store just skips this
+  }
+
   const STATUS = {
     running: "Saving…",
     indexed: "Saved and searchable",
@@ -140,6 +161,7 @@
     try {
       const { capture_id: id } = await api("POST", "/api/captures", body);
       retries.set(id, body);
+      keepRetry(id, body);
       if (fromForm) {
         pending = null;
         fileLabel = null;
@@ -177,6 +199,7 @@
       prepend ? $("capture-list").prepend(item) : $("capture-list").append(item);
     }
     item.replaceChildren();
+    if (job.status === "done") keepRetry(job.id, null);
     item.dataset.status = job.status === "failed" ? "failed" : job.status === "running" ? "running" : "done";
     const detail = job.status === "running" ? STATUS.running :
       job.status === "failed" ? `Failed: ${job.error || "unknown reason"}` :
@@ -225,7 +248,7 @@
           const sent = await send(retries.get(job.id), false);
           retrying.delete(job.id);
           // Resent: this failed row keeps no Retry, so the note cannot be added twice.
-          if (sent) retries.delete(job.id); else retry.disabled = false;
+          if (sent) { retries.delete(job.id); keepRetry(job.id, null); } else retry.disabled = false;
         });
         meta.append(retry);
       } else {
@@ -272,7 +295,9 @@
       state.vaultName = vaultName;
       $("capture-disabled").hidden = enabled;
       $("capture-list").replaceChildren();
+      const kept = keptRetries();
       for (const job of captures) {
+        if (job.status === "failed" && !retries.has(job.id) && kept[job.id]) retries.set(job.id, kept[job.id].body);
         renderCapture(job);
         if (job.status === "running") pollCapture(job.id);
       }
@@ -291,6 +316,7 @@
     inFlight = 0;
     retries.clear();
     retrying.clear();
+    store(RETRY_KEY, null);
     for (const timer of pollers.values()) clearTimeout(timer);
     pollers.clear();
     $("capture-kind").value = "text";
