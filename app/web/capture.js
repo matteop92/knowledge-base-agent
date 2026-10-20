@@ -8,6 +8,8 @@
   const YOUTUBE = /^(https?:\/\/)?(www\.|m\.|music\.)?(youtube\.com\/(watch|shorts|live|embed)|youtu\.be\/)/i;
   let pending = null;  // {kind, content?, image?, label}
   let fileLabel = null;  // "Markdown file" or "Text file" while the box holds a loaded file
+  let sending = false;  // a save is in flight, so Save cannot be pressed twice
+  let fileToken = 0;  // bumped by reset(), so a file still being read cannot fill a cleared box
   const retries = new Map();  // capture id -> request body, for Retry
   const pollers = new Map();  // capture id -> timer, so one save is never polled twice
 
@@ -17,16 +19,27 @@
     queued: "Saved; searchable after the next index pass (within five minutes)",
   };
 
-  // What the app will treat the box contents as, using the same rules requestBody applies.
+  // One classifier for what the box holds, used by both the detection row and the request body.
+  function classify(text) {
+    if (YOUTUBE.test(text) && !/\s/.test(text)) return "youtube";
+    if (fileLabel) return $("capture-kind").value === "markdown" ? "markdown" : "textfile";
+    if (/^https?:\/\/\S+$/.test(text)) return "link";
+    return "text";
+  }
+
+  const DETECTED = {
+    youtube: { icon: "video", title: "YouTube video", sub: "Saved to Transcripts" },
+    markdown: { icon: "doc", title: "Markdown file", sub: "The app files it in the right folder" },
+    textfile: { icon: "doc", title: "Text file", sub: "The app files it in the right folder" },
+    link: { icon: "link", title: "Web link", sub: "The app files it in the right folder" },
+    text: { icon: "doc", title: "Text", sub: "The app files it in the right folder" },
+  };
+
+  // What the app will treat the box contents as.
   function detect() {
     if (pending) return { icon: "image", title: "Screenshot", sub: pending.label.replace(/^Screenshot: /, "") };
     const text = $("capture-text").value.trim();
-    if (!text) return null;
-    const filed = "The app files it in the right folder";
-    if (fileLabel) return { icon: "doc", title: fileLabel, sub: filed };
-    if (YOUTUBE.test(text) && !/\s/.test(text)) return { icon: "video", title: "YouTube video", sub: "Saved to Transcripts" };
-    if (/^https?:\/\/\S+$/.test(text)) return { icon: "link", title: "Web link", sub: filed };
-    return { icon: "doc", title: "Text", sub: filed };
+    return text ? DETECTED[classify(text)] : null;
   }
 
   // Keep the detection row and the Save button in step with what is in the box.
@@ -38,7 +51,7 @@
       $("capture-detect-title").textContent = found.title;
       $("capture-detect-sub").textContent = found.sub;
     }
-    $("capture-save").disabled = !state.captureEnabled || !found;
+    $("capture-save").disabled = sending || !state.captureEnabled || !found;
   }
 
   function message(text, ok) {
@@ -64,23 +77,34 @@
   async function takeFile(file) {
     message("");
     if (!file) return;
+    const mine = ++fileToken;
     $("capture-preview").hidden = true;
-    if (file.type.startsWith("image/")) {
-      fileLabel = null;
-      pending = { kind: "screenshot", image: await downscale(file), label: `Screenshot: ${file.name || "image"}` };
-      // Show exactly what Save will send.
-      $("capture-preview").src = pending.image;
-      $("capture-preview").hidden = false;
-    } else if (/\.(md|markdown|txt)$/i.test(file.name || "") || file.type.startsWith("text/")) {
-      // The file's text goes into the visible box, so nothing is saved that cannot be seen.
+    try {
+      if (file.type.startsWith("image/")) {
+        const image = await downscale(file);
+        if (mine !== fileToken) return;
+        fileLabel = null;
+        pending = { kind: "screenshot", image, label: `Screenshot: ${file.name || "image"}` };
+        // Show exactly what Save will send.
+        $("capture-preview").src = pending.image;
+        $("capture-preview").hidden = false;
+      } else if (/\.(md|markdown|txt)$/i.test(file.name || "") || file.type.startsWith("text/")) {
+        // The file's text goes into the visible box, so nothing is saved that cannot be seen.
+        const text = await file.text();
+        if (mine !== fileToken) return;
+        pending = null;
+        $("capture-text").value = text;
+        const plain = /\.txt$/i.test(file.name || "");
+        $("capture-kind").value = plain ? "text" : "markdown";
+        fileLabel = plain ? "Text file" : "Markdown file";
+      } else {
+        pending = null;
+        message("Only screenshots (PNG, JPEG, WebP), .md and .txt files can be added.");
+      }
+    } catch (_) {
       pending = null;
-      $("capture-text").value = await file.text();
-      const plain = /\.txt$/i.test(file.name || "");
-      $("capture-kind").value = plain ? "text" : "markdown";
-      fileLabel = plain ? "Text file" : "Markdown file";
-    } else {
-      pending = null;
-      message("Only screenshots (PNG, JPEG, WebP), .md and .txt files can be added.");
+      $("capture-file").value = "";
+      message("That file could not be read.");
     }
     refresh();
   }
@@ -97,38 +121,42 @@
     if (pending) return { ...pending, label: undefined, title, tags };
     const text = $("capture-text").value.trim();
     if (!text) return null;
-    if (YOUTUBE.test(text) && !/\s/.test(text)) return { kind: "youtube", content: text, title, tags };
-    if ($("capture-kind").value === "markdown") return { kind: "markdown", content: text, title, tags };
-    const url = /^https?:\/\/\S+$/.test(text) ? text : null;
-    return { kind: "text", content: text, url, title, tags };
+    const kind = classify(text);
+    if (kind === "youtube" || kind === "markdown") return { kind, content: text, title, tags };
+    return { kind: "text", content: text, url: kind === "link" ? text : null, title, tags };
   }
 
   async function save() {
     const body = requestBody();
-    if (!body) { message("Paste text, drop a screenshot or choose a file first."); return; }
-    await send(body);
+    if (body) await send(body, true);
   }
 
-  async function send(body) {
-    $("capture-save").disabled = true;
+  // `fromForm` is true for a normal Save (the box is cleared after it); Retry resends the stored body and leaves the box alone.
+  async function send(body, fromForm) {
+    sending = true;
+    refresh();
     try {
       const { capture_id: id } = await api("POST", "/api/captures", body);
       retries.set(id, body);
-      pending = null;
-      fileLabel = null;
-      $("capture-preview").hidden = true;
-      $("capture-kind").value = "text";
-      $("capture-text").value = "";
-      $("capture-title").value = "";
-      $("capture-tags").value = "";
-      $("capture-file").value = "";
-      $("capture-more").open = false;
+      if (fromForm) {
+        pending = null;
+        fileLabel = null;
+        fileToken += 1;
+        $("capture-preview").hidden = true;
+        $("capture-kind").value = "text";
+        $("capture-text").value = "";
+        $("capture-title").value = "";
+        $("capture-tags").value = "";
+        $("capture-file").value = "";
+        $("capture-more").open = false;
+      }
       message("Saving… it appears under Recent below.", true);
       renderCapture({ id, status: "running", title: body.title || "New capture" }, true);
       pollCapture(id, true);
     } catch (error) {
       message(error.status === 429 ? "The daily spending cap was reached." : error.message);
     } finally {
+      sending = false;
       refresh();
     }
   }
@@ -168,7 +196,11 @@
       const retry = document.createElement("button");
       retry.type = "button";
       retry.textContent = "Retry";
-      retry.addEventListener("click", () => send(retries.get(job.id)));
+      retry.addEventListener("click", async () => {
+        retry.disabled = true;
+        await send(retries.get(job.id), false);
+        retry.disabled = false;
+      });
       body.append(retry);
     }
   }
@@ -205,7 +237,9 @@
         renderCapture(job);
         if (job.status === "running") pollCapture(job.id);
       }
-    } catch (_) { /* signed out: the sign-in screen is showing */ }
+    } catch (error) {
+      if (error.status !== 401) message("Could not load your recent saves. Check your connection and try again.");
+    }
     refresh();
     $("capture-text").focus();
   }
@@ -214,6 +248,8 @@
   function reset() {
     pending = null;
     fileLabel = null;
+    fileToken += 1;
+    sending = false;
     retries.clear();
     for (const timer of pollers.values()) clearTimeout(timer);
     pollers.clear();
@@ -230,8 +266,9 @@
   // Open Add with some text already in the box (used when a gap asks for a note).
   async function openWith(text) {
     await setView("add");
-    takeText(text);
     const box = $("capture-text");
+    // A draft already in the box is kept: the new text goes after it.
+    if (box.value.trim()) { box.value = `${box.value.trimEnd()}\n\n${text}`; refresh(); } else takeText(text);
     box.focus();
     box.setSelectionRange(box.value.length, box.value.length);
   }
