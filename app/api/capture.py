@@ -25,8 +25,9 @@ log = logging.getLogger("knowledge.api.capture")
 
 INDEX_WAIT_SECONDS = 30
 # A running job older than this no longer counts as running: the server restarted while it ran.
-# It must outlast the slowest capture: a YouTube transcript may take up to the Gemini timeout (10 minutes),
-# then classification, the 30-second index wait and an index pass.
+# It must outlast the slowest capture: a YouTube transcript may take the caption fetches (30 seconds each) and
+# up to 4 minutes of speaker naming, then the Gemini fallback (10 minutes), classification, the 30-second
+# index wait and an index pass.
 JOB_LIMIT = timedelta(minutes=20)
 INTERRUPTED = "interrupted: the server restarted while saving"
 JOB_SELECT = "select job_id, kind, status, vault_path, title, indexed, error, cost_usd, created_at, finished_at from knowledge.capture_jobs"
