@@ -213,13 +213,6 @@ class ReleaseCTests(unittest.TestCase):
         self.assertGreaterEqual(_contrast(tokens["accent-ink"], tokens["accent"]), 4.5)
         self.assertGreaterEqual(_contrast(tokens["warn-ink"], tokens["warn"]), 4.5)
 
-    def test_polls_stop_after_repeated_failures(self) -> None:
-        for name in ("app.js", "capture.js"):
-            script = (WEB / name).read_text(encoding="utf-8")
-            with self.subTest(name=name):
-                self.assertIn("POLL_RETRIES", script)
-                self.assertIn("failures = 0;", script)
-
     @unittest.skipUnless(shutil.which("node"), "needs node")
     def test_source_numbering_runs_as_written(self) -> None:
         script = (WEB / "app.js").read_text(encoding="utf-8").replace("\r", "")

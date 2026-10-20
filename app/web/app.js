@@ -221,6 +221,7 @@ async function ask(question) {
 function poll(turnId) {
   clearTimeout(state.polling.get(turnId));
   let failures = 0;
+  const conversation = state.conversationId;
   const tick = async () => {
     try {
       const turn = await api("GET", `/api/turns/${encodeURIComponent(turnId)}`);
@@ -233,7 +234,8 @@ function poll(turnId) {
       setRunning(false);
       announce(turn.status === "failed" ? "The answer failed." : "The answer is ready.");
     } catch (error) {
-      if (error.status === 401) return;
+      // The user opened another conversation meanwhile: this poll must not touch what is on screen now.
+      if (error.status === 401 || state.conversationId !== conversation) return;
       failures += 1;
       if (failures < POLL_RETRIES) { state.polling.set(turnId, setTimeout(tick, POLL_MS * 2)); return; }
       // Give up quietly: the answer keeps running on the server and shows when the conversation is opened again.
