@@ -1,6 +1,6 @@
 {
   "name": "Knowledge Agent",
-  "short_name": "Knowledge",
+  "short_name": "Knowledge Agent",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

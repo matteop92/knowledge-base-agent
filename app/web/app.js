@@ -67,7 +67,7 @@ function showSignIn(message) {
   setAccountOpen(false);
   window.captureScreen.reset();
   $("app").hidden = true;
-  document.title = "Knowledge";
+  document.title = "Knowledge Agent";
   $("signin").hidden = false;
   $("signin-message").textContent = message || "";
   $("email").focus();
@@ -149,7 +149,7 @@ function stopPolling() {
 
 // The question itself is the Ask tab's heading; the window title follows the conversation.
 function setTitle(title) {
-  document.title = title === "New question" ? "Knowledge" : `${title} - Knowledge`;
+  document.title = title === "New question" ? "Knowledge Agent" : `${title} - Knowledge Agent`;
 }
 
 function newQuestion() {
