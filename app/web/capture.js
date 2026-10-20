@@ -12,6 +12,7 @@
   let fileToken = 0;  // bumped by reset(), so a file still being read cannot fill a cleared box
   const retries = new Map();  // capture id -> request body, for Retry
   const pollers = new Map();  // capture id -> timer, so one save is never polled twice
+  const retrying = new Set();  // failed saves being resent, so a re-drawn row cannot offer a second Retry
 
   const STATUS = {
     running: "Saving…",
@@ -135,6 +136,7 @@
   async function send(body, fromForm) {
     inFlight += 1;
     refresh();
+    let sent = false;
     try {
       const { capture_id: id } = await api("POST", "/api/captures", body);
       retries.set(id, body);
@@ -151,7 +153,8 @@
         $("capture-more").open = false;
       }
       message("Saving… it appears under Recent below.", true);
-      renderCapture({ id, status: "running", title: body.title || "New capture" }, true);
+      sent = true;
+      renderCapture({ id, kind: body.kind, status: "running", title: body.title || "New capture" }, true);
       pollCapture(id, true);
     } catch (error) {
       message(error.status === 429 ? "The daily spending cap was reached." : error.message);
@@ -159,6 +162,7 @@
       inFlight = Math.max(0, inFlight - 1);
       refresh();
     }
+    return sent;
   }
 
   const KINDS = { text: "Text", markdown: "Markdown", screenshot: "Screenshot", youtube: "YouTube" };
@@ -213,10 +217,15 @@
         retry.type = "button";
         retry.className = "retry-capture";
         retry.append(icon("retry"), "Retry");
+        retry.disabled = retrying.has(job.id);
         retry.addEventListener("click", async () => {
+          if (retrying.has(job.id)) return;
+          retrying.add(job.id);
           retry.disabled = true;
-          await send(retries.get(job.id), false);
-          retry.disabled = false;
+          const sent = await send(retries.get(job.id), false);
+          retrying.delete(job.id);
+          // Resent: this failed row keeps no Retry, so the note cannot be added twice.
+          if (sent) retries.delete(job.id); else retry.disabled = false;
         });
         meta.append(retry);
       } else {
@@ -281,6 +290,7 @@
     fileToken += 1;
     inFlight = 0;
     retries.clear();
+    retrying.clear();
     for (const timer of pollers.values()) clearTimeout(timer);
     pollers.clear();
     $("capture-kind").value = "text";
