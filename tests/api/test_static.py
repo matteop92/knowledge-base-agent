@@ -49,7 +49,7 @@ class ShellSourceTests(unittest.TestCase):
 
     def test_shell_cache_is_bumped_and_the_sidebar_choice_is_remembered(self) -> None:
         worker = (WEB / "sw.js").read_text(encoding="utf-8")
-        self.assertIn('const CACHE = "ka-shell-v4"', worker)
+        self.assertIn('const CACHE = "ka-shell-v5"', worker)
         # A deploy must reach an installed app: never answer from the browser's own HTTP cache.
         self.assertIn('fetch(event.request, { cache: "no-cache" })', worker)
         script = (WEB / "app.js").read_text(encoding="utf-8")
@@ -120,6 +120,45 @@ class ShellSourceTests(unittest.TestCase):
         # The collapsed sidebar hides text labels, so its tab and action buttons keep their own names.
         for match in re.finditer(r"<button([^>]*class=\"side-item[^>]*)>", page):
             self.assertIn("aria-label", match.group(1))
+
+
+class ReleaseBTests(unittest.TestCase):
+    def test_run_problem_messages_match_what_the_agent_writes(self) -> None:
+        # A run problem is not a knowledge gap; the browser recognises it by the agent's own wording.
+        harness = Path("app/agent/harness.py").read_text(encoding="utf-8")
+        script = (WEB / "app.js").read_text(encoding="utf-8")
+        for message in re.findall(r'stopped\("([^"]+)"', harness):
+            with self.subTest(message=message):
+                self.assertIn(f'"{message}"', script)
+        self.assertIn('startsWith("Model stopped:")', script)
+        self.assertIn("Unresolved need", script)  # the internal code prefix is stripped
+
+    def test_notices_live_outside_the_ask_tab_so_the_add_tab_shows_them(self) -> None:
+        page = (WEB / "index.html").read_text(encoding="utf-8")
+        script = (WEB / "app.js").read_text(encoding="utf-8")
+        self.assertLess(page.index('id="banner"'), page.index('id="view-ask"'))
+        self.assertLess(page.index('id="status"'), page.index('id="view-ask"'))
+        self.assertNotIn('$("composer").before', script)
+        self.assertNotIn('announce(error.message, true)', script)
+
+    def test_every_finished_answer_keeps_its_feedback_button(self) -> None:
+        page = (WEB / "index.html").read_text(encoding="utf-8")
+        script = (WEB / "app.js").read_text(encoding="utf-8")
+        self.assertIn('aria-label="This answer was not good"', page)
+        # The answer row is shown whether or not there are sources or gaps.
+        row = script[script.index("function renderRow"):script.index("// Draws the answer")]
+        self.assertIn('.answer-row").hidden = false', row)
+        self.assertIn("Answered with gaps", script)  # kept for screen readers
+
+    def test_add_tab_detects_kinds_and_has_a_visible_attach_button(self) -> None:
+        page = (WEB / "index.html").read_text(encoding="utf-8")
+        capture = (WEB / "capture.js").read_text(encoding="utf-8")
+        for label in ("YouTube video", "Web link", '"Text"', "Screenshot", "Markdown file", "Text file"):
+            with self.subTest(label=label):
+                self.assertIn(label, capture)
+        self.assertIn('id="capture-attach"', page)
+        self.assertRegex(page, r'<details id="capture-more"')
+        self.assertRegex(page, r'id="capture-save"[^>]*disabled')
 
 
 @unittest.skipUnless(TestClient, "needs fastapi")

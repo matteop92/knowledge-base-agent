@@ -7,6 +7,11 @@ const CONVERSATION_KEY = "ka-conversation";
 const SIDEBAR_KEY = "ka-sidebar";
 const POLL_MS = 2000;
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+// Messages the agent writes when it could not finish checking: a run problem, not a gap in the notes.
+const RUN_PROBLEMS = ["Hybrid retrieval failed.", "Document find failed.", "Document find provenance failed.",
+  "Original source read failed.", "Investigation budget ended before a valid grounded answer."];
+
 const state = { conversationId: null, polling: new Map(), running: false, capReached: false, view: "ask", title: "New question" };
 
 function store(key, value) {
@@ -14,6 +19,19 @@ function store(key, value) {
 }
 function load(key) {
   try { return localStorage.getItem(key); } catch (_) { return null; }
+}
+
+// What each answer on screen needs after it is drawn: its sources, gaps and saved feedback.
+const turnData = new Map();
+
+function icon(name, className) {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("class", className || "icon");
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS(SVG_NS, "use");
+  use.setAttribute("href", `#i-${name}`);
+  svg.append(use);
+  return svg;
 }
 
 class ApiError extends Error {
@@ -128,6 +146,7 @@ function setTitle(title) {
 function newQuestion() {
   stopPolling();
   state.conversationId = null;
+  turnData.clear();
   $("turns").replaceChildren();
   setTitle("New question");
   $("empty-state").hidden = false;
@@ -144,6 +163,7 @@ async function openConversation(id) {
     state.conversationId = conversation.id;
     setTitle(conversation.title);
     $("empty-state").hidden = true;
+    turnData.clear();
     $("turns").replaceChildren();
     let running = false;
     for (const turn of conversation.turns) {
@@ -177,8 +197,8 @@ async function ask(question) {
   } catch (error) {
     setRunning(false);
     if (error.status === 429) showCap(error.body);
-    else if (error.status === 409) announce("An answer is still running in this conversation.");
-    else if (error.status !== 401) announce(error.message);
+    else if (error.status === 409) notify("An answer is still running in this conversation.");
+    else if (error.status !== 401) notify(error.message);
   }
 }
 
@@ -211,21 +231,22 @@ function showCap(body) {
   state.capReached = true;
   setRunning(false);
   const cap = body && body.cap_usd ? `$${body.cap_usd}` : "the daily limit";
-  announce(`Daily spending cap of ${cap} reached. It resets at ${body && body.resets ? body.resets : "midnight UTC"}.`, true);
+  notify(`Daily spending cap of ${cap} reached. It resets at ${body && body.resets ? body.resets : "midnight UTC"}.`, true);
 }
 
-function announce(message, visible) {
+// A quiet message for screen readers only.
+function announce(message) {
   $("status").textContent = message;
-  if (visible) {
-    let banner = document.querySelector(".banner");
-    if (!banner) {
-      banner = document.createElement("p");
-      banner.className = "banner";
-      banner.setAttribute("role", "alert");
-      $("composer").before(banner);
-    }
-    banner.textContent = message;
-  }
+}
+
+// A visible notice that shows on both tabs. The spending-cap one stays; the others fade after a while.
+let noticeTimer = null;
+function notify(message, sticky) {
+  const banner = $("banner");
+  banner.textContent = message;
+  banner.hidden = false;
+  clearTimeout(noticeTimer);
+  if (!sticky) noticeTimer = setTimeout(() => { if (!state.capReached) banner.hidden = true; }, 8000);
 }
 
 // Rendering -----------------------------------------------------------------------------------
@@ -236,68 +257,116 @@ function turnElement(turn) {
     element.dataset.id = turn.id;
     element.querySelector(".question").textContent = turn.question;
     element.querySelector(".retry").addEventListener("click", () => ask(turn.question));
-    wireFeedback(element, turn.id);
+    element.querySelector(".gap-chip").addEventListener("click", (event) => openGaps(turn.id, event.currentTarget));
+    element.querySelector(".thumbs").addEventListener("click", (event) => openFeedback(element, turn.id, event.currentTarget));
     $("turns").append(element);
   }
   return element;
+}
+
+// Split the receipt's gap strings: real gaps lose their internal code prefix; run problems are set apart.
+function splitGaps(raw) {
+  const gaps = [];
+  const problems = [];
+  for (const entry of raw || []) {
+    const text = String(entry).trim();
+    if (RUN_PROBLEMS.includes(text) || text.startsWith("Model stopped:")) { problems.push(text); continue; }
+    const sentence = text.replace(/^(?:Unresolved need\s+)?N\d+\s*:\s*/, "").trim();
+    if (sentence) gaps.push(sentence);
+  }
+  return { gaps, problems };
 }
 
 function renderTurn(turn) {
   const element = turnElement(turn);
   const stateLine = element.querySelector(".turn-state");
   const answer = element.querySelector(".answer");
-  const gaps = element.querySelector(".gaps");
+  const row = element.querySelector(".answer-row");
   element.dataset.status = turn.status;
   element.querySelector(".retry").hidden = turn.status !== "failed";
-  element.querySelector(".thumbs").hidden = !["done", "done_with_gaps"].includes(turn.status);
+  stateLine.classList.remove("sr-only");
   if (turn.status === "running") {
     const seconds = Math.max(0, Math.round((Date.now() - Date.parse(turn.created_at)) / 1000));
     stateLine.textContent = `Answering… ${seconds}s`;
+    row.hidden = true;
     return;
   }
   if (turn.status === "failed") {
     stateLine.textContent = turn.error || "The answer failed.";
     answer.replaceChildren();
+    row.hidden = true;
     return;
   }
+  // The gap icon says it visually; the words stay for screen readers.
   stateLine.textContent = turn.status === "done_with_gaps" ? "Answered with gaps" : "";
-  renderAnswer(element, turn.receipt || {});
-  gaps.replaceChildren();
-  for (const gap of (turn.receipt && turn.receipt.gaps) || []) {
-    const li = document.createElement("li");
-    li.textContent = gap;
-    gaps.append(li);
-  }
-  const feedback = turn.feedback;
-  const thumbs = element.querySelector(".thumbs");
-  thumbs.setAttribute("aria-pressed", feedback ? "true" : "false");
-  element.querySelector(".feedback-form").hidden = !feedback;
-  if (feedback && feedback.note) element.querySelector(".feedback-form textarea").value = feedback.note;
+  stateLine.classList.toggle("sr-only", turn.status === "done_with_gaps");
+  const receipt = turn.receipt || {};
+  const sources = renderAnswer(element, receipt, turn.id);
+  const { gaps, problems } = splitGaps(receipt.gaps);
+  turnData.set(turn.id, { sources, gaps, feedback: turn.feedback || null });
+  const note = element.querySelector(".run-note");
+  note.textContent = problems.join(" ");
+  note.hidden = problems.length === 0;
+  renderRow(element, turn.id);
 }
 
-function renderAnswer(element, receipt) {
+function renderRow(element, turnId) {
+  const data = turnData.get(turnId);
+  const numbers = element.querySelector(".source-numbers");
+  numbers.replaceChildren();
+  for (const [index, source] of data.sources.entries()) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "source-number";
+    button.textContent = String(source.number);
+    button.setAttribute("aria-label", `Source ${source.number}`);
+    button.setAttribute("aria-haspopup", "dialog");
+    button.addEventListener("click", (event) => openSource(turnId, index, event.currentTarget));
+    numbers.append(button);
+  }
+  element.querySelector(".row-label").hidden = data.sources.length === 0;
+  const chip = element.querySelector(".gap-chip");
+  chip.hidden = data.gaps.length === 0;
+  element.querySelector(".gap-count").textContent = String(data.gaps.length);
+  chip.setAttribute("aria-label", `${data.gaps.length} ${data.gaps.length === 1 ? "gap" : "gaps"} in this answer`);
+  element.querySelector(".thumbs").setAttribute("aria-pressed", data.feedback ? "true" : "false");
+  // The row always shows for a finished answer, so one with no sources still has its feedback button.
+  element.querySelector(".answer-row").hidden = false;
+}
+
+// Draws the answer and returns its sources in numbering order: passages from one file share one number.
+function renderAnswer(element, receipt, turnId) {
   const container = element.querySelector(".answer");
   container.replaceChildren();
   const citations = receipt.citations || {};
-  const numbers = new Map();
+  const found = new Map();
   const paragraphs = String(receipt.answer || "").split(/\n{2,}/);
   for (const text of paragraphs) {
     const p = document.createElement("p");
     for (const part of text.split(/(\[E\d+\.\d+(?:@\d+)?\])/)) {
       const match = /^\[(E\d+\.\d+(?:@\d+)?)\]$/.exec(part);
       if (match && citations[match[1]]) {
-        const ref = match[1];
-        // Passages from the same source file share one number.
-        const source = citations[ref].relative_path || ref;
-        if (!numbers.has(source)) numbers.set(source, numbers.size + 1);
-        const number = numbers.get(source);
+        const citation = citations[match[1]];
+        const key = citation.relative_path || match[1];
+        let source = found.get(key);
+        if (!source) {
+          const path = String(citation.relative_path || "");
+          source = {
+            number: found.size + 1, title: citation.title || path || match[1],
+            folder: path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "",
+            url: String(citation.obsidian_url || ""), passages: [],
+          };
+          found.set(key, source);
+        }
+        if (citation.text && !source.passages.includes(citation.text)) source.passages.push(citation.text);
         const marker = document.createElement("button");
         marker.type = "button";
         marker.className = "marker";
-        marker.textContent = String(number);
-        marker.setAttribute("aria-expanded", "false");
-        marker.setAttribute("aria-label", `Show source ${number}`);
-        marker.addEventListener("click", () => toggleExcerpt(element, marker, citations[ref]));
+        marker.textContent = String(source.number);
+        marker.setAttribute("aria-label", `Source ${source.number}`);
+        marker.setAttribute("aria-haspopup", "dialog");
+        const index = source.number - 1;
+        marker.addEventListener("click", (event) => openSource(turnId, index, event.currentTarget));
         p.append(marker);
       } else {
         p.append(document.createTextNode(part));
@@ -305,47 +374,179 @@ function renderAnswer(element, receipt) {
     }
     container.append(p);
   }
+  return [...found.values()];
 }
 
-function toggleExcerpt(element, marker, citation) {
-  const panel = element.querySelector(".excerpt");
-  const wasOpen = marker.getAttribute("aria-expanded") === "true";
-  for (const other of element.querySelectorAll(".marker")) other.setAttribute("aria-expanded", "false");
-  if (wasOpen) { panel.hidden = true; return; }
-  marker.setAttribute("aria-expanded", "true");
-  panel.querySelector(".excerpt-title").textContent = citation.title || citation.relative_path;
-  panel.querySelector(".excerpt-path").textContent = citation.relative_path;
-  panel.querySelector(".excerpt-text").textContent = citation.text;
-  const link = panel.querySelector(".open-obsidian");
-  const url = String(citation.obsidian_url || "");
-  if (url.startsWith("obsidian://")) { link.href = url; link.hidden = false; } else { link.removeAttribute("href"); link.hidden = true; }
-  panel.hidden = false;
+// Sheet content --------------------------------------------------------------------------------
+function textElement(tag, className, text) {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  element.textContent = text;
+  return element;
 }
 
-function wireFeedback(element, turnId) {
-  const thumbs = element.querySelector(".thumbs");
-  const form = element.querySelector(".feedback-form");
-  thumbs.addEventListener("click", async () => {
-    const on = thumbs.getAttribute("aria-pressed") === "true";
-    try {
-      if (on) {
+function fillSource(section, data, index) {
+  const source = data.sources[index];
+  const intro = document.createElement("div");
+  intro.className = "source-head";
+  const titles = document.createElement("div");
+  titles.className = "source-titles";
+  titles.append(textElement("span", "kicker", `Source ${source.number}`), textElement("h3", "sheet-heading", source.title));
+  if (source.folder) titles.append(textElement("span", "sheet-sub", source.folder));
+  intro.append(titles);
+  const url = source.url;
+  if (url.startsWith("obsidian://")) {
+    const link = document.createElement("a");
+    link.className = "icon-link open-obsidian";
+    link.href = url;
+    link.setAttribute("aria-label", "Open in Obsidian");
+    link.append(icon("external"));
+    intro.append(link);
+  }
+  const parts = [intro];
+  for (const passage of source.passages) parts.push(textElement("blockquote", "passage", passage));
+  if (data.sources.length > 1) {
+    const numbers = document.createElement("div");
+    numbers.className = "sheet-numbers";
+    for (const [other, item] of data.sources.entries()) {
+      const button = textElement("button", "sheet-number", String(item.number));
+      button.type = "button";
+      button.setAttribute("aria-label", `Source ${item.number}`);
+      if (other === index) button.setAttribute("aria-current", "true");
+      button.addEventListener("click", () => openSheet("source", null, (target) => fillSource(target, data, other)));
+      numbers.append(button);
+    }
+    parts.push(numbers);
+  }
+  section.replaceChildren(...parts);
+}
+
+function openSource(turnId, index, opener) {
+  const data = turnData.get(turnId);
+  if (!data || !data.sources[index]) return;
+  openSheet("source", opener, (section) => fillSource(section, data, index));
+}
+
+function fillGaps(section, data) {
+  const count = data.gaps.length;
+  const parts = [
+    textElement("span", "kicker kicker-gap", `${count} ${count === 1 ? "gap" : "gaps"} in this answer`),
+    textElement("h3", "sheet-heading", "What’s missing"),
+  ];
+  for (const gap of data.gaps) {
+    parts.push(textElement("p", "gap-card", gap));
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "pill";
+    add.append(icon("add"), document.createTextNode("Add a note to fill this gap"));
+    add.addEventListener("click", () => closeSheet(() => window.captureScreen.openWith(gap)));
+    parts.push(add);
+  }
+  section.replaceChildren(...parts);
+}
+
+function openGaps(turnId, opener) {
+  const data = turnData.get(turnId);
+  if (!data || !data.gaps.length) return;
+  openSheet("gaps", opener, (section) => fillGaps(section, data));
+}
+
+// Thumbs-down: a note box and Send. A bottom sheet on phones; a panel under the answer on desktop.
+function buildFeedback(turnId, inline, done) {
+  const data = turnData.get(turnId);
+  const saved = data.feedback;
+  const form = document.createElement("form");
+  form.className = inline ? "feedback-panel" : "feedback-sheet";
+  const noteId = `feedback-note-${inline ? "inline" : "sheet"}`;
+  const label = document.createElement("label");
+  label.htmlFor = noteId;
+  if (inline) {
+    label.className = "feedback-label";
+    label.append("What was wrong? ", textElement("span", "muted", "(optional)"));
+  } else {
+    label.className = "feedback-note-label";
+    label.textContent = "Note (optional)";
+  }
+  const textarea = document.createElement("textarea");
+  textarea.id = noteId;
+  textarea.rows = inline ? 2 : 4;
+  textarea.maxLength = 2000;
+  textarea.placeholder = "e.g. It should have used my notes on pricing";
+  textarea.value = saved && saved.note ? saved.note : "";
+  const message = textElement("p", "message small", "");
+  message.setAttribute("role", "alert");
+  const send = textElement("button", "primary send-feedback", "Send feedback");
+  send.type = "submit";
+  const actions = document.createElement("div");
+  actions.className = "feedback-actions";
+  if (inline) {
+    const cancel = textElement("button", "plain", "Cancel");
+    cancel.type = "button";
+    cancel.addEventListener("click", () => done());
+    actions.append(cancel);
+  }
+  if (saved) {
+    const remove = textElement("button", "link", "Remove feedback");
+    remove.type = "button";
+    remove.addEventListener("click", async () => {
+      try {
         await api("DELETE", `/api/turns/${encodeURIComponent(turnId)}/feedback`);
-        thumbs.setAttribute("aria-pressed", "false");
-        form.hidden = true;
-      } else {
-        await api("POST", `/api/turns/${encodeURIComponent(turnId)}/feedback`, {});
-        thumbs.setAttribute("aria-pressed", "true");
-        form.hidden = false;
-        form.querySelector("textarea").focus();
-      }
-    } catch (error) { if (error.status !== 401) announce(error.message, true); }
-  });
+        data.feedback = null;
+        refreshThumbs(turnId);
+        announce("Feedback removed.");
+        done();
+      } catch (error) { if (error.status !== 401) message.textContent = error.message; }
+    });
+    actions.append(remove);
+  }
+  actions.append(send);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
+    send.disabled = true;
+    message.textContent = "";
     try {
-      await api("POST", `/api/turns/${encodeURIComponent(turnId)}/feedback`, { note: form.querySelector("textarea").value });
-      announce("Note saved.");
-    } catch (error) { if (error.status !== 401) announce(error.message, true); }
+      await api("POST", `/api/turns/${encodeURIComponent(turnId)}/feedback`, { note: textarea.value });
+      data.feedback = { note: textarea.value };
+      refreshThumbs(turnId);
+      announce("Feedback saved.");
+      done();
+    } catch (error) {
+      if (error.status !== 401) message.textContent = error.message;
+    } finally { send.disabled = false; }
+  });
+  if (inline) {
+    form.append(label, textarea, message, actions);
+  } else {
+    const heading = document.createElement("div");
+    heading.className = "feedback-heading";
+    heading.append(textElement("h3", "sheet-heading", "What was wrong?"),
+      textElement("p", "sheet-note", "This answer is saved as a test question, so future answers can be checked against it."));
+    const field = document.createElement("div");
+    field.className = "feedback-field";
+    field.append(label, textarea);
+    form.append(heading, field, message, actions);
+  }
+  return form;
+}
+
+function refreshThumbs(turnId) {
+  const element = document.querySelector(`.turn[data-id="${CSS.escape(turnId)}"]`);
+  if (element) element.querySelector(".thumbs").setAttribute("aria-pressed", turnData.get(turnId).feedback ? "true" : "false");
+}
+
+function openFeedback(element, turnId, opener) {
+  if (!turnData.get(turnId)) return;
+  if (window.matchMedia("(min-width: 900px)").matches) {
+    const panel = element.querySelector(".feedback-inline");
+    if (!panel.hidden) { panel.hidden = true; panel.replaceChildren(); return; }
+    const close = () => { panel.hidden = true; panel.replaceChildren(); opener.focus(); };
+    panel.replaceChildren(buildFeedback(turnId, true, close));
+    panel.hidden = false;
+    panel.querySelector("textarea").focus();
+    return;
+  }
+  openSheet("feedback", opener, (section) => {
+    section.replaceChildren(buildFeedback(turnId, false, () => closeSheet()));
   });
 }
 
@@ -368,19 +569,40 @@ function setView(view) {
   return new Promise((resolve) => closeSheet(() => resolve(applyView(view))));
 }
 
-const SHEET_TITLES = { history: "History" };
-const sheet = { open: false, closing: false, opener: null, afterClose: [] };
+const SHEET_TITLES = { history: "History", source: "Source", gaps: "What’s missing", feedback: "What was wrong?" };
+const sheet = { open: false, closing: false, opener: null, name: null, afterClose: [] };
 
-function openSheet(name, opener) {
-  if (sheet.open) return;
+// `fill` builds the sheet's content (Source, Gaps, Feedback); History is static markup.
+// Source and Gaps can swap in place while open (the desktop panel stays beside the page): same history entry.
+function openSheet(name, opener, fill) {
+  const swapping = sheet.open && !sheet.closing && name !== "history" && sheet.name !== "history" && sheet.name !== "feedback" && name !== "feedback";
+  if ((sheet.open && !swapping) || sheet.closing) return;
+  const section = $("sheet").querySelector(`[data-sheet="${name}"]`);
+  if (fill) fill(section);
+  const root = $("sheet");
+  if (name === "history") {
+    root.setAttribute("aria-labelledby", "sheet-title");
+    root.removeAttribute("aria-label");
+  } else {
+    root.removeAttribute("aria-labelledby");
+    root.setAttribute("aria-label", SHEET_TITLES[name]);
+  }
+  root.dataset.kind = name;
+  $("app").dataset.sheet = name;
+  $("sheet-title").textContent = SHEET_TITLES[name];
+  for (const other of root.querySelectorAll("[data-sheet]")) other.hidden = other.dataset.sheet !== name;
+  sheet.name = name;
+  if (swapping) {
+    // Keep keyboard focus on the number just chosen, or on the sheet itself.
+    (root.querySelector('.sheet-number[aria-current="true"]') || root).focus();
+    return;
+  }
   sheet.open = true;
   sheet.opener = opener || document.activeElement;
   history.pushState({ ka: "sheet", name }, "");
-  $("sheet-title").textContent = SHEET_TITLES[name];
-  for (const section of $("sheet").querySelectorAll("[data-sheet]")) section.hidden = section.dataset.sheet !== name;
-  $("sheet").hidden = false;
+  root.hidden = false;
   $("sheet-scrim").hidden = false;
-  $("sheet-close").focus();
+  (name === "history" ? $("sheet-close") : root).focus();
 }
 
 function teardownSheet() {
@@ -388,6 +610,9 @@ function teardownSheet() {
   sheet.closing = false;
   $("sheet").hidden = true;
   $("sheet-scrim").hidden = true;
+  delete $("app").dataset.sheet;
+  for (const section of $("sheet").querySelectorAll("[data-sheet]:not([data-sheet='history'])")) section.replaceChildren();
+  sheet.name = null;
   const opener = sheet.opener;
   sheet.opener = null;
   const after = sheet.afterClose.splice(0);
