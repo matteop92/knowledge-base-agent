@@ -8,6 +8,7 @@ used (app/capture/captions.py) and from Gemini otherwise; only the public link g
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Callable
@@ -15,6 +16,8 @@ from urllib import error, parse, request
 
 from app.capture.notes import CaptureError, Draft, MAX_TEXT_BYTES, clean_tags, clean_title
 from app.models.gemini import GeminiClient, GeminiError
+
+log = logging.getLogger("knowledge.capture.youtube")
 
 PROMPT_VERSION = "youtube_transcript_v1"
 PROMPT = (Path(__file__).resolve().parents[2] / "prompts" / f"{PROMPT_VERSION}.md").read_text(encoding="utf-8")
@@ -90,10 +93,11 @@ def transcribe_youtube(link: str, client: GeminiClient, *, title: str | None = N
             body = clean_transcript(result.text)
             if result.finish_reason == "MAX_TOKENS":
                 body += "\n\n*(Transcript cut off: the video is longer than one request can transcribe.)*"
-        except CaptureError:
+        except CaptureError as exc:
             spare = backup() if backup else None
             if not spare:
                 raise
+            log.warning("youtube transcript from captions backup; gemini failed: %s", exc)
             body = clean_transcript(spare)
     body = body.encode("utf-8")[:MAX_TEXT_BYTES].decode("utf-8", "ignore")
     own = {"source": "YouTube"}

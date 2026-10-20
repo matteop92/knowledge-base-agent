@@ -35,7 +35,10 @@ MAX_MISSING = 0.1
 REQUEST_TIMEOUT = 30
 # Naming stops after this, so the Gemini fallback (10 minutes at most) still fits the capture job's time limit.
 CAPTION_BUDGET_SECONDS = 240
+# Naming after a failed Gemini call (up to 10 minutes) gets less time, so the job still ends inside its limit.
+FALLBACK_BUDGET_SECONDS = 60
 MONOLOGUE_CHARS = 3 * 1500
+UNSEPARATED_NOTE = "\n\n*(Speakers not separated: Gemini was unavailable, so these captions are under one name.)*"
 DESCRIPTION_CHARS = 2000
 DESCRIPTION = re.compile(r'"shortDescription":"((?:[^"\\]|\\.)*)"')
 NOISE = re.compile(r"\[(?:music|applause|laughter|__)\]\s*", re.IGNORECASE)
@@ -184,10 +187,15 @@ class CaptionTranscriber:
     models: list[str] = field(default_factory=speaker_models)
     cost_usd: float = 0.0
     source: str = "not tried"
-    backup: str | None = None
+    unmarked: tuple[str, str, str, list[str]] | None = None
 
     def transcript(self, video_id: str, title: str, channel: str) -> str | None:
-        """A bold-speaker transcript, or None when the caller should fall back to Gemini."""
+        """A bold-speaker transcript, or None when the caller should fall back to Gemini.
+
+        A long video whose captions have no speaker marks returns None too, but keeps its captions so that
+        fallback() can still save them if Gemini fails.
+        """
+        self.unmarked = None
         try:
             turns = caption_turns((self.fetch or fetch_caption_text)(video_id))
         except Exception as exc:  # noqa: BLE001 - any caption failure (blocked, missing, unparsable) means Gemini
@@ -198,26 +206,36 @@ class CaptionTranscriber:
             return None
         if len(turns) == 1 and len(turns[0]) > MONOLOGUE_CHARS:
             # A long video with no speaker marks may still have several speakers, and Gemini can tell the voices
-            # apart, so it goes first; the captions under one name are kept in case Gemini fails.
-            body = self._named(video_id, title, channel, turns)
-            self.backup = body or f"**{clean_name(channel) or 'Speaker 1'}:** {turns[0]}"
+            # apart, so it goes first; the captions are kept in case Gemini fails.
+            self.unmarked = (video_id, title, channel, turns)
             self.source = "gemini (captions: no speaker marks)"
             return None
         return self._named(video_id, title, channel, turns)
 
     def fallback(self) -> str | None:
-        """The captions under one speaker name when Gemini failed on a video without speaker marks."""
-        if self.backup:
-            self.source = "captions, one speaker (gemini failed)"
-        return self.backup
+        """When Gemini failed on a video without speaker marks: its captions under one speaker name.
 
-    def _named(self, video_id: str, title: str, channel: str, turns: list[str]) -> str | None:
+        The name comes from a model when one answers within FALLBACK_BUDGET_SECONDS, else from the channel.
+        """
+        if self.unmarked is None:
+            return None
+        video_id, title, channel, turns = self.unmarked
+        body = None
+        try:
+            body = self._named(video_id, title, channel, turns, FALLBACK_BUDGET_SECONDS)
+        except Exception as exc:  # noqa: BLE001 - the channel name still makes a usable note
+            log.warning("youtube one-speaker naming failed error=%s", type(exc).__name__)
+        self.source = "captions, one speaker (gemini failed)"
+        return (body or f"**{clean_name(channel) or 'Speaker 1'}:** {turns[0]}") + UNSEPARATED_NOTE
+
+    def _named(self, video_id: str, title: str, channel: str, turns: list[str],
+               budget: float = CAPTION_BUDGET_SECONDS) -> str | None:
         from app.ingestion.vault_sync import measured_cost, openrouter_client, usage_mark
         from app.models.routes import PRICE_CEILINGS
         from app.storage.spend import SpendCapError
 
         description = (self.describe or fetch_description)(video_id)
-        deadline = time.monotonic() + CAPTION_BUDGET_SECONDS
+        deadline = time.monotonic() + budget
         for model_id in self.models:
             if model_id not in PRICE_CEILINGS or time.monotonic() >= deadline:
                 continue
@@ -227,6 +245,10 @@ class CaptionTranscriber:
                 self.approve(worst + self.cost_usd)
             except SpendCapError:
                 self.source = "gemini (captions: daily cap)"
+                return None
+            except Exception as exc:  # noqa: BLE001 - a failed cap check (say, the database) means Gemini
+                log.warning("youtube cap check failed error=%s", type(exc).__name__)
+                self.source = "gemini (captions: cap check failed)"
                 return None
             model = ModelSpec(provider="openrouter", model_id=model_id, model_version="current")
             client = mark = None
