@@ -116,6 +116,11 @@ class GeminiClientTests(unittest.TestCase):
         with self.assertRaisesRegex(GeminiError, "missing"):
             GeminiClient(api_key="").transcribe(URL, "x")
 
+    def test_an_overloaded_model_reads_plainly(self):
+        with patch("app.models.gemini.request.urlopen", side_effect=HTTPError(URL, 503, "busy", {}, None)):
+            with self.assertRaisesRegex(GeminiError, "busy right now"):
+                GeminiClient(api_key="test-key").transcribe(URL, "x")
+
 
 if __name__ == "__main__":
     unittest.main()

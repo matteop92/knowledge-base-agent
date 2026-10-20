@@ -25,8 +25,9 @@ log = logging.getLogger("knowledge.api.capture")
 
 INDEX_WAIT_SECONDS = 30
 # A running job older than this no longer counts as running: the server restarted while it ran.
-# It must outlast the slowest capture: a YouTube transcript may take up to the Gemini timeout (10 minutes),
-# then classification, the 30-second index wait and an index pass.
+# It must outlast the slowest capture: a YouTube transcript may take the caption fetches (30 seconds each) and
+# up to 4 minutes of speaker naming, then the Gemini fallback (10 minutes), classification, the 30-second
+# index wait and an index pass.
 JOB_LIMIT = timedelta(minutes=20)
 INTERRUPTED = "interrupted: the server restarted while saving"
 JOB_SELECT = "select job_id, kind, status, vault_path, title, indexed, error, cost_usd, created_at, finished_at from knowledge.capture_jobs"
@@ -97,21 +98,38 @@ class YouTubeInput:
     kind: str = "youtube"
 
 
-class GeminiTranscriber:
-    """YouTube transcripts on the Gemini API's free tier: nothing is billed, so nothing reaches the ledger.
+class YouTubeTranscriber:
+    """YouTube's captions with speaker names from a text model; Gemini's free tier when they cannot be used.
 
-    A key from a project with billing turned on would be billed by Google without a ledger entry;
+    The text model's cost is unknown until the captions are fetched, so the worst case here is 0 and approve()
+    checks the cap just before each model call. Gemini's free tier bills nothing, so it never reaches the ledger;
     deploy/README.md says to use a free-tier key.
     """
+
+    def __init__(self, approve: Callable[[float], None] | None = None) -> None:
+        self.approve = approve or (lambda usd: None)
 
     def worst_case_usd(self, item: YouTubeInput) -> float:
         return 0.0
 
     def extract(self, item: YouTubeInput) -> tuple[Draft, float]:
+        from app.capture.captions import CaptionTranscriber
         from app.capture.youtube import transcribe_youtube
         from app.models.gemini import GeminiClient
 
-        return transcribe_youtube(item.url, GeminiClient(), title=item.title, tags=item.tags), 0.0
+        captions = CaptionTranscriber(approve=self.approve)
+        try:
+            draft = transcribe_youtube(item.url, GeminiClient(), title=item.title, tags=item.tags,
+                                       captions=captions.transcript)
+        except CaptureError as exc:
+            exc.cost_usd = captions.cost_usd
+            raise
+        except Exception:
+            raise CaptureCostError(captions.cost_usd) from None
+        finally:
+            # Which way the transcript went, so a server that YouTube blocks shows in the log; never titles.
+            log.info("youtube transcript source=%s cost_usd=%.4f", captions.source, captions.cost_usd)
+        return draft, captions.cost_usd
 
 
 class Reader(Protocol):
@@ -166,8 +184,13 @@ class CaptureJobs:
         self.connect, self.settings, self.indexer, self.today = connect, settings, indexer, today
         self.classifier = classifier or OpenRouterClassifier()
         self.extractor = extractor or OpenRouterExtractor()
-        self.transcriber = transcriber or GeminiTranscriber()
+        self.transcriber = transcriber or YouTubeTranscriber(self._approve_transcript)
         self._threads: list[threading.Thread] = []
+
+    def _approve_transcript(self, usd: float) -> None:
+        """The speaker-naming call plus the classification still to come must fit under the cap."""
+        with self.connect() as conn:
+            check_daily_cap(conn, usd + self._worst_case(YouTubeInput(url="")), self.settings.daily_cap_usd)
 
     @property
     def enabled(self) -> bool:
