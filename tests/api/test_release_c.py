@@ -143,5 +143,39 @@ console.log(JSON.stringify(out));"""
         self.assertEqual(out["none"], [])
 
 
+class PageStructureTests(unittest.TestCase):
+    def test_every_closing_tag_matches_an_open_one(self) -> None:
+        # A stray </div> closed the whole app grid early and pushed the main column below the sidebar.
+        from html.parser import HTMLParser
+
+        void = {"meta", "link", "input", "br", "img", "hr", "use", "path", "source"}
+
+        class Check(HTMLParser):
+            def __init__(self) -> None:
+                super().__init__()
+                self.stack: list[tuple[str, int]] = []
+                self.errors: list[str] = []
+
+            def handle_starttag(self, tag, attrs):
+                if tag not in void:
+                    self.stack.append((tag, self.getpos()[0]))
+
+            def handle_startendtag(self, tag, attrs):
+                pass
+
+            def handle_endtag(self, tag):
+                if tag in void:
+                    return
+                if not self.stack or self.stack[-1][0] != tag:
+                    self.errors.append(f"</{tag}> at line {self.getpos()[0]} closes {self.stack[-1] if self.stack else None}")
+                    return
+                self.stack.pop()
+
+        check = Check()
+        check.feed((WEB / "index.html").read_text(encoding="utf-8"))
+        self.assertEqual(check.errors, [])
+        self.assertEqual(check.stack, [])
+
+
 if __name__ == "__main__":
     unittest.main()
