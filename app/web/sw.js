@@ -1,12 +1,13 @@
 "use strict";
 // Caches only the static app shell so it opens offline; API responses are never cached.
-const CACHE = "ka-shell-v2";
+const CACHE = "ka-shell-v4";
 const SHARE_CACHE = "ka-share";
 const SHELL = ["/", "/static/app.js", "/static/capture.js", "/static/styles.css", "/manifest.webmanifest",
-  "/static/icons/icon-192.png", "/static/icons/icon-512.png"];
+  "/static/icons/icon-192.png", "/static/icons/icon-512.png",
+  "/static/fonts/Newsreader-Variable.woff2", "/static/fonts/Geist-Variable.woff2"];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL.map((path) => new Request(path, { cache: "reload" })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (event) => {
@@ -39,8 +40,9 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   if (event.request.method !== "GET" || url.origin !== self.location.origin || !SHELL.includes(url.pathname)) return;
-  // Network first so a new version shows at once; the cache is the offline fallback.
-  event.respondWith(fetch(event.request)
+  // Network first so a new version shows at once; the cache is the offline fallback. "no-cache" makes the
+  // browser check with the server every time, so a stale copy in its own HTTP cache is never served.
+  event.respondWith(fetch(event.request, { cache: "no-cache" })
     .then((response) => {
       const copy = response.clone();
       if (response.ok) caches.open(CACHE).then((cache) => cache.put(event.request, copy));
