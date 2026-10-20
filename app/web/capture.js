@@ -161,6 +161,9 @@
     }
   }
 
+  const KINDS = { text: "Text", markdown: "Markdown", screenshot: "Screenshot", youtube: "YouTube" };
+
+  // One row per save: the icon says the state (its tooltip has the detail), then the title, then the link, the type and Retry.
   function renderCapture(job, prepend) {
     let item = document.querySelector(`.capture-item[data-id="${CSS.escape(job.id)}"]`);
     if (!item) {
@@ -170,39 +173,61 @@
       prepend ? $("capture-list").prepend(item) : $("capture-list").append(item);
     }
     item.replaceChildren();
+    item.dataset.status = job.status === "failed" ? "failed" : job.status === "running" ? "running" : "done";
+    const detail = job.status === "running" ? STATUS.running :
+      job.status === "failed" ? `Failed: ${job.error || "unknown reason"}` :
+      job.indexed ? STATUS.indexed : STATUS.queued;
+    const state = document.createElement("span");
+    state.className = "capture-state";
+    state.title = detail;
+    state.setAttribute("role", "img");
+    state.setAttribute("aria-label", detail);
+    state.append(icon(job.status === "running" ? "saving" : job.status === "failed" ? "failed" : "saved"));
     const body = document.createElement("div");
     body.className = "capture-body";
     const title = document.createElement("p");
     title.className = "capture-title";
     title.textContent = job.title || "Capture";
-    const line = document.createElement("p");
-    line.className = "muted small";
-    line.textContent = job.status === "running" ? STATUS.running :
-      job.status === "failed" ? `Failed: ${job.error || "unknown reason"}` :
-      job.indexed ? STATUS.indexed : STATUS.queued;
-    item.dataset.status = job.status;
-    body.append(title, line);
-    item.append(icon("doc"), body);
-    if (job.vault_path) {
-      const path = document.createElement("p");
-      path.className = "muted small path";
-      path.textContent = job.vault_path;
+    const meta = document.createElement("div");
+    meta.className = "capture-meta";
+    if (job.status === "running") {
+      const saving = document.createElement("span");
+      saving.className = "muted";
+      saving.textContent = STATUS.running;
+      meta.append(saving);
+    } else if (job.vault_path) {
       const open = document.createElement("a");
       open.href = obsidianLink(job.vault_path);
-      open.textContent = "Open in Obsidian";
-      body.append(path, open);
+      open.textContent = "See in Obsidian";
+      meta.append(open);
     }
-    if (job.status === "failed" && retries.has(job.id)) {
-      const retry = document.createElement("button");
-      retry.type = "button";
-      retry.textContent = "Retry";
-      retry.addEventListener("click", async () => {
-        retry.disabled = true;
-        await send(retries.get(job.id), false);
-        retry.disabled = false;
-      });
-      body.append(retry);
+    if (KINDS[job.kind]) {
+      const pill = document.createElement("span");
+      pill.className = "type-pill";
+      pill.textContent = KINDS[job.kind];
+      meta.append(pill);
     }
+    if (job.status === "failed") {
+      if (retries.has(job.id)) {
+        const retry = document.createElement("button");
+        retry.type = "button";
+        retry.className = "retry-capture";
+        retry.append(icon("retry"), "Retry");
+        retry.addEventListener("click", async () => {
+          retry.disabled = true;
+          await send(retries.get(job.id), false);
+          retry.disabled = false;
+        });
+        meta.append(retry);
+      } else {
+        const again = document.createElement("span");
+        again.className = "muted";
+        again.textContent = "Add it again";
+        meta.append(again);
+      }
+    }
+    body.append(title, meta);
+    item.append(state, body);
   }
 
   function pollCapture(id, announceResult) {

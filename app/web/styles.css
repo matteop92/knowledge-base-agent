@@ -217,15 +217,26 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 .recent { margin-top: 24px; padding: 0 4px; }
 .recent .section-title { margin-bottom: 4px; }
 .capture-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.capture-item { min-height: 48px; padding: 6px 0; display: flex; align-items: center; gap: 12px; }
-.capture-item > .icon { color: var(--muted); }
-.capture-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.capture-item { padding: 6px 0; display: flex; align-items: flex-start; gap: 12px; }
+.capture-state { flex: none; display: inline-flex; margin-top: 1px; color: var(--ink-soft); }
+.capture-state .icon { width: 20px; height: 20px; }
+.capture-item[data-status="done"] .capture-state { color: var(--accent); }
+.capture-item[data-status="running"] .capture-state { color: var(--muted); }
+.capture-item[data-status="running"] .capture-state .icon { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.capture-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .capture-item p { margin: 0; }
-.capture-title { font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
-.capture-item .muted { font-size: 12px; }
-.capture-item .path { overflow-wrap: anywhere; }
-.capture-item[data-status="failed"] .muted { color: var(--danger); }
-.capture-item button { align-self: flex-start; margin-top: 4px; }
+.capture-title { font-size: 14px; font-weight: 500; line-height: 1.3; overflow-wrap: anywhere; }
+.capture-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; line-height: 1; }
+.capture-meta a { text-decoration: underline; }
+.capture-meta .muted { color: var(--muted); }
+.type-pill { padding: 4px 8px; border-radius: 999px; background: var(--chip); color: var(--ink-soft); }
+/* Retry is a pressable outline, not a filled capsule like the type pill; it draws no taller than the pill and keeps a larger touch area. */
+.capture-meta .retry-capture { position: relative; display: inline-flex; align-items: center; gap: 4px; height: 20px; min-height: 0; min-width: 0; padding: 0 8px 0 6px; border: 1px solid rgba(29, 28, 26, 0.28); border-radius: 6px; background: transparent; font-size: 12px; line-height: 1; }
+.capture-meta .retry-capture:hover:not(:disabled) { background: var(--hover); }
+.capture-meta .retry-capture .icon { width: 12px; height: 12px; }
+.capture-meta .retry-capture::after { content: ""; position: absolute; inset: -6px -4px; }
+@media (pointer: coarse) { .capture-meta .retry-capture::after { inset: -12px -6px; } }
 
 /* Sheet: Source, Gaps and Feedback share one component ------------------------------------------- */
 .scrim { position: fixed; inset: 0; background: rgba(29, 28, 26, 0.34); z-index: 30; }
