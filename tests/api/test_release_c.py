@@ -297,6 +297,20 @@ console.log(JSON.stringify(out));"""
         self.assertIn("if (session !== resets) return false;", capture)
 
 
+class AppNameTests(unittest.TestCase):
+    def test_the_app_is_called_knowledge_agent_everywhere_it_names_itself(self) -> None:
+        import json
+        manifest = json.loads((WEB / "manifest.webmanifest").read_text(encoding="utf-8"))
+        self.assertEqual((manifest["name"], manifest["short_name"]), ("Knowledge Agent", "Knowledge Agent"))
+        page = (WEB / "index.html").read_text(encoding="utf-8")
+        self.assertIn("<title>Knowledge Agent</title>", page)
+        self.assertIn("<h1>Knowledge Agent</h1>", page)
+        self.assertIn('<span class="brand label">Knowledge Agent</span>', page)
+        script = (WEB / "app.js").read_text(encoding="utf-8")
+        self.assertNotIn('"Knowledge"', script)
+        self.assertNotIn("- Knowledge`", script)
+
+
 class PageStructureTests(unittest.TestCase):
     def test_every_closing_tag_matches_an_open_one(self) -> None:
         # A stray </div> closed the whole app grid early and pushed the main column below the sidebar.
