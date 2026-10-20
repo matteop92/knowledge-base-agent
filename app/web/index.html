@@ -53,7 +53,7 @@
 
   <!-- App -->
   <div id="app" class="app" hidden>
-    <aside id="sidebar" class="sidebar">
+    <aside id="sidebar" class="sidebar" aria-label="Navigation">
       <div class="sidebar-top">
         <span class="brand label">Knowledge</span>
         <button type="button" id="collapse" class="icon-button" aria-label="Collapse sidebar" aria-expanded="true"><svg class="icon"><use href="#i-panel"/></svg></button>
@@ -61,16 +61,22 @@
       <nav class="side-nav" aria-label="Main">
         <button type="button" class="side-item" data-tab="ask" aria-label="Ask"><svg class="icon" aria-hidden="true"><use href="#i-ask"/></svg><span class="label">Ask</span></button>
         <button type="button" class="side-item" data-tab="add" aria-label="Add"><svg class="icon" aria-hidden="true"><use href="#i-add"/></svg><span class="label">Add</span></button>
-        <button type="button" id="sidebar-history" class="side-item" aria-label="History" aria-haspopup="dialog"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg><span class="label">History</span></button>
+        <button type="button" id="sidebar-history" class="side-item" aria-label="History" aria-expanded="true" aria-controls="history-panel"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg><span class="label">History</span><svg class="icon chevron label" aria-hidden="true"><use href="#i-chevron"/></svg></button>
       </nav>
+      <div id="history-panel" class="history-panel">
+        <button type="button" id="sheet-new" class="side-new"><svg class="icon" aria-hidden="true"><use href="#i-add"/></svg>New question</button>
+        <ul id="sheet-conversation-list" class="conversation-list"></ul>
+        <p class="conversation-empty muted" hidden>No conversations yet.</p>
+      </div>
+      <div class="sidebar-foot label">
+        <button type="button" class="link sign-out">Sign out</button>
+        <button type="button" class="link sign-out-everywhere">Sign out everywhere</button>
+        <p class="message small sign-out-message" role="alert"></p>
+      </div>
     </aside>
+    <div id="nav-scrim" class="scrim nav-scrim" hidden></div>
 
     <div class="main">
-      <header class="topbar">
-        <span class="brand">Knowledge</span>
-        <button type="button" id="history-button" class="icon-button" aria-label="History" aria-haspopup="dialog"><svg class="icon"><use href="#i-history"/></svg></button>
-      </header>
-
       <p id="banner" class="banner" role="alert" hidden></p>
       <div id="status" class="sr-only" aria-live="polite"></div>
 
@@ -136,31 +142,16 @@
         </section>
       </div>
 
-      <nav class="tabbar" aria-label="Main">
-        <button type="button" class="tab" data-tab="ask"><span class="tab-pill"><svg class="icon" aria-hidden="true"><use href="#i-ask"/></svg></span>Ask</button>
-        <button type="button" class="tab" data-tab="add"><span class="tab-pill"><svg class="icon" aria-hidden="true"><use href="#i-add"/></svg></span>Add</button>
-      </nav>
     </div>
 
-    <!-- One sheet for everything that slides over the page. -->
+    <!-- One sheet for Source, Gaps and Feedback: a bottom sheet on phones, a panel from the right on desktop. -->
     <div id="sheet-scrim" class="scrim" hidden></div>
-    <div id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1" hidden>
+    <div id="sheet" class="sheet" role="dialog" aria-modal="true" tabindex="-1" hidden>
       <span class="sheet-handle" aria-hidden="true"></span>
       <div class="sheet-head">
-        <h2 id="sheet-title">History</h2>
         <button type="button" id="sheet-close" class="icon-button" aria-label="Close"><svg class="icon"><use href="#i-close"/></svg></button>
       </div>
       <div class="sheet-body">
-        <section data-sheet="history">
-          <button type="button" id="sheet-new" class="primary">New question</button>
-          <ul id="sheet-conversation-list" class="conversation-list"></ul>
-          <p class="conversation-empty muted" hidden>No conversations yet.</p>
-          <div class="sheet-settings">
-            <button type="button" class="link sign-out">Sign out</button>
-            <button type="button" class="link sign-out-everywhere">Sign out everywhere</button>
-            <p class="message small sign-out-message" role="alert"></p>
-          </div>
-        </section>
         <section data-sheet="source" hidden></section>
         <section data-sheet="gaps" hidden></section>
         <section data-sheet="feedback" hidden></section>
