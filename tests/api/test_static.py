@@ -378,23 +378,25 @@ console.log(JSON.stringify({
     def test_recent_times_and_tag_chips_run_as_written(self) -> None:
         age = re.search(r"function formatAge.*?\n  }\n", self.capture, re.S).group(0)
         tags = re.search(r"function mergeTags.*?\n  }\n", self.capture, re.S).group(0)
-        probe = age + tags + """
+        probe = "const MAX_TAGS = 10;\n" + age + tags + """
 const now = new Date(2026, 9, 21, 15, 0, 0);
 const ago = (ms) => new Date(now.getTime() - ms).toISOString();
 const MIN = 60000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 console.log(JSON.stringify({
   ages: [ago(20000), ago(12 * MIN), ago(61 * MIN), ago(26 * HOUR), ago(6 * DAY), ago(9 * DAY), ago(-5 * MIN), "x"].map((iso) => formatAge(iso, now)),
-  merged: [mergeTags([], "a, b"), mergeTags([], " A,a "), mergeTags([], ",,,"), mergeTags(["x"], "X, y\\nz"), mergeTags([], "a".repeat(60))],
+  merged: [mergeTags([], "a, b"), mergeTags([], " A,a "), mergeTags([], ",,,"), mergeTags(["x"], "X, y\\nz"), mergeTags([], "a".repeat(60)), mergeTags([], "1,2,3,4,5,6,7,8,9,10,11")],
 }));"""
         out = self._node(probe)
         self.assertEqual(out["ages"][:5], ["now", "12 min", "1 h", "1 d", "6 d"])
         self.assertRegex(out["ages"][5], r"\w")  # a date from seven days on
         self.assertEqual(out["ages"][6:], ["now", ""])
-        self.assertEqual(out["merged"][0], {"tags": ["a", "b"], "duplicates": []})
-        self.assertEqual(out["merged"][1], {"tags": ["A"], "duplicates": ["A"]})
-        self.assertEqual(out["merged"][2], {"tags": [], "duplicates": []})
-        self.assertEqual(out["merged"][3], {"tags": ["x", "y", "z"], "duplicates": ["x"]})
+        self.assertEqual(out["merged"][0], {"tags": ["a", "b"], "duplicates": [], "full": False})
+        self.assertEqual(out["merged"][1], {"tags": ["A"], "duplicates": ["A"], "full": False})
+        self.assertEqual(out["merged"][2], {"tags": [], "duplicates": [], "full": False})
+        self.assertEqual(out["merged"][3], {"tags": ["x", "y", "z"], "duplicates": ["x"], "full": False})
         self.assertEqual(out["merged"][4]["tags"], ["a" * 60])
+        # The server takes ten tags; the eleventh is left out and the field says so.
+        self.assertEqual((len(out["merged"][5]["tags"]), out["merged"][5]["full"]), (10, True))
 
     @unittest.skipUnless(shutil.which("node"), "needs node")
     def test_active_fills_follow_the_open_source_gaps_or_tag_and_clear_on_close(self) -> None:
@@ -466,6 +468,8 @@ console.log(JSON.stringify(out));"""
 const els = {};
 const $ = (id) => (els[id] ||= { textContent: "", hidden: false, focus() {} });
 let gapMode = null, keepGap = false;
+const state = { conversationId: "c1" };
+els.turns = { children: [1] };
 const seen = [];
 async function setView(view) { seen.push({ view, title: $("add-title").textContent, save: $("capture-save").textContent, kept: keepGap }); }
 async function openConversation(id) { seen.push({ openConversation: id }); }
@@ -476,7 +480,11 @@ async function openConversation(id) { seen.push({ openConversation: id }); }
   out.entry = seen.splice(0);
   out.panel = [$("gap-panel-text").textContent, $("gap-panel-from").textContent, $("gap-panel").hidden, $("gap-back").hidden, $("gap-after").hidden];
   await backToAnswer();
-  out.back = seen.splice(0);
+  out.back = seen.splice(0);  // the answer is still on screen: no refetch
+  state.conversationId = "other";
+  await openGap({ gap: "G2", question: "Q2", conversationId: "c1" }); seen.length = 0;
+  await backToAnswer();
+  out.backElsewhere = seen.splice(0);
   out.after = [$("add-title").textContent, $("capture-save").textContent, $("gap-panel-text").textContent, $("gap-panel").hidden];
   await openGap({ gap: "G", question: "", conversationId: null });
   out.noQuestionFrom = [$("gap-panel-from").textContent, $("gap-panel-from").hidden];
@@ -489,7 +497,8 @@ async function openConversation(id) { seen.push({ openConversation: id }); }
         # The mode is already on when Add starts loading, and Add's own load is told to keep it.
         self.assertEqual(out["entry"], [{"view": "add", "title": "Fill a gap", "save": "Save note", "kept": True}])
         self.assertEqual(out["panel"], ["How anger went", "From “How do I handle anger?”", False, False, False])
-        self.assertEqual(out["back"], [{"openConversation": "c1"}])
+        self.assertEqual(out["back"], [{"view": "ask", "title": "Add to your notes", "save": "Save", "kept": False}])
+        self.assertEqual(out["backElsewhere"], [{"openConversation": "c1"}])
         self.assertEqual(out["after"], ["Add to your notes", "Save", "", True])
         self.assertEqual(out["noQuestionFrom"], ["", True])
         self.assertEqual(out["noConversation"], [{"view": "ask", "title": "Add to your notes", "save": "Save", "kept": False}])

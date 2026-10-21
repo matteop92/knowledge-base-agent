@@ -101,16 +101,21 @@
 
   // Tags are typed into one field and become removable chips. Splits on commas and new lines, trims, and drops
   // repeats (any letter case); a repeat of a tag already there comes back in `duplicates` so its chip can flash.
+  // The server accepts ten tags, so a note keeps the first ten and `full` says some were left out.
+  const MAX_TAGS = 10;
   function mergeTags(current, text) {
     const tags = [...current];
     const duplicates = [];
+    let full = false;
     for (const part of String(text).split(/[,\n]/)) {
       const tag = part.trim();
       if (!tag) continue;
       const same = tags.find((entry) => entry.toLowerCase() === tag.toLowerCase());
-      if (same) duplicates.push(same); else tags.push(tag);
+      if (same) duplicates.push(same);
+      else if (tags.length >= MAX_TAGS) full = true;
+      else tags.push(tag);
     }
-    return { tags, duplicates };
+    return { tags, duplicates, full };
   }
 
   let tagList = [];
@@ -159,7 +164,8 @@
     tagList = merged.tags;
     field.value = "";
     renderTags(merged.duplicates);
-    if (tagList.length > before) tagStatus(`Added ${tagList.slice(before).join(", ")}`);
+    if (merged.full) tagStatus(`A note keeps up to ${MAX_TAGS} tags`);
+    else if (tagList.length > before) tagStatus(`Added ${tagList.slice(before).join(", ")}`);
   }
 
   function setTags(tags) {
@@ -541,7 +547,9 @@
   async function backToAnswer() {
     const conversationId = gapMode && gapMode.conversationId;
     leaveGap();
-    if (conversationId) await openConversation(conversationId); else await setView("ask");
+    // The answer is usually still on screen: go back to it as it is, so a failed fetch cannot wipe it.
+    const onScreen = conversationId && state.conversationId === conversationId && $("turns").children.length > 0;
+    if (conversationId && !onScreen) await openConversation(conversationId); else await setView("ask");
     $("question").focus();
   }
 
