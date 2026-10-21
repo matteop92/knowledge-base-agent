@@ -222,7 +222,7 @@ const out = ({
 
     def test_every_icon_the_scripts_draw_exists_in_the_sprite(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")
-        for name in ("app.js", "capture.js"):
+        for name in ("app.js", "capture.js", "settings.js"):
             script = (WEB / name).read_text(encoding="utf-8")
             for icon_name in sorted(set(re.findall(r'icon\("([a-z-]+)"\)', script))):
                 with self.subTest(name=name, icon=icon_name):

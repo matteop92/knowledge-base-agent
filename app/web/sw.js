@@ -1,8 +1,8 @@
 "use strict";
 // Caches only the static app shell so it opens offline; API responses are never cached.
-const CACHE = "ka-shell-v15";
+const CACHE = "ka-shell-v16";
 const SHARE_CACHE = "ka-share";
-const SHELL = ["/", "/static/app.js", "/static/capture.js", "/static/styles.css", "/manifest.webmanifest",
+const SHELL = ["/", "/static/app.js", "/static/capture.js", "/static/settings.js", "/static/styles.css", "/manifest.webmanifest",
   "/static/icons/icon-192.png", "/static/icons/icon-512.png",
   "/static/fonts/Newsreader-Variable.woff2", "/static/fonts/Geist-Variable.woff2"];
 
