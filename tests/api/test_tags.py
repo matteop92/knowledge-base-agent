@@ -21,22 +21,30 @@ class FakeResult:
 
 
 class FakeConnection:
-    def __init__(self, suggestions=(), tag_rows=(), known=True):
+    def __init__(self, suggestions=(), tag_rows=(), known=True, seed_empty=False):
         self.suggestions, self.tag_rows, self.known = list(suggestions), list(tag_rows), known
+        self.seed_empty, self.seeded = seed_empty, False
         self.writes: list[tuple] = []
+
+    @contextmanager
+    def transaction(self):
+        yield
 
     def execute(self, sql, params=()):
         sql = " ".join(sql.split())
         if sql.startswith("select p.proposed_tag"):
             return FakeResult(self.suggestions)
         if sql.startswith("select count"):
-            return FakeResult([(1,)])  # already seeded
+            return FakeResult([(0 if self.seed_empty and not self.seeded else 1,)])
         if sql.startswith("select name, status, rule"):
             return FakeResult([(name, status, None) for name, status in self.tag_rows])
-        if sql.startswith("select name, status"):
-            return FakeResult(self.tag_rows)
+        if sql.startswith("select pg_advisory"):
+            return FakeResult([(None,)])
         if sql.startswith("select 1"):
             return FakeResult([(1,)] if self.known else [])
+        if sql.startswith("insert into knowledge.tags") and "'approved', %s)" in sql and self.seed_empty and not self.seeded:
+            self.seeded = True
+            return FakeResult([])
         self.writes.append((sql, params))
         return FakeResult([])
 
@@ -77,16 +85,20 @@ class TagStoreTests(unittest.TestCase):
                      ).suggestions()[0]["notes"][0]
         self.assertEqual((card["source_type"], card["description"]), ("book", "Own."))
 
-    def test_decided_lists_approved_and_blocked(self) -> None:
-        conn = FakeConnection(tag_rows=[("ai", "approved"), ("technology", "blocked")])
-        self.assertEqual(store(conn).decided(), {"approved": ["ai"], "blocked": ["technology"]})
-
     def test_approve_and_block_write_one_row_and_repeat_safely(self) -> None:
         conn = FakeConnection()
         tags = store(conn)
         tags.decide("Decision-Making", "approved")
         tags.decide("decision-making", "blocked")
         self.assertEqual([write[1] for write in conn.writes], [("decision-making", "approved"), ("decision-making", "blocked")])
+
+    def test_an_empty_tags_table_is_seeded_before_the_first_suggestions_or_decision(self) -> None:
+        conn = FakeConnection(seed_empty=True)
+        store(conn).suggestions()
+        self.assertTrue(conn.seeded)
+        conn = FakeConnection(seed_empty=True)
+        store(conn).decide("decision-making", "approved")
+        self.assertTrue(conn.seeded)
 
     def test_a_bad_name_or_unknown_tag_is_refused_and_writes_nothing(self) -> None:
         conn = FakeConnection(known=False)

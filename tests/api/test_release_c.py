@@ -65,6 +65,69 @@ const drain = async () => { while (queue.length) await queue.shift()(); };
         self.assertEqual(out["reset"], {"calls": 10, "log": ["running:false"]})
         self.assertEqual(out["stale"], {"calls": 1, "log": []})
 
+    def test_settings_decisions_remove_rows_only_when_saved_and_a_late_list_cannot_bring_one_back(self) -> None:
+        source = (WEB / "settings.js").read_text(encoding="utf-8").replace(chr(13), "")
+        probe = """
+class El {
+  constructor() { this.children = []; this.textContent = ""; this.hidden = false; this.dataset = {}; this.handlers = {}; }
+  replaceChildren(...items) { this.children = items; }
+  append(...items) { this.children.push(...items); }
+  setAttribute() {}
+  addEventListener(name, fn) { this.handlers[name] = fn; }
+  contains() { return false; }
+  focus() {}
+  querySelector() { return new El(); }
+}
+const ids = {};
+const $ = (id) => (ids[id] = ids[id] || new El());
+const document = { createElement: () => new El(), querySelectorAll: () => [], activeElement: null };
+const icon = () => new El();
+const textElement = (tag, cls, text) => { const e = new El(); e.textContent = text; return e; };
+const sheet = { open: false, name: null };
+const closeSheet = () => {}, openSheet = () => {}, announce = () => {};
+const window = {};
+let calls = [], pending = [];
+let respond = async () => ({});
+const api = (method, path) => { calls.push(method + " " + path); return respond(method, path); };
+const names = () => $("tag-list").children.length;
+""" + source + """
+const tags = (...n) => ({ suggested: n.map((name) => ({ name, count: 1, notes: [] })) });
+(async () => {
+  const out = {};
+  respond = async () => tags("a", "b/c", "d");
+  await window.settingsScreen.show();
+  out.listed = names();
+  respond = async () => ({});
+  $("tags-approve-all").handlers.click;
+  // A saved decision removes the row; the name is sent URL-encoded.
+  const rows = $("tag-list").children;
+  rows[1].children[2].handlers.click();
+  await new Promise((r) => setTimeout(r, 0));
+  out.afterApprove = names();
+  out.url = calls[calls.length - 1];
+  // A failed save keeps the row and says so.
+  respond = async () => { throw Object.assign(new Error("x"), { status: 500 }); };
+  $("tag-list").children[0].children[2].handlers.click();
+  await new Promise((r) => setTimeout(r, 0));
+  out.afterFailure = { rows: names(), message: $("tags-message").textContent };
+  // A list that was requested before a decision was saved must not bring the tag back.
+  let release;
+  respond = (method) => method === "GET" ? new Promise((r) => { release = () => r(tags("a", "b/c", "d")); }) : Promise.resolve({});
+  const late = window.settingsScreen.show();
+  $("tag-list").children[1].children[1].handlers.click();
+  await new Promise((r) => setTimeout(r, 0));
+  release();
+  await late;
+  out.afterLateList = names();
+  console.log(JSON.stringify(out));
+})();"""
+        out = _node(probe)
+        self.assertEqual(out["listed"], 3)
+        self.assertEqual(out["afterApprove"], 2)
+        self.assertEqual(out["url"], "POST /api/tags/b%2Fc/approve")
+        self.assertEqual(out["afterFailure"], {"rows": 2, "message": "Could not save that. Check your connection and try again."})
+        self.assertEqual(out["afterLateList"], 1)
+
     def test_sheet_close_falls_back_by_hand_only_when_back_never_arrives(self) -> None:
         close = re.search(r"function closeSheet\(after\).*?\n}\n", _script(), re.S).group(0)
         probe = """

@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from collections import Counter
+from contextlib import contextmanager
 from pathlib import Path
 
 import psycopg
@@ -167,12 +168,18 @@ class FakeTagsConnection:
     def __init__(self, rows=None, fail=False):
         self.rows, self.fail, self.inserts = list(rows or []), fail, 0
 
+    @contextmanager
+    def transaction(self):
+        yield
+
     def execute(self, sql, params=()):
         if self.fail:
             raise psycopg.OperationalError("down")
         sql = " ".join(sql.split())
         result = self
-        if sql.startswith("select count"):
+        if sql.startswith("select pg_advisory"):
+            self.result = [(None,)]
+        elif sql.startswith("select count"):
             self.result = [(len(self.rows),)]
         elif sql.startswith("select name"):
             self.result = list(self.rows)
@@ -220,6 +227,13 @@ class TagTableTests(unittest.TestCase):
 
     def test_the_shipped_seed_has_case_study(self) -> None:
         self.assertIn("case-study", TagList.load().tags)
+
+    def test_every_seed_name_fits_the_tags_table_check(self) -> None:
+        from app.ingestion.properties import TAG
+        shipped = TagList.load()
+        for name in (*shipped.tags, *shipped.blocked):
+            with self.subTest(name=name):
+                self.assertRegex(name, TAG)
 
 
 @unittest.skipUnless(os.getenv("KNOWLEDGE_TEST_DATABASE_URL"), "set disposable KNOWLEDGE_TEST_DATABASE_URL")

@@ -24,6 +24,13 @@ class PublicRouteTests(unittest.TestCase):
         self.auth = FakeAuth()
         self.client = TestClient(create_app(settings(), connect=no_database, auth=self.auth, engine=FakeEngine()))
 
+    def test_the_tag_routes_need_a_session_including_for_tags_with_a_slash(self):
+        # 401 (not 404) shows the route matched: a tag such as "a/b" is a valid name and must reach the handler.
+        for path in ("/api/tags/decision-making/approve", "/api/tags/a%2Fb/approve", "/api/tags/a%2Fb/block"):
+            with self.subTest(path=path):
+                self.assertEqual(self.client.post(path, json={}).status_code, 401)
+        self.assertEqual(self.client.get("/api/tags").status_code, 401)
+
     def test_codes_go_only_to_the_allowed_address(self):
         self.client.post("/auth/code", json={"email": "someone@example.com"})
         self.client.post("/auth/code", json={"email": "MATT@example.com"})

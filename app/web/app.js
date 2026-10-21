@@ -617,7 +617,7 @@ const sheet = { open: false, closing: false, opener: null, name: null, serial: 0
 // Source, Gaps and a tag’s notes swap in place while the desktop panel stays open; the other sheets never do.
 const SWAPPABLE = new Set(["source", "gaps", "tags"]);
 
-// `fill` builds the sheet's content (Source, Gaps, Feedback).
+// `fill` builds the sheet's content (Source, Gaps, Feedback, a tag's notes).
 // Source and Gaps can swap in place while open (the desktop panel stays beside the page): same history entry.
 function openSheet(name, opener, fill) {
   const swapping = sheet.open && !sheet.closing && SWAPPABLE.has(name) && SWAPPABLE.has(sheet.name);

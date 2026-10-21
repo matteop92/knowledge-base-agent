@@ -289,14 +289,14 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
 
     @app.get("/api/tags")
     def list_tags(_: Session = Depends(session)):
-        return {"suggested": tags.suggestions(), **tags.decided()}
+        return {"suggested": tags.suggestions()}
 
-    @app.post("/api/tags/{name}/approve")
+    @app.post("/api/tags/{name:path}/approve")
     def approve_tag(name: str, _: Session = Depends(session)):
         tags.decide(name, "approved")
         return {"status": "approved"}
 
-    @app.post("/api/tags/{name}/block")
+    @app.post("/api/tags/{name:path}/block")
     def block_tag(name: str, _: Session = Depends(session)):
         tags.decide(name, "blocked")
         return {"status": "blocked"}
