@@ -173,11 +173,12 @@ const document = { createElement: make };
 function textElement(tag, className, text) { const el = make(tag); el.className = className; el.textContent = text; return el; }
 let closes = 0;
 function closeSheet(after) { closes += 1; }
-const window = { captureScreen: { openWith() {} } };
+const window = { captureScreen: { openGap() {} } };
+function icon() { return make("svg"); }
 """ + fill + """
 const section = make("section");
 fillGaps(section, { gaps: ["One gap."] });
-const item = section.children[1].children[0];
+const item = section.children[0].children[3].children[0];  // the scrolling body, its gap list, the first gap
 const add = item.children[1];
 add.listeners.click();
 console.log(JSON.stringify({ disabled: add.disabled, closes }));"""
@@ -355,7 +356,7 @@ console.log(JSON.stringify(out));"""
         self.assertEqual(out["cleared"], ["ka-draft"])
         self.assertEqual(out["full"], ["ka-draft"])
         # Sign-out (reset) clears every kept body, and a save answering after it writes nothing back.
-        reset = capture[capture.index("function reset()"):capture.index("async function openWith")]
+        reset = capture[capture.index("function reset()"):capture.index("async function openGap")]
         self.assertIn("sweepRetries(true)", reset)
         self.assertIn("if (session !== resets) return false;", capture)
 
