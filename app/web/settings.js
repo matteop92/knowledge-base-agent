@@ -77,7 +77,13 @@
     open.type = "button";
     open.className = "tag-open";
     open.setAttribute("aria-haspopup", "dialog");
-    open.append(textElement("span", "tag-name", tag.name), textElement("span", "tag-count", plural(tag.count)));
+    const line = document.createElement("span");
+    line.className = "tag-line";
+    line.append(textElement("span", "tag-name", tag.name), textElement("span", "tag-count", plural(tag.count)));
+    open.append(line);
+    // A second line names a few of the notes behind the tag (on desktop; the phone row keeps one line).
+    const titles = (tag.notes || []).map((note) => note.title).filter(Boolean).join(", ");
+    if (titles) open.append(textElement("span", "tag-preview", titles));
     open.addEventListener("click", () => openTag(tag, open));
     // The open row swaps its two buttons for a chevron.
     const chevron = icon("chevron");

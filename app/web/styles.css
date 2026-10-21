@@ -356,12 +356,14 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 .chip-button { background: var(--chip); color: var(--ink); font-size: 13px; }
 .tag-list { list-style: none; margin: 10px 0 0; padding: 0; background: var(--paper); border-radius: 16px; box-shadow: var(--shadow-list); overflow: hidden; }
 .tag-list:empty { display: none; }
-.tag-row { display: flex; align-items: center; gap: 12px; padding: 8px 12px 8px 18px; min-height: 48px; box-shadow: inset 0 1px 0 var(--hairline-row); }
+.tag-row { display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 18px; min-height: 48px; box-shadow: inset 0 1px 0 var(--hairline-row); }
 .tag-row:first-child { box-shadow: none; }
 .tag-row.is-active { background: var(--row-active); }
-.tag-open { flex: 1; min-width: 0; min-height: var(--ctl); padding: 0; border-radius: 0; background: transparent; display: flex; flex-direction: row; flex-wrap: wrap; align-items: baseline; align-content: center; justify-content: flex-start; gap: 0 8px; text-align: left; font-size: 15px; font-weight: 500; line-height: 1.3; }
+.tag-open { flex: 1; min-width: 0; min-height: var(--ctl); padding: 0; border-radius: 0; background: transparent; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; text-align: left; font-size: 15px; font-weight: 500; line-height: 1.3; }
 .tag-open:hover:not(:disabled) { background: transparent; }
+.tag-line { display: flex; align-items: baseline; gap: 8px; max-width: 100%; }
 .tag-count { font-size: 12.5px; font-weight: 400; color: var(--muted); }
+.tag-preview { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 400; color: var(--muted); }
 /* Row actions are 28 px like the Source numbers; the touch target grows around them without growing the look. */
 .tag-row .icon-button, .chip-button { position: relative; width: 28px; min-width: 28px; height: 28px; min-height: 28px; }
 .chip-button { width: auto; padding: 0 12px; }
@@ -536,7 +538,8 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
   .tags-intro-short { display: inline; }
   .tags-head { margin-top: 22px; }
   .tag-row { gap: 6px; padding: 8px 8px 8px 16px; }
-  .tag-open { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; }
+  .tag-open { gap: 2px; }
+  .tag-preview { display: none; }
   .tag-row .icon-button { width: 44px; min-width: 44px; height: 44px; min-height: 44px; }
   .tag-row .icon-button::after { inset: 0; }
   .tag-row .icon { width: 17px; height: 17px; }

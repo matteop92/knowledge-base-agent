@@ -17,5 +17,5 @@ Parts of the Paper refinement design that were shown on the boards but left out 
 ## Left out for now
 
 - **P7. Account tab** in Settings. The boards do not say what it holds.
-- **P8. Richer Tags.** Note titles in each row, "closest tag in use" in the drawer, "1 of N" with auto-advance, undo toast. Needs new server data. Screens: S1, S2, SM3.
+- **P8. Richer Tags.** (The note-title line in each row on desktop is now built; it uses titles the tags endpoint already returns.) The rest: "closest tag in use" in the drawer, "1 of N" with auto-advance, undo toast. Needs new server data. Screens: S1, S2, SM3.
 - **P10. Shortcut hints** (⌘↵) in feedback and Add. Only if the shortcut is built. Screens: D5, A2.
