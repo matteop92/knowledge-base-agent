@@ -1,13 +1,14 @@
 """Consistent properties for every indexed file, filling only what its frontmatter lacks.
 
 One cheap zero-retention model call per new or changed file returns a fixed schema.
-Tags must come from the approved list in config/tags.yaml; at most one new tag is
+Tags must come from the live list in the knowledge.tags table (seeded from config/tags.yaml); at most one new tag is
 kept aside as a proposal for review. Properties are metadata for labels and
 filtering, never chunk text, so embeddings are unchanged.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from collections import Counter
@@ -16,6 +17,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+import psycopg
 import yaml
 
 from app.ingestion.contracts import ParsedDocument
@@ -23,6 +25,7 @@ from app.models.client import ModelClient, ModelSpec, ModelUsage
 from app.models.routes import price_usd
 
 
+log = logging.getLogger("knowledge.properties")
 PROMPT_VERSION = "properties_v3"
 PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / f"{PROMPT_VERSION}.md"
 DEFAULT_MODEL = "openai/gpt-6-luna"
@@ -66,6 +69,46 @@ class TagList:
         return cls(tags=tuple(dict.fromkeys(tag for tag in tags if tag and tag not in blocked)),
                    source_types=types, approved=data.get("approved") is True, definitions=definitions,
                    blocked=blocked)
+
+
+    @classmethod
+    def load_from_database(cls, conn, path: Path = TAGS_PATH) -> TagList | None:
+        """The live list from the tags table, seeded once from the yaml file; the file alone if the table fails."""
+        base = cls.load(path)
+        if base is None:
+            return None
+        try:
+            _seed_tags(conn, base)
+            rows = conn.execute("select name, status, rule from knowledge.tags order by position").fetchall()
+        except psycopg.Error as exc:
+            log.warning("tag table unavailable, using the file error=%s", type(exc).__name__)
+            return base
+        approved = [row for row in rows if row[1] == "approved"]
+        blocked = tuple(row[0] for row in rows if row[1] == "blocked")
+        return cls(tags=tuple(row[0] for row in approved), source_types=base.source_types, approved=base.approved,
+                   definitions=tuple((row[0], row[2]) for row in approved if row[2]), blocked=blocked)
+
+
+def _seed_tags(conn, base: TagList) -> None:
+    """Fill an empty tags table from the yaml file, all or nothing. Does nothing once the table has any row."""
+    with conn.transaction():
+        # One seeder at a time: a second one waits, then finds the table filled and does nothing.
+        conn.execute("select pg_advisory_xact_lock(hashtext('knowledge.tags'))")
+        if conn.execute("select count(*) from knowledge.tags").fetchone()[0]:
+            return
+        rules = dict(base.definitions)
+        for name in base.tags:
+            conn.execute("insert into knowledge.tags (name, status, rule) values (%s, 'approved', %s)",
+                         (name, rules.get(name)))
+        for name in base.blocked:
+            conn.execute("insert into knowledge.tags (name, status) values (%s, 'blocked')", (name,))
+
+
+def ensure_tags_seeded(conn, path: Path = TAGS_PATH) -> None:
+    """Make sure the tags table holds the seed before anything adds a row to it, or that row would hide the seed."""
+    base = TagList.load(path)
+    if base is not None:
+        _seed_tags(conn, base)
 
 
 def model_spec() -> ModelSpec:

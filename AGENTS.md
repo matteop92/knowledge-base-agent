@@ -8,12 +8,12 @@ Read [SYSTEM.md](SYSTEM.md) for the one-page map. [FOUNDATION.md#current-progres
 
 - `app/ingestion/`: source capture, parsing, chunking, eval mapping, enrichment, summaries, embeddings, and preview CLI.
 - `app/ingestion/vault_allowlist.py`: removes everything outside the allowed folders from the server's vault copy (download-only mode; in two-way mode only folders the sync tool's skip list names exactly).
-- `app/ingestion/vault_sync.py` and `app/ingestion/properties.py`: incremental indexing of selected vault folders and the tag classifier (`config/tags.yaml` holds the approved tags).
+- `app/ingestion/vault_sync.py` and `app/ingestion/properties.py`: incremental indexing of selected vault folders and the tag classifier (the `knowledge.tags` table holds the live tag list; `config/tags.yaml` is its seed).
 - `app/models/`: model interface, opt-in OpenRouter adapter, and pinned private routes and prices (`routes.py`).
 - `app/storage/`: private Postgres loading, publication, retirement, search and the spend ledger.
 - `app/agent/`: the answer harness, its command-line tool, and the shared route and cost checks (`endpoints.py`).
 - `app/capture/`: captured text, `.md` files, screenshots and YouTube links become new notes in the `Knowledge` folders (new files only).
-- `app/api/` and `app/web/`: the FastAPI server (with `scheduler.py`, the background index pass) and the installable web app; `Dockerfile` and `deploy/` package them for Railway.
+- `app/api/` and `app/web/`: the FastAPI server (with `scheduler.py`, the background index pass, and `tags.py`, the suggested-tags store behind Settings) and the installable web app; `Dockerfile` and `deploy/` package them for Railway.
 - `prompts/`: versioned prompts for chunk context, section summaries, document summaries, and the answer agent.
 - `evals/`: checked source-span questions for real vault files and synthetic fixture labels; see [evals/README.md](evals/README.md).
 - `tests/`: run `python -m unittest discover -s tests/<suite> -p 'test_*.py'` for each of `ingestion`, `models`, `storage`, `agent`, `api`, `capture` and `evals`. Database tests need a fresh disposable `KNOWLEDGE_TEST_DATABASE_URL` per suite.
@@ -21,6 +21,16 @@ Read [SYSTEM.md](SYSTEM.md) for the one-page map. [FOUNDATION.md#current-progres
 - `README.md`: installation and local preview commands.
 
 The Markdown vault is outside this repository and is read through `KNOWLEDGE_SOURCE_ROOT`. Local source snapshots and generated artifacts go under ignored `.local/ingestion-runs/`; do not commit vault content or model outputs.
+
+## Web app type scale (fixed)
+
+Only these sizes exist: 12, 14, 16, 18, 22, 26 px. One size per role, and a new screen reuses the roles instead of choosing sizes. `tests/api/test_static.py` rejects any other size.
+
+- 26: screen title (serif). 22: sheet or panel heading (serif). 18: answer text and note titles in cards (serif).
+- 16: text you read or write: the question box, the Add box.
+- 14: interface text: rows, tabs, buttons, menu items, descriptions.
+- 12: captions: counts, kickers, section labels, footnotes.
+- Buttons: regular weight, 32 px with a mouse and 44 px on touch; small row actions are 28 px with a larger touch target around them. Icons are Phosphor Light.
 
 ## Hosted schema deployment
 
