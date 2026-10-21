@@ -114,6 +114,7 @@
   }
 
   let tagList = [];
+  let flashTimer = null;
 
   function renderTags(flash) {
     const chips = $("capture-tag-chips");
@@ -138,7 +139,11 @@
       chip.append(name, remove);
       chips.append(chip);
     }
-    if (flash && flash.length) setTimeout(() => renderTags(), 900);
+    // A repeated tag flashes its chip for a moment; only the class changes back, so nothing is redrawn under the cursor.
+    clearTimeout(flashTimer);
+    if (flash && flash.length) {
+      flashTimer = setTimeout(() => { for (const chip of chips.querySelectorAll(".is-duplicate")) chip.classList.remove("is-duplicate"); }, 900);
+    }
   }
 
   function tagStatus(text) {
@@ -457,11 +462,10 @@
     $("gap-panel").hidden = !filling;
     $("gap-after").hidden = !filling;
     $("capture-save").textContent = filling ? "Save note" : "Save";
-    if (filling) {
-      $("gap-panel-text").textContent = gapMode.gap;
-      $("gap-panel-from").textContent = gapMode.question ? `From “${gapMode.question}”` : "";
-      $("gap-panel-from").hidden = !gapMode.question;
-    }
+    // Nothing of a gap is left in the page once the mode ends (sign-out included).
+    $("gap-panel-text").textContent = filling ? gapMode.gap : "";
+    $("gap-panel-from").textContent = filling && gapMode.question ? `From “${gapMode.question}”` : "";
+    $("gap-panel-from").hidden = !filling || !gapMode.question;
   }
 
   function leaveGap() {
@@ -470,8 +474,10 @@
   }
 
   // Called by the shell when the Add tab is shown: load the setting and the recent saves.
+  // Opening Add for a gap sets the mode first, so the tab's own load does not clear it.
+  let keepGap = false;
   async function show() {
-    leaveGap();
+    if (keepGap) keepGap = false; else leaveGap();
     try {
       const { captures, enabled, vault_name: vaultName } = await api("GET", "/api/captures");
       state.captureEnabled = enabled;
@@ -513,6 +519,8 @@
     $("capture-list").replaceChildren();
     $("recent-count").hidden = true;
     $("toast").classList.remove("is-shown");
+    $("toast").querySelector(".toast-title").textContent = "";
+    clearTimeout(flashTimer);
     endDrag();
     leaveGap();
     message("");
@@ -521,9 +529,11 @@
 
   // Open Add for one gap from "What's missing". A draft already in the box is kept.
   async function openGap(next) {
-    await setView("add");
     gapMode = next;
     renderMode();
+    keepGap = true;
+    await setView("add");
+    keepGap = false;
     $("capture-text").focus();
   }
 
@@ -559,13 +569,18 @@
     }
   }
 
-  let dragDepth = 0;
+  // The browser sends dragover every few hundred milliseconds while a drag is over the page; if they stop (the drag left the
+  // window, or a node under it was replaced) the target clears itself.
+  const DRAG_IDLE_MS = 700;
+  let dragTimer = null;
   function startDrag() {
     $("capture").classList.add("dragging");
     $("drop-target").hidden = false;
+    clearTimeout(dragTimer);
+    dragTimer = setTimeout(endDrag, DRAG_IDLE_MS);
   }
   function endDrag() {
-    dragDepth = 0;
+    clearTimeout(dragTimer);
     $("capture").classList.remove("dragging");
     $("drop-target").hidden = true;
   }
@@ -576,6 +591,7 @@
     // The tag field: Enter and comma make a chip (Enter never sends the form); Backspace in an empty field removes the last.
     const tagField = $("capture-tags");
     tagField.addEventListener("keydown", (event) => {
+      if (event.isComposing) return;
       if (event.key === "Enter" || event.key === ",") { event.preventDefault(); commitTags(); }
       else if (event.key === "Backspace" && !tagField.value && tagList.length) {
         const removed = tagList[tagList.length - 1];
@@ -584,7 +600,12 @@
       }
     });
     tagField.addEventListener("input", () => { if (/[,\n]/.test(tagField.value)) commitTags(); });
-    tagField.addEventListener("blur", commitTags);
+    // Leaving the field for a chip's remove button or for Save must not redraw the chips first (requestBody takes typed text too).
+    tagField.addEventListener("blur", (event) => {
+      const next = event.relatedTarget;
+      if (next && (next === $("capture-save") || $("capture-tag-field").contains(next))) return;
+      commitTags();
+    });
     setInterval(() => { if (!$("capture").hidden) refreshTimes(); }, 60000);
     $("capture-file").addEventListener("change", (event) => takeFile(event.target.files[0]));
     $("capture-attach").addEventListener("click", () => $("capture-file").click());
@@ -594,11 +615,10 @@
       refresh();
     });
     const drop = $("capture");
-    // The target shows while a drag is over the page. Moving between elements fires dragleave then dragenter, so the
-    // depth is counted; a cancelled drag (Escape, leaving the window) clears it too.
-    drop.addEventListener("dragenter", (event) => { event.preventDefault(); dragDepth += 1; startDrag(); });
+    // The target shows while a drag is over the page and clears on drop, dragend, Escape, leaving the window, or silence.
+    drop.addEventListener("dragenter", (event) => { event.preventDefault(); startDrag(); });
     drop.addEventListener("dragover", (event) => { event.preventDefault(); startDrag(); });
-    drop.addEventListener("dragleave", () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) endDrag(); });
+    drop.addEventListener("dragleave", (event) => { if (!event.relatedTarget) endDrag(); });
     drop.addEventListener("drop", (event) => {
       event.preventDefault();
       endDrag();

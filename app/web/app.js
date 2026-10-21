@@ -777,7 +777,7 @@ function openSheet(name, opener, fill) {
   const section = $("sheet").querySelector(`[data-sheet="${name}"]`);
   // A step arrow that was pressed keeps focus on its replacement.
   const active = document.activeElement;
-  const stepClass = swapping && active && ["step-back", "step-forward"].find((name) => active.classList.contains(name));
+  const stepClass = swapping && active && ["step-back", "step-forward"].find((cls) => active.classList.contains(cls));
   if (fill) fill(section);
   const root = $("sheet");
   root.setAttribute("aria-label", SHEET_TITLES[name]);

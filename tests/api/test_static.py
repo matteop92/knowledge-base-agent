@@ -322,7 +322,7 @@ class PaperRefinementTests(unittest.TestCase):
 
     def _node(self, probe: str):
         import json
-        return json.loads(subprocess.run(["node", "-e", probe], capture_output=True, text=True, check=True).stdout)
+        return json.loads(subprocess.run(["node", "-e", probe], capture_output=True, text=True, encoding="utf-8", check=True).stdout)
 
     def _top_level(self, *names: str) -> str:
         # Top-level functions of app.js, copied out so Node runs them exactly as shipped.
@@ -396,11 +396,110 @@ console.log(JSON.stringify({
         self.assertEqual(out["merged"][3], {"tags": ["x", "y", "z"], "duplicates": ["x"]})
         self.assertEqual(out["merged"][4]["tags"], ["a" * 60])
 
+    @unittest.skipUnless(shutil.which("node"), "needs node")
+    def test_active_fills_follow_the_open_source_gaps_or_tag_and_clear_on_close(self) -> None:
+        probe = """
+class El {
+  constructor(text) { this.on = new Set(); this.attrs = {}; this.textContent = text || ""; this.dataset = {}; }
+  get classList() { return { add: (c) => this.on.add(c), remove: (c) => this.on.delete(c) }; }
+  setAttribute(k, v) { this.attrs[k] = v; }
+  removeAttribute(k) { delete this.attrs[k]; }
+}
+const markers = ["1", "2", "1"].map((t) => new El(t));
+const numbers = ["1", "2", "3"].map((t) => new El(t));
+const chip = new El("2");
+const rows = ["a", "b"].map((name) => Object.assign(new El(""), { dataset: { tag: name } }));
+const turn = { querySelector: () => chip, querySelectorAll: () => [...markers, ...numbers] };
+const everything = [...markers, ...numbers, chip, ...rows];
+const document = {
+  querySelectorAll: (selector) => selector === ".is-active" ? everything.filter((e) => e.on.has("is-active")) : selector === ".tag-row" ? rows : [],
+  querySelector: () => turn,
+};
+const CSS = { escape: (x) => x };
+const sheet = { mark: null };
+""" + self._top_level("syncActive") + """
+const lit = () => everything.filter((e) => e.on.has("is-active")).map((e) => everything.indexOf(e));
+const out = {};
+sheet.mark = { kind: "source", id: "t", index: 0 }; syncActive(); out.firstSource = lit();
+sheet.mark = { kind: "source", id: "t", index: 1 }; syncActive(); out.stepped = lit();
+sheet.mark = { kind: "gaps", id: "t" }; syncActive(); out.gaps = lit();
+sheet.mark = { kind: "tag", name: "b" }; syncActive(); out.tag = lit(); out.current = rows[1].attrs["aria-current"] ?? null;
+sheet.mark = null; syncActive(); out.closed = lit(); out.currentGone = rows[1].attrs["aria-current"] ?? null;
+console.log(JSON.stringify(out));"""
+        out = self._node(probe)
+        # indexes: markers 0-2, numbers 3-5, chip 6, rows 7-8
+        self.assertEqual(out["firstSource"], [0, 2, 3])  # every marker for source 1, and its number
+        self.assertEqual(out["stepped"], [1, 4])  # stepping moves the fill; nothing stale is left
+        self.assertEqual(out["gaps"], [6])
+        self.assertEqual((out["tag"], out["current"]), ([8], "true"))
+        self.assertEqual((out["closed"], out["currentGone"]), ([], None))
+
+    @unittest.skipUnless(shutil.which("node"), "needs node")
+    def test_source_stepping_only_runs_for_an_open_source_sheet_and_stops_at_the_ends(self) -> None:
+        probe = self._top_level("stepIndex", "stepSource") + """
+const log = [];
+const sheet = { open: true, closing: false, name: "source", mark: { kind: "source", id: "t", index: 1 } };
+const turnData = new Map([["t", { sources: [{ number: 1, title: "A" }, { number: 2, title: "B" }, { number: 3, title: "C" }] }]]);
+function openSheet(name, opener, fill) { log.push("open:" + name); }
+function fillSource() {}
+function announce(text) { log.push(text); }
+const out = {};
+out.middle = [stepSource(1), log.splice(0)];
+sheet.mark.index = 2; out.end = [stepSource(1), log.splice(0)];
+sheet.mark.index = 0; out.start = [stepSource(-1), log.splice(0)];
+sheet.name = "gaps"; out.wrong = [stepSource(1), log.splice(0)];
+sheet.name = "source"; sheet.closing = true; out.closing = [stepSource(-1), log.splice(0)];
+sheet.closing = false; sheet.open = false; out.closed = [stepSource(-1), log.splice(0)];
+console.log(JSON.stringify(out));"""
+        out = self._node(probe)
+        self.assertEqual(out["middle"], [True, ["open:source", "Source 3 of 3: C"]])
+        for name in ("end", "start", "wrong", "closing", "closed"):
+            with self.subTest(case=name):
+                self.assertEqual(out[name], [False, []])
+
+    @unittest.skipUnless(shutil.which("node"), "needs node")
+    def test_fill_a_gap_mode_is_set_before_add_loads_and_ends_cleanly(self) -> None:
+        names = ("renderMode", "leaveGap", "backToAnswer")
+        functions = "\n".join(re.search(rf"(?:async )?function {name}\(.*?\n  }}\n", self.capture, re.S).group(0) for name in names)
+        opener = re.search(r"async function openGap\(.*?\n  }\n", self.capture, re.S).group(0)
+        probe = """
+const els = {};
+const $ = (id) => (els[id] ||= { textContent: "", hidden: false, focus() {} });
+let gapMode = null, keepGap = false;
+const seen = [];
+async function setView(view) { seen.push({ view, title: $("add-title").textContent, save: $("capture-save").textContent, kept: keepGap }); }
+async function openConversation(id) { seen.push({ openConversation: id }); }
+""" + functions + opener + """
+(async () => {
+  const out = {};
+  await openGap({ gap: "How anger went", question: "How do I handle anger?", conversationId: "c1" });
+  out.entry = seen.splice(0);
+  out.panel = [$("gap-panel-text").textContent, $("gap-panel-from").textContent, $("gap-panel").hidden, $("gap-back").hidden, $("gap-after").hidden];
+  await backToAnswer();
+  out.back = seen.splice(0);
+  out.after = [$("add-title").textContent, $("capture-save").textContent, $("gap-panel-text").textContent, $("gap-panel").hidden];
+  await openGap({ gap: "G", question: "", conversationId: null });
+  out.noQuestionFrom = [$("gap-panel-from").textContent, $("gap-panel-from").hidden];
+  seen.length = 0;
+  await backToAnswer();
+  out.noConversation = seen.splice(0);
+  console.log(JSON.stringify(out));
+})();"""
+        out = self._node(probe)
+        # The mode is already on when Add starts loading, and Add's own load is told to keep it.
+        self.assertEqual(out["entry"], [{"view": "add", "title": "Fill a gap", "save": "Save note", "kept": True}])
+        self.assertEqual(out["panel"], ["How anger went", "From “How do I handle anger?”", False, False, False])
+        self.assertEqual(out["back"], [{"openConversation": "c1"}])
+        self.assertEqual(out["after"], ["Add to your notes", "Save", "", True])
+        self.assertEqual(out["noQuestionFrom"], ["", True])
+        self.assertEqual(out["noConversation"], [{"view": "ask", "title": "Add to your notes", "save": "Save", "kept": False}])
+
     def test_open_states_are_fills_never_rings_or_outlines(self) -> None:
         for names in ((".marker.is-active",), (".source-number.is-active", ".gap-chip.is-active"), (".drop-target",), (".tag-row.is-active",),
                       (".tag-approve", ".tag-block", ".chip-button"), (".tag-chip",), (".settings-tab[aria-current",)):
             body = _rules(self.css, *names)
             with self.subTest(names=names):
+                self.assertTrue(body, "no rule matched: the selector was renamed")
                 self.assertNotRegex(body, r"(?<![\w-])(outline|border)(-top|-bottom|-left|-right|-width|-color|-style)?\s*:")
                 self.assertNotRegex(body, r"box-shadow:\s*(inset )?0 0 0 (1\.5|2)px")  # a ring, not a hairline edge or underline
         # The Add box and the composer take no extra ring while typing into the Add box.
@@ -444,7 +543,6 @@ console.log(JSON.stringify({
         # A saved note leaves the mode, and the gap's own text is not put into the box.
         send = self.capture[self.capture.index("async function send"):self.capture.index("const KINDS")]
         self.assertIn("leaveGap()", send)
-        self.assertNotIn("takeText(gap", self.capture)
 
     def test_tag_chips_never_submit_the_form_and_the_request_keeps_its_shape(self) -> None:
         self.assertIn('event.key === "Enter" || event.key === ","', self.capture)
@@ -453,7 +551,7 @@ console.log(JSON.stringify({
         self.assertIn('aria-label", `Remove tag ${tag}`', self.capture)
 
     def test_drag_target_clears_on_every_way_a_drag_can_end(self) -> None:
-        for needle in ('addEventListener("dragend", endDrag)', 'event.key === "Escape") endDrag()', "if (!dragDepth) endDrag();"):
+        for needle in ('addEventListener("dragend", endDrag)', 'event.key === "Escape") endDrag()', "if (!event.relatedTarget) endDrag();", "setTimeout(endDrag, DRAG_IDLE_MS)"):
             self.assertIn(needle, self.capture)
         self.assertIn('id="drop-target" class="drop-target" aria-hidden="true"', self.page)
         self.assertIn("pointer-events: none", _rules(self.css, ".drop-target"))
