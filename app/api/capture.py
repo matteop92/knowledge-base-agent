@@ -54,16 +54,19 @@ class Classifier(Protocol):
 class OpenRouterClassifier:
     """The indexer's properties classifier on its pinned zero-retention route."""
 
-    def __init__(self, connect: Callable[[], Any] | None = None) -> None:
+    def __init__(self, connect: Callable[[], Any]) -> None:
         self.connect = connect
 
     def _tag_list(self):
+        import psycopg
         from app.ingestion.properties import TagList
 
-        if self.connect is None:
+        try:
+            with self.connect() as conn:
+                return TagList.load_from_database(conn)
+        except psycopg.Error:
+            # The table is unreachable: the file list still works, as it did before the table existed.
             return TagList.load()
-        with self.connect() as conn:
-            return TagList.load_from_database(conn)
 
     def worst_case_usd(self, draft: Draft, today: date) -> float:
         from app.ingestion.properties import worst_case_usd

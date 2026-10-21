@@ -1,7 +1,7 @@
 """Consistent properties for every indexed file, filling only what its frontmatter lacks.
 
 One cheap zero-retention model call per new or changed file returns a fixed schema.
-Tags must come from the approved list in config/tags.yaml; at most one new tag is
+Tags must come from the live list in the knowledge.tags table (seeded from config/tags.yaml); at most one new tag is
 kept aside as a proposal for review. Properties are metadata for labels and
 filtering, never chunk text, so embeddings are unchanged.
 """
@@ -90,15 +90,25 @@ class TagList:
 
 
 def _seed_tags(conn, base: TagList) -> None:
-    """Fill an empty tags table from the yaml file. Does nothing once the table has any row."""
-    if conn.execute("select count(*) from knowledge.tags").fetchone()[0]:
-        return
-    rules = dict(base.definitions)
-    for name in base.tags:
-        conn.execute("insert into knowledge.tags (name, status, rule) values (%s, 'approved', %s) on conflict do nothing",
-                     (name, rules.get(name)))
-    for name in base.blocked:
-        conn.execute("insert into knowledge.tags (name, status) values (%s, 'blocked') on conflict do nothing", (name,))
+    """Fill an empty tags table from the yaml file, all or nothing. Does nothing once the table has any row."""
+    with conn.transaction():
+        # One seeder at a time: a second one waits, then finds the table filled and does nothing.
+        conn.execute("select pg_advisory_xact_lock(hashtext('knowledge.tags'))")
+        if conn.execute("select count(*) from knowledge.tags").fetchone()[0]:
+            return
+        rules = dict(base.definitions)
+        for name in base.tags:
+            conn.execute("insert into knowledge.tags (name, status, rule) values (%s, 'approved', %s)",
+                         (name, rules.get(name)))
+        for name in base.blocked:
+            conn.execute("insert into knowledge.tags (name, status) values (%s, 'blocked')", (name,))
+
+
+def ensure_tags_seeded(conn, path: Path = TAGS_PATH) -> None:
+    """Make sure the tags table holds the seed before anything adds a row to it, or that row would hide the seed."""
+    base = TagList.load(path)
+    if base is not None:
+        _seed_tags(conn, base)
 
 
 def model_spec() -> ModelSpec:

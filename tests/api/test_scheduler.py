@@ -35,6 +35,19 @@ class SchedulerTests(unittest.TestCase):
             return {"files_seen": 1, "published": 0, "retired": 0}
         return IndexScheduler(self.vault, fake_connection, pass_fn=pass_fn or default, tag_list=lambda conn: None, **kwargs)
 
+    def test_a_pass_gets_the_tag_list_read_through_its_connection(self) -> None:
+        seen: list = []
+        calls: list = []
+
+        def pass_fn(vault, **kwargs):
+            calls.append(kwargs)
+            return {}
+        scheduler = IndexScheduler(self.vault, fake_connection, pass_fn=pass_fn,
+                                   tag_list=lambda conn: seen.append(conn) or "the-list")
+        self.note()
+        scheduler.tick()
+        self.assertEqual((len(seen), calls[0]["tag_list"]), (1, "the-list"))
+
     def test_no_pass_runs_before_the_first_sync_has_produced_notes(self) -> None:
         scheduler = self.scheduler()
         self.assertFalse(scheduler.tick())

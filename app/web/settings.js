@@ -6,6 +6,7 @@
 (() => {
   let suggested = [];  // [{name, count, notes}]
   const busy = new Set();  // tags with a decision being sent
+  let loads = 0;  // bumped by every load and every saved decision, so a late list cannot bring back a decided tag
 
   function message(text) {
     $("tags-message").textContent = text || "";
@@ -20,22 +21,39 @@
     return sheet.open && sheet.name === "tags" && section.dataset.tag === name;
   }
 
-  // Sends one decision. Returns true when the server saved it; the row then leaves the list.
+  // Keyboard focus stays in the list after a row leaves it: on the row now in the same place, or the heading.
+  function keepFocus(index) {
+    const rows = document.querySelectorAll(".tag-open");
+    (rows[Math.min(index, rows.length - 1)] || $("tags-title")).focus();
+  }
+
+  // Sends one decision. Returns true when the row has left the list (saved, or no longer suggested).
   async function decide(name, verdict) {
     if (busy.has(name)) return false;
     busy.add(name);
     message("");
+    let gone = false;
     try {
       await api("POST", `/api/tags/${encodeURIComponent(name)}/${verdict}`);
+      gone = true;
     } catch (error) {
-      busy.delete(name);
-      if (error.status !== 401) message("Could not save that. Check your connection and try again.");
-      return false;
+      if (error.status === 404) {
+        // Another device already decided it, or its notes changed: it is not suggested any more.
+        gone = true;
+        message("That tag is no longer suggested.");
+      } else if (error.status !== 401) {
+        message("Could not save that. Check your connection and try again.");
+      }
     }
     busy.delete(name);
+    if (!gone) return false;
+    loads += 1;
     if (showingTag(name)) closeSheet();
+    const index = suggested.findIndex((tag) => tag.name === name);
+    const hadFocus = $("settings").contains(document.activeElement) || $("sheet").contains(document.activeElement);
     suggested = suggested.filter((tag) => tag.name !== name);
     render();
+    if (hadFocus) keepFocus(index);
     announce(`${name} ${verdict === "approve" ? "approved" : "blocked"}`);
     return true;
   }
@@ -57,7 +75,6 @@
     open.type = "button";
     open.className = "tag-open";
     open.setAttribute("aria-haspopup", "dialog");
-    open.setAttribute("aria-expanded", showingTag(tag.name) ? "true" : "false");
     open.append(textElement("span", "tag-name", tag.name), textElement("span", "tag-count", plural(tag.count)));
     open.addEventListener("click", () => openTag(tag, open));
     row.append(open, iconButton("tag-block", "Block", "close", tag, "block"),
@@ -104,22 +121,21 @@
 
   function openTag(tag, opener) {
     openSheet("tags", opener, (section) => fillTag(section, tag));
-    for (const row of document.querySelectorAll(".tag-open")) {
-      row.setAttribute("aria-expanded", row === opener ? "true" : "false");
-    }
   }
 
   async function approveAll() {
     for (const tag of [...suggested]) {
-      if (!(await decide(tag.name, "approve"))) return;
+      if ($("settings").hidden || !(await decide(tag.name, "approve"))) return;
     }
   }
 
   // Called by the shell when Settings is shown: load the suggestions.
   async function show() {
     message("");
+    const mine = ++loads;
     try {
       const data = await api("GET", "/api/tags");
+      if (mine !== loads) return;  // a decision was saved meanwhile; this list may still hold that tag
       suggested = data.suggested || [];
       render();
     } catch (error) {

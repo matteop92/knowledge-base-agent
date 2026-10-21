@@ -10,7 +10,7 @@ from typing import Any, Callable
 
 from app.api.answers import obsidian_link
 from app.api.conversations import ConversationError
-from app.ingestion.properties import TAG, TagList
+from app.ingestion.properties import TAG, ensure_tags_seeded
 from app.storage.search import source_label
 
 SUGGESTIONS_SQL = """select p.proposed_tag, r.document_id, d.relative_path, r.parsed->'metadata', p.properties
@@ -42,26 +42,15 @@ class TagStore:
     def __init__(self, connect: Callable[[], Any], vault_name: str) -> None:
         self.connect, self.vault_name = connect, vault_name
 
-    @staticmethod
-    def _seeded(conn) -> None:
-        """Fill an empty table from the yaml before any row is added, or the first decision would hide the seed."""
-        TagList.load_from_database(conn)
-
     def suggestions(self) -> list[dict[str, Any]]:
         with self.connect() as conn:
+            ensure_tags_seeded(conn)
             rows = conn.execute(SUGGESTIONS_SQL).fetchall()
         grouped: dict[str, list[dict[str, Any]]] = {}
         for row in rows:
             grouped.setdefault(row[0], []).append(_note(row, self.vault_name))
         ordered = sorted(grouped.items(), key=lambda item: (-len(item[1]), item[0]))
         return [{"name": name, "count": len(notes), "notes": notes} for name, notes in ordered]
-
-    def decided(self) -> dict[str, list[str]]:
-        with self.connect() as conn:
-            self._seeded(conn)
-            rows = conn.execute("select name, status from knowledge.tags order by position").fetchall()
-        return {"approved": [row[0] for row in rows if row[1] == "approved"],
-                "blocked": [row[0] for row in rows if row[1] == "blocked"]}
 
     def decide(self, name: str, status: str) -> None:
         if status not in ("approved", "blocked"):
@@ -70,7 +59,7 @@ class TagStore:
         if not TAG.match(name):
             raise ConversationError(400, "that is not a valid tag name")
         with self.connect() as conn:
-            self._seeded(conn)
+            ensure_tags_seeded(conn)
             known = conn.execute("""select 1 from knowledge.tags where name=%s union all
                 select 1 from knowledge.document_properties where proposed_tag=%s limit 1""", (name, name)).fetchone()
             if known is None:
