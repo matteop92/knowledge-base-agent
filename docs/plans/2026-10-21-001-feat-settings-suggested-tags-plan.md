@@ -43,7 +43,7 @@ Settled with Matt on 2026-10-21 (session-settled: user-directed).
 ## Key Technical Decisions
 
 - **KTD1. Table is the source of truth, loaded with a connection.** `TagList.load` gains an optional connection. With one it reads the table; with none, or if the table is empty, it falls back to the yaml. The scheduler reads the list on every tick today with no connection, so it opens one for that read. *(see R4)*
-- **KTD2. Seed on first read, not in the migration.** A migration cannot read the yaml. The first load against an empty table inserts the yaml's tags and blocked list, with `case-study` added to the yaml first. Seeding runs once under an advisory lock so two processes cannot double-insert. *(see R4, R6)*
+- **KTD2. Seed on first read, not in the migration.** A migration cannot read the yaml. The first load against an empty table inserts the yaml's tags and blocked list, with `case-study` added to the yaml first. Seeding inserts with `on conflict do nothing`, so two processes starting together cannot double-insert, and the tags API seeds before it writes its first row. *(see R4, R6)*
 - **KTD3. Suggestions come from stored proposals.** `document_properties.proposed_tag` already holds one proposal per note revision. The suggestion list is those rows for the document's current revision, grouped by tag, minus tags already approved or blocked. No new classification call. *(see R2, R5)*
 - **KTD4. Approve does nothing else.** Approving writes one table row. The classifier picks it up on its next run, so only new or changed notes can get the tag. Properties already stored on notes are left alone. *(see R5)*
 - **KTD5. The tag rule is optional.** An approved suggestion starts with no "when" line; the classifier already handles tags without one. Editing rules is deferred.
@@ -89,7 +89,7 @@ Settled with Matt on 2026-10-21 (session-settled: user-directed).
 - **Goal:** Settings opens from the account menu and shows the Tags tab with compact suggestion rows.
 - **Requirements:** R1, R2, R7.
 - **Dependencies:** U2.
-- **Files:** `app/web/index.html`, `app/web/app.js`, `app/web/styles.css`, `.local/demo_server.py` (fake data), `tests/api/test_static.py`.
+- **Files:** `app/web/index.html`, `app/web/app.js`, `app/web/settings.js`, `app/web/styles.css`, `app/web/sw.js`, `.local/demo_server.py` (fake data, not committed), `tests/api/test_static.py`.
 - **Approach:** Add "Settings" as the first account-menu item with its icon, a settings view with the title, a tab bar (Tags active) and the row list as drawn on the `Main`, `Notes-1-Sheet` and `Desktop-A` boards. Phone has a back arrow and 44 px controls; desktop has no back arrow and 32 px controls. Tick and cross call the API and the row moves out of the list with a short confirmation; an error shows in the muted style, not red. Service worker cache version bumps so installed apps refresh.
 - **Patterns to follow:** existing tab switching (`setView`), account menu, and style tokens in `app/web/styles.css`.
 - **Test scenarios:**
@@ -139,7 +139,7 @@ Settled with Matt on 2026-10-21 (session-settled: user-directed).
 
 ## Risks
 
-- **Seeding race or a stale list:** two processes starting together could seed twice; the advisory lock and a primary key on `name` prevent duplicates (U1).
+- **Seeding race or a stale list:** two processes starting together could seed twice; the primary key on `name` with `on conflict do nothing` prevents duplicates, and a decision made before the first seed seeds the table first (U1, U2).
 - **Classifier lag:** a newly approved tag applies from the next index pass (about five minutes) or the next capture. The page should say "applies to notes you add from now on" as the canvas does.
 - **One proposal per note:** a note proposes at most one tag per revision, so counts under-state how many notes would fit. Acceptable for review.
 
