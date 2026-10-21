@@ -20,6 +20,7 @@ from app.api.auth import COOKIE_NAME, AuthError, RateLimiter, Session, SessionSt
 from app.api.conversations import ConversationError, ConversationStore
 from app.api.scheduler import IndexScheduler, vault_settings_from_env
 from app.api.settings import Settings
+from app.api.tags import TagStore
 from app.capture.notes import CaptureError, draft_from_markdown, draft_from_text
 from app.capture.screenshot import MAX_DATA_URL_CHARS
 from app.capture.youtube import video_url
@@ -87,6 +88,7 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
         indexer = IndexScheduler(vault_settings_from_env(), connect, interval_seconds=settings.index_interval_seconds,
                                  max_usd_per_pass=float(settings.index_max_usd_per_pass))
     app.state.indexer = indexer
+    tags = TagStore(connect, settings.vault_name)
     captures = CaptureJobs(connect, settings, classifier, indexer, extractor=extractor, transcriber=transcriber)
     app.state.captures = captures
 
@@ -284,6 +286,20 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
     def capture_status(capture_id: str, _: Session = Depends(session)):
         captures.expire_stale()
         return captures.job(_uuid(capture_id))
+
+    @app.get("/api/tags")
+    def list_tags(_: Session = Depends(session)):
+        return {"suggested": tags.suggestions()}
+
+    @app.post("/api/tags/{name:path}/approve")
+    def approve_tag(name: str, _: Session = Depends(session)):
+        tags.decide(name, "approved")
+        return {"status": "approved"}
+
+    @app.post("/api/tags/{name:path}/block")
+    def block_tag(name: str, _: Session = Depends(session)):
+        tags.decide(name, "blocked")
+        return {"status": "blocked"}
 
     # Static shell ----------------------------------------------------------------------------
     if WEB_DIR.is_dir():

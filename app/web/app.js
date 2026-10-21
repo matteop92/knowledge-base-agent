@@ -598,10 +598,13 @@ function applyView(view) {
   $("app").dataset.view = view;
   $("view-ask").hidden = view !== "ask";
   $("capture").hidden = view !== "add";
+  $("settings").hidden = view !== "settings";
   for (const tab of document.querySelectorAll("[data-tab]")) {
     if (tab.dataset.tab === view) tab.setAttribute("aria-current", "page"); else tab.removeAttribute("aria-current");
   }
-  return view === "add" && changed ? window.captureScreen.show() : undefined;
+  if (!changed) return undefined;
+  if (view === "add") return window.captureScreen.show();
+  return view === "settings" ? window.settingsScreen.show() : undefined;
 }
 
 // A tab switch first lets any open sheet finish closing, so no stale history entry is left behind.
@@ -609,12 +612,12 @@ function setView(view) {
   return new Promise((resolve) => closeSheet(() => resolve(applyView(view))));
 }
 
-const SHEET_TITLES = { source: "Source", gaps: "What’s missing", feedback: "What was wrong?" };
+const SHEET_TITLES = { source: "Source", gaps: "What’s missing", feedback: "What was wrong?", tags: "Notes for this tag" };
 const sheet = { open: false, closing: false, opener: null, name: null, serial: 0, afterClose: [] };
-// Source and Gaps swap in place while the desktop panel stays open; the other sheets never do.
-const SWAPPABLE = new Set(["source", "gaps"]);
+// Source, Gaps and a tag’s notes swap in place while the desktop panel stays open; the other sheets never do.
+const SWAPPABLE = new Set(["source", "gaps", "tags"]);
 
-// `fill` builds the sheet's content (Source, Gaps, Feedback).
+// `fill` builds the sheet's content (Source, Gaps, Feedback, a tag's notes).
 // Source and Gaps can swap in place while open (the desktop panel stays beside the page): same history entry.
 function openSheet(name, opener, fill) {
   const swapping = sheet.open && !sheet.closing && SWAPPABLE.has(name) && SWAPPABLE.has(sheet.name);
@@ -795,10 +798,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("nav-button").addEventListener("click", () => { setNavOpen(!navState.open); if (navState.open) $("sidebar-history").focus(); });
   $("nav-close").addEventListener("click", () => setNavOpen(false));
   $("account-button").addEventListener("click", () => setAccountOpen($("account-menu").hidden));
+  $("open-settings").addEventListener("click", () => { setAccountOpen(false); setNavOpen(false); setView("settings"); });
+  $("settings-back").addEventListener("click", () => setView("ask"));
   // A click anywhere else folds the account menu away. The desktop panel has no dimmed backdrop: a click on the
   // page behind it closes it, but not a click on the panel or on the controls that open or swap it. Where the click
   // happened is read from the event path, because a control may already have been replaced by the time this runs.
-  const SHEET_CONTROLS = ["marker", "source-number", "gap-chip", "thumbs"];
+  const SHEET_CONTROLS = ["marker", "source-number", "gap-chip", "thumbs", "tag-row"];
   let pressedInSheet = false;
   document.addEventListener("pointerdown", (event) => {
     pressedInSheet = event.composedPath().some((node) => node.id === "sheet");

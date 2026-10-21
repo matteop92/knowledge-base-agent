@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="/static/styles.css">
   <script src="/static/app.js" defer></script>
   <script src="/static/capture.js" defer></script>
+  <script src="/static/settings.js" defer></script>
 </head>
 <body>
   <!-- Icons: one sprite, referenced with <use> -->
@@ -23,6 +24,10 @@
     <symbol id="i-panel" viewBox="0 0 256 256"><path fill="currentColor" d="M216,42H40A14,14,0,0,0,26,56V200a14,14,0,0,0,14,14H216a14,14,0,0,0,14-14V56A14,14,0,0,0,216,42ZM38,200V56a2,2,0,0,1,2-2H82V202H40A2,2,0,0,1,38,200Zm180,0a2,2,0,0,1-2,2H94V54H216a2,2,0,0,1,2,2Z"/></symbol>
     <symbol id="i-send" viewBox="0 0 256 256"><path fill="currentColor" d="M204.24,116.24a6,6,0,0,1-8.48,0L134,54.49V216a6,6,0,0,1-12,0V54.49L60.24,116.24a6,6,0,0,1-8.48-8.48l72-72a6,6,0,0,1,8.48,0l72,72A6,6,0,0,1,204.24,116.24Z"/></symbol>
     <symbol id="i-down" viewBox="0 0 256 256"><path fill="currentColor" d="M128,26A102,102,0,1,0,230,128,102.12,102.12,0,0,0,128,26Zm0,192a90,90,0,1,1,90-90A90.1,90.1,0,0,1,128,218Zm46-58a6,6,0,0,1-6,6H88a6,6,0,0,1,0-12h80A6,6,0,0,1,174,160ZM82,108a10,10,0,1,1,10,10A10,10,0,0,1,82,108Zm92,0a10,10,0,1,1-10-10A10,10,0,0,1,174,108Z"/></symbol>
+    <symbol id="i-paperclip" viewBox="0 0 256 256"><path fill="currentColor" d="M208.25,123.76a6,6,0,0,1,0,8.49l-82.06,82a54,54,0,0,1-76.36-76.39L149.1,37.14a38,38,0,1,1,53.77,53.72L103.59,191.54a22,22,0,1,1-31.15-31.09l83.28-84.67a6,6,0,0,1,8.56,8.42L81,168.91a10,10,0,1,0,14.11,14.18L194.35,82.4a26,26,0,1,0-36.74-36.8L58.33,146.28a42,42,0,1,0,59.37,59.44l82.06-82A6,6,0,0,1,208.25,123.76Z"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 256 256"><path fill="currentColor" d="M128,82a46,46,0,1,0,46,46A46.06,46.06,0,0,0,128,82Zm0,80a34,34,0,1,1,34-34A34,34,0,0,1,128,162ZM214,130.84c.06-1.89.06-3.79,0-5.68L229.33,106a6,6,0,0,0,1.11-5.29A105.34,105.34,0,0,0,219.76,74.9a6,6,0,0,0-4.53-3l-24.45-2.71q-1.93-2.07-4-4l-2.72-24.46a6,6,0,0,0-3-4.53,105.65,105.65,0,0,0-25.77-10.66A6,6,0,0,0,150,26.68l-19.2,15.37c-1.89-.06-3.79-.06-5.68,0L106,26.67a6,6,0,0,0-5.29-1.11A105.34,105.34,0,0,0,74.9,36.24a6,6,0,0,0-3,4.53L69.23,65.22q-2.07,1.94-4,4L40.76,72a6,6,0,0,0-4.53,3,105.65,105.65,0,0,0-10.66,25.77A6,6,0,0,0,26.68,106l15.37,19.2c-.06,1.89-.06,3.79,0,5.68L26.67,150.05a6,6,0,0,0-1.11,5.29A105.34,105.34,0,0,0,36.24,181.1a6,6,0,0,0,4.53,3l24.45,2.71q1.94,2.07,4,4L72,215.24a6,6,0,0,0,3,4.53,105.65,105.65,0,0,0,25.77,10.66,6,6,0,0,0,5.29-1.11L125.16,214c1.89.06,3.79.06,5.68,0l19.21,15.38a6,6,0,0,0,3.75,1.31,6.2,6.2,0,0,0,1.54-.2,105.34,105.34,0,0,0,25.76-10.68,6,6,0,0,0,3-4.53l2.71-24.45q2.07-1.93,4-4l24.46-2.72a6,6,0,0,0,4.53-3,105.49,105.49,0,0,0,10.66-25.77,6,6,0,0,0-1.11-5.29Zm-3.1,41.63-23.64,2.63a6,6,0,0,0-3.82,2,75.14,75.14,0,0,1-6.31,6.31,6,6,0,0,0-2,3.82l-2.63,23.63A94.28,94.28,0,0,1,155.14,218l-18.57-14.86a6,6,0,0,0-3.75-1.31h-.36a78.07,78.07,0,0,1-8.92,0,6,6,0,0,0-4.11,1.3L100.87,218a94.13,94.13,0,0,1-17.34-7.17L80.9,187.21a6,6,0,0,0-2-3.82,75.14,75.14,0,0,1-6.31-6.31,6,6,0,0,0-3.82-2l-23.63-2.63A94.28,94.28,0,0,1,38,155.14l14.86-18.57a6,6,0,0,0,1.3-4.11,78.07,78.07,0,0,1,0-8.92,6,6,0,0,0-1.3-4.11L38,100.87a94.13,94.13,0,0,1,7.17-17.34L68.79,80.9a6,6,0,0,0,3.82-2,75.14,75.14,0,0,1,6.31-6.31,6,6,0,0,0,2-3.82l2.63-23.63A94.28,94.28,0,0,1,100.86,38l18.57,14.86a6,6,0,0,0,4.11,1.3,78.07,78.07,0,0,1,8.92,0,6,6,0,0,0,4.11-1.3L155.13,38a94.13,94.13,0,0,1,17.34,7.17l2.63,23.64a6,6,0,0,0,2,3.82,75.14,75.14,0,0,1,6.31,6.31,6,6,0,0,0,3.82,2l23.63,2.63A94.28,94.28,0,0,1,218,100.86l-14.86,18.57a6,6,0,0,0-1.3,4.11,78.07,78.07,0,0,1,0,8.92,6,6,0,0,0,1.3,4.11L218,155.13A94.13,94.13,0,0,1,210.85,172.47Z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 256 256"><path fill="currentColor" d="M228.24,76.24l-128,128a6,6,0,0,1-8.48,0l-56-56a6,6,0,0,1,8.48-8.48L96,191.51,219.76,67.76a6,6,0,0,1,8.48,8.48Z"/></symbol>
+    <symbol id="i-back" viewBox="0 0 256 256"><path fill="currentColor" d="M164.24,203.76a6,6,0,1,1-8.48,8.48l-80-80a6,6,0,0,1,0-8.48l80-80a6,6,0,0,1,8.48,8.48L88.49,128Z"/></symbol>
     <symbol id="i-image" viewBox="0 0 256 256"><path fill="currentColor" d="M216,42H40A14,14,0,0,0,26,56V200a14,14,0,0,0,14,14H216a14,14,0,0,0,14-14V56A14,14,0,0,0,216,42ZM40,54H216a2,2,0,0,1,2,2V163.57L188.53,134.1a14,14,0,0,0-19.8,0l-21.42,21.42L101.9,110.1a14,14,0,0,0-19.8,0L38,154.2V56A2,2,0,0,1,40,54ZM38,200V171.17l52.58-52.58a2,2,0,0,1,2.84,0L176.83,202H40A2,2,0,0,1,38,200Zm178,2H193.8l-38-38,21.41-21.42a2,2,0,0,1,2.83,0l38,38V200A2,2,0,0,1,216,202ZM146,100a10,10,0,1,1,10,10A10,10,0,0,1,146,100Z"/></symbol>
     <symbol id="i-video" viewBox="0 0 256 256"><path fill="currentColor" d="M163.33,123l-48-32A6,6,0,0,0,106,96v64a6,6,0,0,0,9.33,5l48-32a6,6,0,0,0,0-10ZM118,148.79V107.21L149.18,128ZM232.4,70a22,22,0,0,0-13.28-15C185,41.79,130.27,42,128,42s-57-.21-91.16,13A22,22,0,0,0,23.6,70C21.05,79.89,18,98,18,128s3.05,48.11,5.6,58a22,22,0,0,0,13.28,15C71,214.21,125.72,214,128,214h.71c6.91,0,58-.44,90.45-13a22,22,0,0,0,13.28-15c2.55-9.87,5.6-27.93,5.6-58S235,79.89,232.4,70ZM220.78,183a10,10,0,0,1-6,6.86C182.78,202.19,128.58,202,128,202s-54.71.2-86.75-12.17a10,10,0,0,1-6-6.86C32.84,173.78,30,156.78,30,128s2.84-45.78,5.22-55a10,10,0,0,1,6-6.86C72.06,54.26,123.53,54,127.76,54H128c.54,0,54.71-.2,86.75,12.17a10,10,0,0,1,6,6.86c2.38,9.19,5.22,26.19,5.22,55S223.16,173.78,220.78,183Z"/></symbol>
     <symbol id="i-doc" viewBox="0 0 256 256"><path fill="currentColor" d="M212.24,83.76l-56-56A6,6,0,0,0,152,26H56A14,14,0,0,0,42,40V216a14,14,0,0,0,14,14H200a14,14,0,0,0,14-14V88A6,6,0,0,0,212.24,83.76ZM158,46.48,193.52,82H158ZM200,218H56a2,2,0,0,1-2-2V40a2,2,0,0,1,2-2h90V88a6,6,0,0,0,6,6h50V216A2,2,0,0,1,200,218Zm-34-82a6,6,0,0,1-6,6H96a6,6,0,0,1,0-12h64A6,6,0,0,1,166,136Zm0,32a6,6,0,0,1-6,6H96a6,6,0,0,1,0-12h64A6,6,0,0,1,166,168Z"/></symbol>
@@ -76,6 +81,7 @@
       <div class="sidebar-foot">
         <button type="button" id="account-button" class="avatar" aria-label="Account" aria-expanded="false" aria-controls="account-menu"><svg class="icon" aria-hidden="true"><use href="#i-user"/></svg></button>
         <div id="account-menu" class="account-menu" aria-label="Account" hidden>
+          <button type="button" id="open-settings" class="menu-item"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg>Settings</button>
           <button type="button" class="menu-item sign-out">Sign out</button>
           <button type="button" class="menu-item sign-out-everywhere">Sign out everywhere</button>
           <p class="message small sign-out-message" role="alert"></p>
@@ -119,7 +125,7 @@
             <p id="capture-disabled" class="message" hidden>Adding notes is not switched on yet: the server's sync is still download-only.</p>
             <form id="capture-form" class="capture-form card">
               <label for="capture-text" class="sr-only">Paste text or a link</label>
-              <textarea id="capture-text" rows="2" placeholder="Paste text or a link, or drop a screenshot"></textarea>
+              <textarea id="capture-text" rows="2" placeholder="Paste text or a link, or attach a screenshot or .md file"></textarea>
               <img id="capture-preview" class="capture-preview" alt="Screenshot to be saved" hidden>
               <div id="capture-detect" class="detect" aria-live="polite" hidden>
                 <span class="detect-icon"><svg class="icon" aria-hidden="true"><use id="capture-detect-icon" href="#i-doc"/></svg></span>
@@ -141,7 +147,7 @@
               </details>
               <input id="capture-kind" type="hidden" value="text">
               <div class="card-actions">
-                <button type="button" id="capture-attach" class="attach" aria-label="Attach a screenshot or file"><svg class="icon" aria-hidden="true"><use href="#i-image"/></svg></button>
+                <button type="button" id="capture-attach" class="attach" aria-label="Attach a screenshot or .md file"><svg class="icon" aria-hidden="true"><use href="#i-paperclip"/></svg></button>
                 <input id="capture-file" type="file" hidden accept="image/png,image/jpeg,image/webp,.md,.markdown,.txt,text/markdown,text/plain">
                 <button type="submit" id="capture-save" class="primary" disabled>Save</button>
               </div>
@@ -153,11 +159,29 @@
             </section>
           </div>
         </section>
+
+        <section id="settings" class="view view-settings" hidden aria-labelledby="settings-title">
+          <div class="column">
+            <button type="button" id="settings-back" class="icon-button settings-back" aria-label="Back"><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg></button>
+            <h1 id="settings-title">Settings</h1>
+            <nav class="settings-tabs" aria-label="Settings sections">
+              <button type="button" class="settings-tab" aria-current="page">Tags</button>
+            </nav>
+            <div class="tags-head">
+              <h2 id="tags-title" class="section-title" tabindex="-1">Suggested</h2>
+              <button type="button" id="tags-approve-all" class="chip-button" hidden>Approve all</button>
+            </div>
+            <ul id="tag-list" class="tag-list" aria-labelledby="tags-title"></ul>
+            <p id="tags-empty" class="muted caption" hidden>No suggested tags right now.</p>
+            <p id="tags-message" class="message" role="alert"></p>
+            <p class="muted caption">Approved tags apply to notes you add from now on. Older notes keep their tags.</p>
+          </div>
+        </section>
       </div>
 
     </div>
 
-    <!-- One sheet for Source, Gaps and Feedback: a bottom sheet on phones, a panel from the right on desktop. -->
+    <!-- One sheet for Source, Gaps, Feedback and a tag's notes: a bottom sheet on phones, a panel from the right on desktop. -->
     <div id="sheet-scrim" class="scrim" hidden></div>
     <div id="sheet" class="sheet" role="dialog" aria-modal="true" tabindex="-1" hidden>
       <span class="sheet-handle" aria-hidden="true"></span>
@@ -168,6 +192,7 @@
         <section data-sheet="source" hidden></section>
         <section data-sheet="gaps" hidden></section>
         <section data-sheet="feedback" hidden></section>
+        <section data-sheet="tags" hidden></section>
       </div>
     </div>
   </div>

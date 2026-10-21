@@ -40,7 +40,7 @@ def _now() -> str:
 class IndexScheduler:
     def __init__(self, vault: VaultSettings, connect: Callable[[], Any], *, interval_seconds: float = 300,
                  max_usd_per_pass: float = 0.10, first_delay_seconds: float = 30,
-                 pass_fn: Callable[..., dict] = run_pass, tag_list: Callable[[], TagList | None] = TagList.load) -> None:
+                 pass_fn: Callable[..., dict] = run_pass, tag_list: Callable[[Any], TagList | None] = TagList.load_from_database) -> None:
         self.vault, self.connect = vault, connect
         self.interval, self.first_delay = interval_seconds, first_delay_seconds
         self.max_usd, self.pass_fn, self.load_tags = max_usd_per_pass, pass_fn, tag_list
@@ -111,7 +111,7 @@ class IndexScheduler:
             try:
                 with self.connect() as conn:
                     report = self.pass_fn(self.vault, conn=conn, live=True, max_usd=self.max_usd,
-                                          tag_list=self.load_tags(), retire=self.ticks > 0)
+                                          tag_list=self.load_tags(conn), retire=self.ticks > 0)
                 self.state.update(status="ok", last_error=None,
                                   last_result={key: report[key] for key in SUMMARY_KEYS if key in report})
                 # Only a finished pass ends the hold on retirement; a failed first pass leaves it in place.
