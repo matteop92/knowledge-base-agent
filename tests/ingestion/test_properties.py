@@ -161,6 +161,67 @@ class ClassifierTests(unittest.TestCase):
                                    report["embedding_worst_case_usd"] + report["properties_worst_case_usd"])
 
 
+class FakeTagsConnection:
+    """Just enough of knowledge.tags for the loader: rows are (name, status, rule) in insert order."""
+
+    def __init__(self, rows=None, fail=False):
+        self.rows, self.fail, self.inserts = list(rows or []), fail, 0
+
+    def execute(self, sql, params=()):
+        if self.fail:
+            raise psycopg.OperationalError("down")
+        sql = " ".join(sql.split())
+        result = self
+        if sql.startswith("select count"):
+            self.result = [(len(self.rows),)]
+        elif sql.startswith("select name"):
+            self.result = list(self.rows)
+        else:
+            name, rule = params[0], params[1] if len(params) > 1 else None
+            if all(row[0] != name for row in self.rows):
+                self.rows.append((name, "blocked" if "'blocked'" in sql else "approved", rule))
+                self.inserts += 1
+            self.result = []
+        return result
+
+    def fetchone(self):
+        return self.result[0]
+
+    def fetchall(self):
+        return self.result
+
+
+class TagTableTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.path = Path(self.temp.name) / "tags.yaml"
+        self.path.write_text(chr(10).join([
+            "approved: true", "tags:", "- name: ai", "  when: AI in general.", "- name: case-study",
+            "  when: A company case study.", "blocked:", "- technology", ""]), encoding="utf-8")
+
+    def test_an_empty_table_is_seeded_from_the_file_including_case_study(self) -> None:
+        conn = FakeTagsConnection()
+        tags = TagList.load_from_database(conn, self.path)
+        self.assertEqual((tags.tags, tags.blocked, tags.approved), (("ai", "case-study"), ("technology",), True))
+        self.assertEqual(dict(tags.definitions)["case-study"], "A company case study.")
+
+    def test_a_seeded_table_is_not_seeded_again_and_its_rows_win(self) -> None:
+        conn = FakeTagsConnection([("ai", "approved", None), ("decision-making", "approved", None), ("case-study", "blocked", None)])
+        tags = TagList.load_from_database(conn, self.path)
+        self.assertEqual((tags.tags, tags.blocked, conn.inserts), (("ai", "decision-making"), ("case-study",), 0))
+
+    def test_an_unreachable_table_falls_back_to_the_file(self) -> None:
+        tags = TagList.load_from_database(FakeTagsConnection(fail=True), self.path)
+        self.assertEqual(tags.tags, ("ai", "case-study"))
+
+    def test_without_a_file_there_is_no_list(self) -> None:
+        self.assertIsNone(TagList.load_from_database(FakeTagsConnection(), Path(self.temp.name) / "missing.yaml"))
+
+    def test_the_shipped_seed_has_case_study(self) -> None:
+        self.assertIn("case-study", TagList.load().tags)
+
+
 @unittest.skipUnless(os.getenv("KNOWLEDGE_TEST_DATABASE_URL"), "set disposable KNOWLEDGE_TEST_DATABASE_URL")
 class LiveClassifierTests(unittest.TestCase):
     @classmethod
