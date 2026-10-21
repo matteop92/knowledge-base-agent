@@ -327,6 +327,11 @@ class StaticRouteTests(unittest.TestCase):
             self.assertIn(call, script)
         self.assertEqual(self.client.get("/static/settings.js").status_code, 200)
 
+    def test_text_uses_only_the_agreed_type_scale(self) -> None:
+        css = (WEB / "styles.css").read_text(encoding="utf-8")
+        sizes = {int(size) for size in re.findall(r"font-size:\s*(\d+)px", css)}
+        self.assertEqual(sizes - {12, 14, 16, 18, 22, 26}, set())
+
     def test_font_files_are_served_from_static(self) -> None:
         fonts = sorted((WEB / "fonts").glob("*.woff2"))
         self.assertTrue(fonts)
