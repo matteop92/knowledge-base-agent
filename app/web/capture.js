@@ -69,12 +69,13 @@
     return "text";
   }
 
+  const FILED = "Filed in the right folder for you";
   const DETECTED = {
-    youtube: { icon: "video", title: "YouTube video", sub: "Saved to Transcripts" },
-    markdown: { icon: "doc", title: "Markdown file", sub: "The app files it in the right folder" },
-    textfile: { icon: "doc", title: "Text file", sub: "The app files it in the right folder" },
-    link: { icon: "link", title: "Web link", sub: "The app files it in the right folder" },
-    text: { icon: "doc", title: "Text", sub: "The app files it in the right folder" },
+    youtube: { icon: "video", title: "YouTube video", sub: "Transcript saved to Transcripts" },
+    markdown: { icon: "doc", title: "Markdown file", sub: FILED },
+    textfile: { icon: "doc", title: "Text file", sub: FILED },
+    link: { icon: "link", title: "Web link", sub: FILED },
+    text: { icon: "doc", title: "Text", sub: FILED },
   };
 
   // What the app will treat the box contents as.
@@ -94,6 +95,72 @@
       $("capture-detect-sub").textContent = found.sub;
     }
     $("capture-save").disabled = inFlight > 0 || !state.captureEnabled || !found;
+    // "or drop a file anywhere" shows only while the box is empty.
+    $("capture-drop-hint").hidden = Boolean(found);
+  }
+
+  // Tags are typed into one field and become removable chips. Splits on commas and new lines, trims, and drops
+  // repeats (any letter case); a repeat of a tag already there comes back in `duplicates` so its chip can flash.
+  function mergeTags(current, text) {
+    const tags = [...current];
+    const duplicates = [];
+    for (const part of String(text).split(/[,\n]/)) {
+      const tag = part.trim();
+      if (!tag) continue;
+      const same = tags.find((entry) => entry.toLowerCase() === tag.toLowerCase());
+      if (same) duplicates.push(same); else tags.push(tag);
+    }
+    return { tags, duplicates };
+  }
+
+  let tagList = [];
+
+  function renderTags(flash) {
+    const chips = $("capture-tag-chips");
+    chips.replaceChildren();
+    for (const tag of tagList) {
+      const chip = document.createElement("li");
+      chip.className = flash && flash.includes(tag) ? "tag-chip is-duplicate" : "tag-chip";
+      const name = document.createElement("span");
+      name.className = "tag-chip-name";
+      name.textContent = tag;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "chip-remove";
+      remove.setAttribute("aria-label", `Remove tag ${tag}`);
+      remove.append(icon("close"));
+      remove.addEventListener("click", () => {
+        tagList = tagList.filter((entry) => entry !== tag);
+        renderTags();
+        tagStatus(`Removed tag ${tag}`);
+        $("capture-tags").focus();
+      });
+      chip.append(name, remove);
+      chips.append(chip);
+    }
+    if (flash && flash.length) setTimeout(() => renderTags(), 900);
+  }
+
+  function tagStatus(text) {
+    $("capture-tag-status").textContent = text;
+  }
+
+  // Turns what is typed in the tag field into chips.
+  function commitTags() {
+    const field = $("capture-tags");
+    if (!field.value.trim()) { field.value = ""; return; }
+    const before = tagList.length;
+    const merged = mergeTags(tagList, field.value);
+    tagList = merged.tags;
+    field.value = "";
+    renderTags(merged.duplicates);
+    if (tagList.length > before) tagStatus(`Added ${tagList.slice(before).join(", ")}`);
+  }
+
+  function setTags(tags) {
+    tagList = tags;
+    $("capture-tags").value = "";
+    renderTags();
   }
 
   function message(text, ok) {
@@ -159,7 +226,8 @@
 
   function requestBody() {
     const title = $("capture-title").value.trim() || null;
-    const tags = $("capture-tags").value.split(",").map((tag) => tag.trim()).filter(Boolean);
+    // The chips plus anything still being typed in the tag field.
+    const tags = mergeTags(tagList, $("capture-tags").value).tags;
     if (pending) return { ...pending, label: undefined, title, tags };
     const text = $("capture-text").value.trim();
     if (!text) return null;
@@ -192,13 +260,16 @@
         $("capture-kind").value = "text";
         $("capture-text").value = "";
         $("capture-title").value = "";
-        $("capture-tags").value = "";
+        setTags([]);
         $("capture-file").value = "";
         $("capture-more").open = false;
+        leaveGap();
       }
       message("Saving… it appears under Recent below.", true);
       sent = true;
       renderCapture({ id, kind: body.kind, status: "running", title: body.title || "New capture" }, true);
+      refreshTimes();
+      showToast(body.title || "New capture");
       pollCapture(id, true);
     } catch (error) {
       message(error.status === 429 ? "The daily spending cap was reached." : error.message);
@@ -210,6 +281,19 @@
   }
 
   const KINDS = { text: "Text", markdown: "Markdown", screenshot: "Screenshot", youtube: "YouTube" };
+
+  // The time column: "now", "12 min", "1 h", "3 d", then a short date from a week on. A clock set behind the server's shows "now".
+  function formatAge(iso, now) {
+    const then = new Date(iso);
+    if (Number.isNaN(then.getTime())) return "";
+    const minutes = Math.floor((now.getTime() - then.getTime()) / 60000);
+    if (minutes < 1) return "now";
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} h`;
+    const days = Math.floor(hours / 24);
+    return days < 7 ? `${days} d` : then.toLocaleDateString([], { day: "numeric", month: "short" });
+  }
 
   // One row per save: the icon says the state (its tooltip has the detail), then the title, then the link, the type and Retry.
   function renderCapture(job, prepend) {
@@ -298,7 +382,13 @@
       }
     }
     body.append(title, meta);
-    item.append(state, body);
+    // The time sits in its own column, outside the meta line. A save made just now has no server time yet.
+    const when = job.created_at || item.dataset.created || new Date().toISOString();
+    item.dataset.created = when;
+    const time = document.createElement("span");
+    time.className = "capture-time";
+    time.textContent = formatAge(when, new Date());
+    item.append(state, body, time);
   }
 
   function pollCapture(id, announceResult) {
@@ -311,6 +401,7 @@
         const job = await api("GET", `/api/captures/${encodeURIComponent(id)}`);
         failures = 0;
         renderCapture(job);
+        refreshTimes();
         if (job.status === "running") { later(POLL_MS); return; }
         if (announceResult) {
           message(job.status === "failed" ? `Not saved: ${job.error || "unknown reason"}` : `Saved to ${job.vault_path}`,
@@ -326,8 +417,61 @@
     later(POLL_MS);
   }
 
+  // Times and the weekly count are worked out when the list is drawn and then once a minute while Add is open.
+  const RECENT_LIMIT = 20;  // /api/captures returns at most this many; beyond it a weekly count would be incomplete
+  function refreshTimes() {
+    const now = new Date();
+    let week = 0;
+    const items = document.querySelectorAll(".capture-item");
+    for (const item of items) {
+      const created = new Date(item.dataset.created);
+      item.querySelector(".capture-time").textContent = formatAge(item.dataset.created, now);
+      if (!Number.isNaN(created.getTime()) && now.getTime() - created.getTime() < 7 * 86400000) week += 1;
+    }
+    const count = $("recent-count");
+    count.hidden = week === 0 || items.length >= RECENT_LIMIT;
+    count.textContent = `${week} this week`;
+  }
+
+  // The phone's "Saving…" message: it stays a few seconds and never takes focus.
+  let toastTimer = null;
+  function showToast(title) {
+    const toast = $("toast");
+    toast.querySelector(".toast-title").textContent = `Saving “${title}”`;
+    toast.querySelector(".toast-sub").textContent = "It appears under Recent when it’s ready";
+    toast.classList.add("is-shown");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove("is-shown"), 4000);
+    // Recent is where the new row appears: on a phone, with the keyboard up, bring it into view.
+    if (phone.matches) $("capture-list").firstElementChild?.scrollIntoView?.({ block: "nearest" });
+  }
+
+  // Fill a gap: Add opens with the gap above the box and "Save note" in place of Save, until the note is saved or the user goes back.
+  let gapMode = null;  // {gap, question, conversationId}
+
+  function renderMode() {
+    const filling = Boolean(gapMode);
+    $("add-title").textContent = filling ? "Fill a gap" : "Add to your notes";
+    $("add-sub").hidden = filling;
+    $("gap-back").hidden = !filling;
+    $("gap-panel").hidden = !filling;
+    $("gap-after").hidden = !filling;
+    $("capture-save").textContent = filling ? "Save note" : "Save";
+    if (filling) {
+      $("gap-panel-text").textContent = gapMode.gap;
+      $("gap-panel-from").textContent = gapMode.question ? `From “${gapMode.question}”` : "";
+      $("gap-panel-from").hidden = !gapMode.question;
+    }
+  }
+
+  function leaveGap() {
+    gapMode = null;
+    renderMode();
+  }
+
   // Called by the shell when the Add tab is shown: load the setting and the recent saves.
   async function show() {
+    leaveGap();
     try {
       const { captures, enabled, vault_name: vaultName } = await api("GET", "/api/captures");
       state.captureEnabled = enabled;
@@ -342,6 +486,7 @@
     } catch (error) {
       if (error.status !== 401) message("Could not load your recent saves. Check your connection and try again.");
     }
+    refreshTimes();
     refresh();
     $("capture-text").focus();
   }
@@ -361,22 +506,33 @@
     pollers.clear();
     $("capture-kind").value = "text";
     for (const id of ["capture-text", "capture-title", "capture-tags", "capture-file"]) $(id).value = "";
+    setTags([]);
     $("capture-preview").hidden = true;
     $("capture-preview").removeAttribute("src");
     $("capture-more").open = false;
     $("capture-list").replaceChildren();
+    $("recent-count").hidden = true;
+    $("toast").classList.remove("is-shown");
+    endDrag();
+    leaveGap();
     message("");
     refresh();
   }
 
-  // Open Add with some text already in the box (used when a gap asks for a note).
-  async function openWith(text) {
+  // Open Add for one gap from "What's missing". A draft already in the box is kept.
+  async function openGap(next) {
     await setView("add");
-    const box = $("capture-text");
-    // A draft already in the box is kept: the new text goes after it.
-    if (box.value.trim()) { box.value = `${box.value.trimEnd()}\n\n${text}`; refresh(); } else takeText(text);
-    box.focus();
-    box.setSelectionRange(box.value.length, box.value.length);
+    gapMode = next;
+    renderMode();
+    $("capture-text").focus();
+  }
+
+  // Back to the answer the gap came from.
+  async function backToAnswer() {
+    const conversationId = gapMode && gapMode.conversationId;
+    leaveGap();
+    if (conversationId) await openConversation(conversationId); else await setView("ask");
+    $("question").focus();
   }
 
   // Android share sheet: the service worker keeps the shared item until the app (and sign-in) picks it up.
@@ -403,8 +559,33 @@
     }
   }
 
+  let dragDepth = 0;
+  function startDrag() {
+    $("capture").classList.add("dragging");
+    $("drop-target").hidden = false;
+  }
+  function endDrag() {
+    dragDepth = 0;
+    $("capture").classList.remove("dragging");
+    $("drop-target").hidden = true;
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     $("capture-form").addEventListener("submit", (event) => { event.preventDefault(); save(); });
+    $("gap-back").addEventListener("click", backToAnswer);
+    // The tag field: Enter and comma make a chip (Enter never sends the form); Backspace in an empty field removes the last.
+    const tagField = $("capture-tags");
+    tagField.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === ",") { event.preventDefault(); commitTags(); }
+      else if (event.key === "Backspace" && !tagField.value && tagList.length) {
+        const removed = tagList[tagList.length - 1];
+        setTags(tagList.slice(0, -1));
+        tagStatus(`Removed tag ${removed}`);
+      }
+    });
+    tagField.addEventListener("input", () => { if (/[,\n]/.test(tagField.value)) commitTags(); });
+    tagField.addEventListener("blur", commitTags);
+    setInterval(() => { if (!$("capture").hidden) refreshTimes(); }, 60000);
     $("capture-file").addEventListener("change", (event) => takeFile(event.target.files[0]));
     $("capture-attach").addEventListener("click", () => $("capture-file").click());
     $("capture-text").addEventListener("input", () => {
@@ -413,19 +594,24 @@
       refresh();
     });
     const drop = $("capture");
-    drop.addEventListener("dragover", (event) => { event.preventDefault(); drop.classList.add("dragging"); });
-    drop.addEventListener("dragleave", () => drop.classList.remove("dragging"));
+    // The target shows while a drag is over the page. Moving between elements fires dragleave then dragenter, so the
+    // depth is counted; a cancelled drag (Escape, leaving the window) clears it too.
+    drop.addEventListener("dragenter", (event) => { event.preventDefault(); dragDepth += 1; startDrag(); });
+    drop.addEventListener("dragover", (event) => { event.preventDefault(); startDrag(); });
+    drop.addEventListener("dragleave", () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) endDrag(); });
     drop.addEventListener("drop", (event) => {
       event.preventDefault();
-      drop.classList.remove("dragging");
+      endDrag();
       if (event.dataTransfer.files.length) takeFile(event.dataTransfer.files[0]);
       else takeText(event.dataTransfer.getData("text/plain"));
     });
+    window.addEventListener("dragend", endDrag);
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") endDrag(); });
     drop.addEventListener("paste", (event) => {
       const image = [...event.clipboardData.files].find((file) => file.type.startsWith("image/"));
       if (image) { event.preventDefault(); takeFile(image); }
     });
   });
 
-  window.captureScreen = { takeShared, show, reset, openWith };
+  window.captureScreen = { takeShared, show, reset, openGap };
 })();
