@@ -22,6 +22,16 @@ Read [SYSTEM.md](SYSTEM.md) for the one-page map. [FOUNDATION.md#current-progres
 
 The Markdown vault is outside this repository and is read through `KNOWLEDGE_SOURCE_ROOT`. Local source snapshots and generated artifacts go under ignored `.local/ingestion-runs/`; do not commit vault content or model outputs.
 
+## Web app type scale (fixed)
+
+Only these sizes exist: 12, 14, 16, 18, 22, 26 px. One size per role, and a new screen reuses the roles instead of choosing sizes. `tests/api/test_static.py` rejects any other size.
+
+- 26: screen title (serif). 22: sheet or panel heading (serif). 18: answer text and note titles in cards (serif).
+- 16: text you read or write: the question box, the Add box.
+- 14: interface text: rows, tabs, buttons, menu items, descriptions.
+- 12: captions: counts, kickers, section labels, footnotes.
+- Buttons: regular weight, 32 px with a mouse and 44 px on touch; small row actions are 28 px with a larger touch target around them. Icons are Phosphor Light.
+
 ## Hosted schema deployment
 
 The Knowledge Agent Supabase project (`<project-ref>`) is connected to `matteop92/knowledge-base-agent` through Supabase's GitHub integration. Its working directory is `.`, its production branch is `main`, and **Deploy to production** is enabled. New versioned SQL migrations under `supabase/migrations/` deploy when merged into `main`; check the deployment status and migration history in Supabase. This uses Supabase's integration, so no GitHub Actions migration workflow or GitHub repository secrets are needed. Keep the `knowledge` schema out of the Data API's exposed schemas; provision a separate runtime login with membership in `knowledge_runtime` before loading private data.
