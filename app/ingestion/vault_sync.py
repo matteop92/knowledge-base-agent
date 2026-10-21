@@ -654,13 +654,14 @@ def main(argv: list[str] | None = None) -> int:
     load_env_file()
     try:
         settings = settings_from_env(args)
-        tag_list = TagList.load()
+        tag_list = TagList.load()  # the file; a live pass below reads the tags table instead
         if args.propose_tags is not None:
             report = propose_tags(settings, args.propose_tags, max_usd=args.max_usd or 0)
         elif args.dry_run and args.no_database:
             report = run_pass(settings, tag_list=tag_list)
         else:
             with connect_runtime() as conn:
+                tag_list = TagList.load_from_database(conn) if args.live else tag_list
                 report = run_pass(settings, conn=conn, live=args.live, max_usd=args.max_usd,
                                   allow_mass_retire=args.allow_mass_retire,
                                   bulk_load=args.bulk_load, tag_list=tag_list)

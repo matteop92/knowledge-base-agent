@@ -54,17 +54,28 @@ class Classifier(Protocol):
 class OpenRouterClassifier:
     """The indexer's properties classifier on its pinned zero-retention route."""
 
-    def worst_case_usd(self, draft: Draft, today: date) -> float:
-        from app.ingestion.properties import TagList, worst_case_usd
+    def __init__(self, connect: Callable[[], Any] | None = None) -> None:
+        self.connect = connect
 
-        tag_list = TagList.load()
+    def _tag_list(self):
+        from app.ingestion.properties import TagList
+
+        if self.connect is None:
+            return TagList.load()
+        with self.connect() as conn:
+            return TagList.load_from_database(conn)
+
+    def worst_case_usd(self, draft: Draft, today: date) -> float:
+        from app.ingestion.properties import worst_case_usd
+
+        tag_list = self._tag_list()
         return worst_case_usd(parse_draft(draft, today), tag_list) if tag_list else 0.0
 
     def classify(self, draft: Draft, today: date) -> Classification:
-        from app.ingestion.properties import TagList, classify_properties, model_spec, worst_case_usd
+        from app.ingestion.properties import classify_properties, model_spec, worst_case_usd
         from app.ingestion.vault_sync import classifier_input_bytes, measured_cost, openrouter_client, usage_mark
 
-        tag_list = TagList.load()
+        tag_list = self._tag_list()
         if tag_list is None:
             return Classification({}, 0.0)
         parsed = parse_draft(draft, today)
@@ -182,7 +193,7 @@ class CaptureJobs:
                  indexer=None, today: Callable[[], date] = date.today, extractor: Extractor | None = None,
                  transcriber: Extractor | None = None) -> None:
         self.connect, self.settings, self.indexer, self.today = connect, settings, indexer, today
-        self.classifier = classifier or OpenRouterClassifier()
+        self.classifier = classifier or OpenRouterClassifier(connect)
         self.extractor = extractor or OpenRouterExtractor()
         self.transcriber = transcriber or YouTubeTranscriber(self._approve_transcript)
         self._threads: list[threading.Thread] = []

@@ -1,3 +1,4 @@
+# Seed for the tag list. After the first run the tags table in Supabase is the source of truth.
 # Tag list for the properties classifier. It may only pick tags from this list,
 # one to three per note, using each tag's "when" line. Edit freely, then set approved: true.
 approved: true
@@ -48,6 +49,8 @@ tags:
   when: Learning and teaching, such as how children learn, schooling or study methods.
 - name: volunteering
   when: Giving time to organisations or causes, and what it brings back.
+- name: case-study
+  when: A specific case study of adoption, AI implementation or a larger project within a company, in an article or transcript.
 # Never applied and never suggested again.
 blocked:
 - technology
