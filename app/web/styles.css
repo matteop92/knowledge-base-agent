@@ -116,9 +116,6 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 .sidebar-top .brand { flex: 1; min-width: 0; }
 #collapse, .nav-close { border-radius: 9px; color: var(--ink-soft); }
 .nav-close { display: none; }
-.new-pill { margin-top: 16px; width: 100%; height: var(--ctl); border-radius: 10px; padding: 0 12px; background: var(--accent); color: var(--accent-ink); font-size: 13.5px; display: flex; align-items: center; justify-content: flex-start; gap: 8px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 1px 2px rgba(29, 28, 26, 0.12); }
-.new-pill:hover:not(:disabled) { background: var(--accent-hover); }
-.new-pill .icon { width: 15px; height: 15px; }
 .side-nav { margin-top: 14px; display: flex; flex-direction: column; gap: 2px; }
 .side-item { height: var(--ctl); padding: 0 10px; border-radius: 9px; background: transparent; color: var(--ink-soft); display: flex; align-items: center; justify-content: flex-start; gap: 10px; font-size: 14px; text-align: left; }
 .side-item:hover:not(:disabled) { background: var(--hover); }
@@ -449,7 +446,6 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
   .sidebar-collapsed .sidebar .label, .sidebar-collapsed .history-panel, .sidebar-collapsed .history-toggle, .sidebar-collapsed .brand-tile { display: none; }
   .sidebar-collapsed .sidebar-top { justify-content: center; padding: 0; }
   .sidebar-collapsed .side-item { justify-content: center; padding: 0; }
-  .sidebar-collapsed .new-pill { width: var(--ctl); padding: 0; justify-content: center; margin-left: auto; margin-right: auto; }
   .sidebar-collapsed .sidebar-foot { flex-direction: column; align-items: center; padding: 10px 0 0; }
   .sidebar-collapsed .account-menu { left: 4px; }
   .view-ask.is-empty .composer { position: static; width: 100%; max-width: 688px; padding: 36px 24px 0; background: none; }

@@ -53,7 +53,7 @@ class ShellSourceTests(unittest.TestCase):
 
     def test_shell_cache_is_bumped_and_the_sidebar_choice_is_remembered(self) -> None:
         worker = (WEB / "sw.js").read_text(encoding="utf-8")
-        self.assertIn('const CACHE = "ka-shell-v17"', worker)
+        self.assertIn('const CACHE = "ka-shell-v18"', worker)
         # A deploy must reach an installed app: never answer from the browser's own HTTP cache.
         self.assertIn('fetch(event.request, { cache: "no-cache" })', worker)
         script = (WEB / "app.js").read_text(encoding="utf-8")
@@ -113,10 +113,11 @@ class ShellSourceTests(unittest.TestCase):
         self.assertEqual(len(re.findall(r'id="nav-button"', page)), 1)  # the one icon at the top left on phones
         self.assertNotIn('class="tabbar"', page)
         # Sign-out options live in the account menu opened from the circle at the foot of the sidebar;
-        # New question sits at the top, under the brand.
+        # There is no separate New question button: Ask starts a fresh question.
         self.assertRegex(page, r'id="account-button"[^>]*aria-expanded="false"')
-        self.assertLess(page.index('id="new-question"'), page.index('data-tab="ask"'))
-        self.assertLess(page.index('id="new-question"'), page.index('id="account-button"'))
+        self.assertNotIn('id="new-question"', page)
+        self.assertNotIn("new-pill", page)
+        self.assertIn('if (tab.dataset.tab === "ask") newQuestion();', script)
         self.assertEqual(script.count('addEventListener("popstate"'), 1)
         # The back-button contract: opening pushes one history entry, closing goes back once, and only
         # the popstate handler tears the sheet down (so a double tap cannot pop two entries).
