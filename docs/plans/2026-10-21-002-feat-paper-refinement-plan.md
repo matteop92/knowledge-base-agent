@@ -51,7 +51,7 @@ Kept from the design handoff, with the product owner's amendments applied. IDs m
 
 **Ask** (D1–D5, M1–M6)
 
-- R14. New question: a date line ("Tuesday, 21 October", label style), the heading "Ask your notes anything.", the existing sub-line, then the composer, all centred. No starter questions (P1 parked).
+- R14. New question: a date line ("Tuesday, 21 October", label style), the heading "Ask your notes anything.", the existing sub-line, then the composer, all centred. Starter questions under the box were added later (P1, built 2026-10-22).
 - R15. Each turn shows a meta line "Today, 9:41 · 3 sources" (12 px muted) above the question. Question 27 px Newsreader, balanced wrap; answer 18.5/1.66 with 16 px between paragraphs.
 - R16. Footnote markers stay superscript accent numbers. **Amended:** the marker for the source open in the drawer becomes a filled accent tag with white text, radius 5, weight no heavier than 500.
 - R17. The sources row stays as today (caption, 24 px numbered circles, gap chip with icon and count, thumbs-down at the far end). **Amended:** the active number fills with the accent while its drawer is open, and the gap chip fills with the accent (white icon and count) while "What's missing" is open. No ring.
@@ -90,7 +90,7 @@ Kept from the design handoff, with the product owner's amendments applied. IDs m
 
 - R-P2. Source stepping: back and forward arrows in the source drawer foot, ← → keys to step, swipe to step on phone (D3, M3).
 - R-P3. Fill a gap: "Add a note to fill this gap" opens Add in a mode with a "Back to the answer" link, the gap shown in a mint panel above the box, and "Save note" in place of Save (A3).
-- R-P4. Tags in Add are removable chips typed into one field (A2, AM2). The "approved tags" suggestion row is **not** built (the browser has no list of approved tags; P9 is parked).
+- R-P4. Tags in Add are removable chips typed into one field (A2, AM2). The "In use" row of approved tags was added later (P9, built 2026-10-22; `GET /api/tags` returns `approved`).
 - R-P5. On phone, a "Saving…" toast after Save (AM3).
 - R-P6. Recent shows a right-aligned time column ("now", "12 min", "1 h", then days) and "N this week" beside the label (A1, A2). Uses each capture's existing `created_at`.
 
@@ -110,7 +110,7 @@ Kept from the design handoff, with the product owner's amendments applied. IDs m
 ### Scope Boundaries
 
 - Kept as is: the share target, polling and retry logic, sign-in screens, all copy not named above, the API.
-- Parked, not built: P1, P7, P8, P9, P10 (see the deferred doc). Also not built: the ⌘↵ hints and the email line that appear on some screens.
+- Parked, not built: P7, P8, P10 (see the deferred doc). P1 and P9 were built 2026-10-22. Also not built: the ⌘↵ hints and the email line that appear on some screens.
 - Not changed: dark mode (none), red for failed states (stay neutral grey), app name.
 
 ### Success Criteria

@@ -65,6 +65,43 @@ const drain = async () => { while (queue.length) await queue.shift()(); };
         self.assertEqual(out["reset"], {"calls": 10, "log": ["running:false"]})
         self.assertEqual(out["stale"], {"calls": 1, "log": []})
 
+    def test_starter_questions_render_one_button_each_and_a_failure_hides_them(self) -> None:
+        load = re.search(r"let startersLoads = 0;\nasync function loadStarters\(\).*?\n}\n", _script(), re.S).group(0)
+        probe = """
+class El {
+  constructor() { this.children = []; this.hidden = true; this.handlers = {}; this.textContent = ""; }
+  replaceChildren(...items) { this.children = items; }
+  append(...items) { this.children.push(...items); }
+  addEventListener(name, fn) { this.handlers[name] = fn; }
+}
+const list = new El();
+const $ = () => list;
+const document = { createElement: () => new El() };
+let asked = [];
+const ask = (q) => asked.push(q);
+let reply;
+const api = async () => { if (reply instanceof Error) throw reply; return reply; };
+""" + load + """
+(async () => {
+  const out = {};
+  reply = { starters: [{ title: "A", question: "What do my notes say about A?" }, { title: "B", question: "What do my notes say about B?" }] };
+  await loadStarters();
+  out.shown = { hidden: list.hidden, count: list.children.length };
+  list.children[0].children[0].handlers.click();
+  out.asked = asked;
+  reply = { starters: [] };
+  await loadStarters();
+  out.empty = list.hidden;
+  reply = new Error("down");
+  await loadStarters();
+  out.failed = list.hidden;
+  console.log(JSON.stringify(out));
+})();"""
+        out = _node(probe)
+        self.assertEqual(out["shown"], {"hidden": False, "count": 2})
+        self.assertEqual(out["asked"], ["What do my notes say about A?"])
+        self.assertTrue(out["empty"] and out["failed"])
+
     def test_settings_decisions_remove_rows_only_when_saved_and_a_late_list_cannot_bring_one_back(self) -> None:
         source = (WEB / "settings.js").read_text(encoding="utf-8").replace(chr(13), "")
         probe = """

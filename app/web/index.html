@@ -117,6 +117,7 @@
               <textarea id="question" rows="1" placeholder="Ask a question" required></textarea>
               <button type="submit" id="ask" class="send" aria-label="Ask"><svg class="icon"><use href="#i-send"/></svg></button>
             </div>
+            <ul id="starters" class="starters" aria-label="Suggested questions" hidden></ul>
             <p class="composer-hint">Enter to ask · Shift + Enter for a new line</p>
           </form>
         </section>
@@ -154,6 +155,10 @@
                     <div id="capture-tag-field" class="tag-field">
                       <ul id="capture-tag-chips" class="tag-chips"></ul>
                       <input id="capture-tags" maxlength="400" placeholder="Add a tag" aria-labelledby="capture-tags-label">
+                    </div>
+                    <div id="capture-tag-pick" class="tag-pick" hidden>
+                      <span class="kicker">In use</span>
+                      <ul id="capture-tag-pick-list" class="pick-list"></ul>
                     </div>
                   </div>
                   <p id="capture-tag-status" class="sr-only" aria-live="polite"></p>
@@ -196,6 +201,10 @@
               <span class="tags-empty-mark"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg></span>
               <span class="tags-empty-title">All caught up</span>
               <p>New suggestions appear here when your notes point at a topic the tag list doesn’t cover.</p>
+            </div>
+            <div id="tags-inuse" class="tags-inuse" hidden>
+              <h2 id="tags-inuse-title" class="section-title">In use</h2>
+              <ul class="pick-list" aria-labelledby="tags-inuse-title"></ul>
             </div>
             <p id="tags-message" class="message" role="alert"></p>
             <p class="muted caption tags-note">Approved tags apply to notes you add from now on. Older notes keep their tags.</p>

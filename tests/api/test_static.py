@@ -53,7 +53,7 @@ class ShellSourceTests(unittest.TestCase):
 
     def test_shell_cache_is_bumped_and_the_sidebar_choice_is_remembered(self) -> None:
         worker = (WEB / "sw.js").read_text(encoding="utf-8")
-        self.assertIn('const CACHE = "ka-shell-v19"', worker)
+        self.assertIn('const CACHE = "ka-shell-v20"', worker)
         # A deploy must reach an installed app: never answer from the browser's own HTTP cache.
         self.assertIn('fetch(event.request, { cache: "no-cache" })', worker)
         script = (WEB / "app.js").read_text(encoding="utf-8")
@@ -608,6 +608,15 @@ class StaticRouteTests(unittest.TestCase):
         for call in ('"GET", "/api/tags"', "/api/tags/${encodeURIComponent(name)}/${verdict}"):
             self.assertIn(call, script)
         self.assertEqual(self.client.get("/static/settings.js").status_code, 200)
+
+    def test_starters_and_approved_tags_are_wired_to_the_server(self) -> None:
+        page = (WEB / "index.html").read_text(encoding="utf-8")
+        for needle in ('id="starters"', 'id="capture-tag-pick"', 'id="tags-inuse"'):
+            with self.subTest(needle=needle):
+                self.assertIn(needle, page)
+        self.assertIn('"GET", "/api/starters"', (WEB / "app.js").read_text(encoding="utf-8"))
+        self.assertIn(".approved", (WEB / "capture.js").read_text(encoding="utf-8"))
+        self.assertIn("data.approved", (WEB / "settings.js").read_text(encoding="utf-8"))
 
     def test_text_uses_only_the_agreed_type_scale(self) -> None:
         css = (WEB / "styles.css").read_text(encoding="utf-8")

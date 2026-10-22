@@ -144,11 +144,45 @@
       chip.append(name, remove);
       chips.append(chip);
     }
+    renderPick();
     // A repeated tag flashes its chip for a moment; only the class changes back, so nothing is redrawn under the cursor.
     clearTimeout(flashTimer);
     if (flash && flash.length) {
       flashTimer = setTimeout(() => { for (const chip of chips.querySelectorAll(".is-duplicate")) chip.classList.remove("is-duplicate"); }, 900);
     }
+  }
+
+  // Approved tags under the field: one tap adds one as a chip. Tags already on the note are left out.
+  let approvedTags = [];
+  function renderPick() {
+    const free = approvedTags.filter((tag) => !tagList.some((entry) => entry.toLowerCase() === tag.toLowerCase())).slice(0, 8);
+    $("capture-tag-pick").hidden = free.length === 0;
+    $("capture-tag-pick-list").replaceChildren(...free.map((tag) => {
+      const item = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "pick-tag";
+      button.textContent = tag;
+      button.setAttribute("aria-label", `Add tag ${tag}`);
+      button.addEventListener("click", () => {
+        const merged = mergeTags(tagList, tag);
+        tagList = merged.tags;
+        renderTags(merged.duplicates);
+        tagStatus(merged.full ? `A note keeps up to ${MAX_TAGS} tags` : `Added ${tag}`);
+        $("capture-tags").focus();
+      });
+      item.append(button);
+      return item;
+    }));
+  }
+
+  async function loadApprovedTags() {
+    try {
+      approvedTags = (await api("GET", "/api/tags")).approved || [];
+    } catch (error) {
+      approvedTags = [];
+    }
+    renderPick();
   }
 
   function tagStatus(text) {
@@ -484,6 +518,7 @@
   let keepGap = false;
   async function show() {
     if (keepGap) keepGap = false; else leaveGap();
+    loadApprovedTags();
     try {
       const { captures, enabled, vault_name: vaultName } = await api("GET", "/api/captures");
       state.captureEnabled = enabled;

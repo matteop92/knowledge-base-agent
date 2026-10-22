@@ -11,8 +11,8 @@ Parts of the Paper refinement design that were shown on the boards but left out 
 
 ## Needs a server change
 
-- **P1. Starter questions.** Three suggested questions under the empty question box, made from notes added this week. Needs a new server list: titles of notes added in the last 7 days. Screens: D1, M1.
-- **P9. "In use" tags.** A second list under Suggested showing approved tags. The tags endpoint does not return approved tags today. Unverified: confirm what the endpoint can return before building. Screens: S1, S3.
+- **P1. Starter questions. Built 2026-10-22.** `GET /api/starters` returns up to three notes loaded in the last 7 days; each becomes the question "What do my notes say about <title>?" under the empty question box. One tap asks it. Screens: D1, M1.
+- **P9. "In use" tags. Built 2026-10-22.** `GET /api/tags` now also returns `approved` (tag names). Settings shows them read-only under Suggested; Add shows up to eight under the tag field and one tap adds one as a chip. Screens: S1, S3.
 
 ## Left out for now
 

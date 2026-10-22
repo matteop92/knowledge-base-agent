@@ -216,6 +216,33 @@ function setTitle(title) {
   document.title = title === "New question" ? "Knowledge Agent" : `${title} - Knowledge Agent`;
 }
 
+// Up to three questions made from notes added this week. A failure just leaves them out.
+let startersLoads = 0;
+async function loadStarters() {
+  const mine = ++startersLoads;
+  const list = $("starters");
+  try {
+    const { starters } = await api("GET", "/api/starters");
+    if (mine !== startersLoads) return;
+    list.replaceChildren(...(starters || []).map((item) => {
+      const row = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "chip-button starter";
+      const label = document.createElement("span");
+      label.className = "starter-label";
+      label.textContent = item.question;
+      button.append(label);
+      button.addEventListener("click", () => ask(item.question));
+      row.append(button);
+      return row;
+    }));
+    list.hidden = list.children.length === 0;
+  } catch (error) {
+    if (mine === startersLoads) list.hidden = true;
+  }
+}
+
 function newQuestion() {
   state.loadSeq += 1;
   stopPolling();
@@ -225,6 +252,7 @@ function newQuestion() {
   setTitle("New question");
   setEmpty(true);
   setRunning(false);
+  loadStarters();
   setView("ask").then(() => $("question").focus());
 }
 
