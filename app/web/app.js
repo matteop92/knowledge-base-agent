@@ -971,9 +971,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       ask($("question").value.trim());
     }
   });
-  $("new-question").addEventListener("click", () => { setNavOpen(false); newQuestion(); });
   for (const tab of document.querySelectorAll("[data-tab]")) {
-    tab.addEventListener("click", () => { setNavOpen(false); setView(tab.dataset.tab); });
+    tab.addEventListener("click", () => {
+      setNavOpen(false);
+      // Ask always starts a fresh question, whatever screen or conversation is open.
+      if (tab.dataset.tab === "ask") newQuestion(); else setView(tab.dataset.tab);
+    });
   }
   $("sidebar-history").addEventListener("click", toggleHistory);
   $("nav-button").addEventListener("click", () => { setNavOpen(!navState.open); if (navState.open) $("sidebar-history").focus(); });
