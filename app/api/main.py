@@ -289,7 +289,11 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
 
     @app.get("/api/tags")
     def list_tags(_: Session = Depends(session)):
-        return {"suggested": tags.suggestions()}
+        return {"suggested": tags.suggestions(), "approved": tags.approved()}
+
+    @app.get("/api/starters")
+    def starters(_: Session = Depends(session)):
+        return {"starters": tags.starters()}
 
     @app.post("/api/tags/{name:path}/approve")
     def approve_tag(name: str, _: Session = Depends(session)):

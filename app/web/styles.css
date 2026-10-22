@@ -225,7 +225,12 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 .banner { margin: 8px auto 0; max-width: 640px; width: calc(100% - 32px); padding: 8px 14px; border-radius: 10px; background: var(--warn); color: var(--warn-ink); font-size: 14px; }
 /* The composer is pinned to the bottom over a fade, so the thread scrolls under it. */
 .composer { position: absolute; left: 0; right: 0; bottom: 0; padding: 48px 24px calc(20px + env(safe-area-inset-bottom)); background: linear-gradient(to bottom, rgba(246, 244, 239, 0), var(--ground) 42%); pointer-events: none; }
-.composer-box, .composer-hint { pointer-events: auto; }
+.composer-box, .composer-hint, .starters { pointer-events: auto; }
+.starters { max-width: 680px; margin: 14px auto 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.view-ask:not(.is-empty) .starters { display: none; }
+.starter { width: 100%; justify-content: flex-start; text-align: left; padding: 0 14px; background: transparent; color: var(--ink-soft); font-size: 13.5px; }
+.starter:hover:not(:disabled) { background: var(--hover); }
+.starter-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-box { max-width: 680px; min-height: 56px; margin: 0 auto; border-radius: 22px; background: var(--paper); box-shadow: var(--shadow-paper); display: flex; align-items: flex-end; gap: 8px; padding: 8px 8px 8px 22px; }
 .composer-box:focus-within { box-shadow: 0 0 0 1px rgba(29, 28, 26, 0.22), var(--shadow-paper); }
 .app[data-sheet] .composer-box { max-width: 640px; }
@@ -290,6 +295,12 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 .tag-field input:focus-visible { box-shadow: none; }
 .tag-chips { display: contents; list-style: none; margin: 0; padding: 0; }
 .tag-chip { height: 28px; max-width: 100%; padding: 0 2px 0 10px; border-radius: 8px; background: var(--paper); box-shadow: 0 0 0 1px rgba(29, 28, 26, 0.08); display: inline-flex; align-items: center; gap: 2px; font-size: 13.5px; }
+.tag-pick { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.pick-list { list-style: none; margin: 0; padding: 0; display: contents; }
+.tags-inuse { margin-top: 28px; }
+.tags-inuse .pick-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.pick-tag { height: 28px; padding: 0 10px; border-radius: 8px; background: var(--chip); color: var(--ink); font-size: 13.5px; display: inline-flex; align-items: center; }
+span.pick-tag { background: var(--paper); box-shadow: 0 0 0 1px rgba(29, 28, 26, 0.08); }
 .tag-chip.is-duplicate { background: var(--gap-bg); }
 .tag-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chip-remove { position: relative; width: 24px; min-width: 24px; height: 24px; min-height: 24px; padding: 0; background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; flex: none; }

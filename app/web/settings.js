@@ -5,6 +5,7 @@
 // Every piece of text from the server is inserted with textContent, never as HTML.
 (() => {
   let suggested = [];  // [{name, count, notes}]
+  let approved = [];  // tag names the classifier may use
   const busy = new Set();  // tags with a decision being sent
   let loads = 0;  // bumped by every load and every saved decision, so a late list cannot bring back a decided tag
 
@@ -52,6 +53,7 @@
     const index = suggested.findIndex((tag) => tag.name === name);
     const hadFocus = $("settings").contains(document.activeElement) || $("sheet").contains(document.activeElement);
     suggested = suggested.filter((tag) => tag.name !== name);
+    if (verdict === "approve" && !approved.includes(name)) approved = [...approved, name];
     render();
     if (hadFocus) keepFocus(index);
     announce(`${name} ${verdict === "approve" ? "approved" : "blocked"}`);
@@ -99,6 +101,14 @@
     $("tags-head").hidden = suggested.length === 0;
     $("tags-empty").hidden = suggested.length > 0;
     $("tags-approve-all").hidden = suggested.length < 2;
+    // The tags already in use, read-only.
+    const inUse = $("tags-inuse");
+    inUse.hidden = approved.length === 0;
+    inUse.querySelector("ul").replaceChildren(...approved.map((name) => {
+      const item = document.createElement("li");
+      item.append(textElement("span", "pick-tag", name));
+      return item;
+    }));
   }
 
   function noteCard(note) {
@@ -156,6 +166,7 @@
       const data = await api("GET", "/api/tags");
       if (mine !== loads) return;  // a decision was saved meanwhile; this list may still hold that tag
       suggested = data.suggested || [];
+      approved = data.approved || [];
       render();
     } catch (error) {
       if (error.status !== 401) message("Could not load the suggested tags. Check your connection and try again.");
