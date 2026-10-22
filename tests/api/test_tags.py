@@ -24,6 +24,7 @@ class FakeConnection:
     def __init__(self, suggestions=(), tag_rows=(), known=True, seed_empty=False):
         self.suggestions, self.tag_rows, self.known = list(suggestions), list(tag_rows), known
         self.seed_empty, self.seeded = seed_empty, False
+        self.approved, self.recent = [], []
         self.writes: list[tuple] = []
 
     @contextmanager
@@ -34,6 +35,10 @@ class FakeConnection:
         sql = " ".join(sql.split())
         if sql.startswith("select p.proposed_tag"):
             return FakeResult(self.suggestions)
+        if sql.startswith("select name from knowledge.tags where status='approved'"):
+            return FakeResult([(name,) for name in self.approved])
+        if sql.startswith("select d.relative_path"):
+            return FakeResult(self.recent)
         if sql.startswith("select count"):
             return FakeResult([(0 if self.seed_empty and not self.seeded else 1,)])
         if sql.startswith("select name, status, rule"):
@@ -61,6 +66,21 @@ def row(tag, document_id, path, metadata=None, properties=None):
 
 
 class TagStoreTests(unittest.TestCase):
+    def test_approved_tags_come_back_as_names_in_list_order(self) -> None:
+        conn = FakeConnection()
+        conn.approved = ["leadership", "ai-pilots"]
+        self.assertEqual(store(conn).approved(), ["leadership", "ai-pilots"])
+
+    def test_starters_turn_this_weeks_notes_into_questions(self) -> None:
+        conn = FakeConnection()
+        conn.recent = [("Knowledge/Notes/Pilot.md", {"title": "Pilot lessons", "frontmatter": {"type": "transcript"}}, {}), ("Knowledge/Notes/Bare.md", {}, None)]
+        result = store(conn).starters()
+        self.assertEqual(result[0], {"title": "Pilot lessons", "question": "What do my notes say about Pilot lessons?",
+                                     "source_type": "transcript"})
+        self.assertEqual(result[1]["title"], "Bare")
+        self.assertIsNone(result[1]["source_type"])
+        self.assertEqual(store(FakeConnection()).starters(), [])
+
     def test_suggestions_group_by_tag_biggest_first_with_note_cards(self) -> None:
         conn = FakeConnection(suggestions=[
             row("ai-pilots", "d1", "Knowledge/Notes/Pilot.md", {"title": "Pilot lessons"}, {"description": "What we learned."}),

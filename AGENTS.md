@@ -24,13 +24,12 @@ The Markdown vault is outside this repository and is read through `KNOWLEDGE_SOU
 
 ## Web app type scale (fixed)
 
-Only these sizes exist: 12, 14, 16, 18, 22, 26 px. One size per role, and a new screen reuses the roles instead of choosing sizes. `tests/api/test_static.py` rejects any other size.
+The Paper refinement replaced the old six-size scale (12/14/16/18/22/26). Only the sizes in `TYPE_SCALE` in `tests/api/test_static.py` exist: 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15, 16, 17, 17.5, 18, 18.5, 19, 24, 26, 27, 30, 32, 36, 40, 44 (the quote mark on a cited passage) and 46 px. One size per role, and a new screen reuses the roles instead of choosing sizes; the test rejects any other size.
 
-- 26: screen title (serif). 22: sheet or panel heading (serif). 18: answer text and note titles in cards (serif).
-- 16: text you read or write: the question box, the Add box.
-- 14: interface text: rows, tabs, buttons, menu items, descriptions.
-- 12: captions: counts, kickers, section labels, footnotes.
-- Buttons: regular weight, 32 px with a mouse and 44 px on touch; small row actions are 28 px with a larger touch target around them. Icons are Phosphor Light.
+- Newsreader (serif): display heading on a new question 46 (phone 36); page title 40 (phone 32); question 27; answer 18.5; drawer title 26 (phone 24); tag name in the drawer 32 (phone 30); gap text 18.5 (phone 18); cited passage 17.5 (phone 17); note title in a card 17.5; feedback heading 19; brand 17.
+- Geist (sans): small section labels 11, upper case, wide tracking; interface text 14 (history and chips 13.5); sub-lines 15 (intro and helper text 14 to 14.5); captions and meta 12 to 12.5; inputs 16; footnote markers 11 (10.5 when filled).
+- Buttons: regular weight, 32 px with a mouse and 44 px on touch; small row actions are 28 px with a larger touch target around them. Nothing grows beyond that to match a mock-up. Footnote and number chips are weight 500 at most. Icons are Phosphor Light.
+- State (open source, open gaps, open tag, drag target) is shown with a fill, never with a ring or outline; keyboard focus on buttons and links is a thin dark ring.
 
 ## Hosted schema deployment
 

@@ -5,6 +5,7 @@
 // Every piece of text from the server is inserted with textContent, never as HTML.
 (() => {
   let suggested = [];  // [{name, count, notes}]
+  let approved = [];  // tag names the classifier may use
   const busy = new Set();  // tags with a decision being sent
   let loads = 0;  // bumped by every load and every saved decision, so a late list cannot bring back a decided tag
 
@@ -24,7 +25,7 @@
   // Keyboard focus stays in the list after a row leaves it: on the row now in the same place, or the heading.
   function keepFocus(index) {
     const rows = document.querySelectorAll(".tag-open");
-    (rows[Math.min(index, rows.length - 1)] || $("tags-title")).focus();
+    (rows[Math.min(index, rows.length - 1)] || $("tags-empty")).focus();
   }
 
   // Sends one decision. Returns true when the row has left the list (saved, or no longer suggested).
@@ -52,6 +53,7 @@
     const index = suggested.findIndex((tag) => tag.name === name);
     const hadFocus = $("settings").contains(document.activeElement) || $("sheet").contains(document.activeElement);
     suggested = suggested.filter((tag) => tag.name !== name);
+    if (verdict === "approve" && !approved.includes(name)) approved = [...approved, name];
     render();
     if (hadFocus) keepFocus(index);
     announce(`${name} ${verdict === "approve" ? "approved" : "blocked"}`);
@@ -70,23 +72,43 @@
 
   function renderRow(tag) {
     const row = document.createElement("li");
-    row.className = "tag-row";
+    // A list drawn again while this tag's notes are open keeps the row lit.
+    row.className = showingTag(tag.name) ? "tag-row is-active" : "tag-row";
+    row.dataset.tag = tag.name;
     const open = document.createElement("button");
     open.type = "button";
     open.className = "tag-open";
     open.setAttribute("aria-haspopup", "dialog");
-    open.append(textElement("span", "tag-name", tag.name), textElement("span", "tag-count", plural(tag.count)));
+    const line = document.createElement("span");
+    line.className = "tag-line";
+    line.append(textElement("span", "tag-name", tag.name), textElement("span", "tag-count", plural(tag.count)));
+    open.append(line);
+    // A second line names a few of the notes behind the tag (on desktop; the phone row keeps one line).
+    const titles = (tag.notes || []).map((note) => note.title).filter(Boolean).join(", ");
+    if (titles) open.append(textElement("span", "tag-preview", titles));
     open.addEventListener("click", () => openTag(tag, open));
+    // The open row swaps its two buttons for a chevron.
+    const chevron = icon("chevron");
+    chevron.setAttribute("class", "icon tag-open-chevron");
     row.append(open, iconButton("tag-block", "Block", "close", tag, "block"),
-      iconButton("tag-approve", "Approve", "check", tag, "approve"));
+      iconButton("tag-approve", "Approve", "check", tag, "approve"), chevron);
     return row;
   }
 
   function render() {
     $("tags-title").textContent = suggested.length ? `Suggested · ${suggested.length}` : "Suggested";
     $("tag-list").replaceChildren(...suggested.map(renderRow));
+    $("tags-head").hidden = suggested.length === 0;
     $("tags-empty").hidden = suggested.length > 0;
     $("tags-approve-all").hidden = suggested.length < 2;
+    // The tags already in use, read-only.
+    const inUse = $("tags-inuse");
+    inUse.hidden = approved.length === 0;
+    inUse.querySelector("ul").replaceChildren(...approved.map((name) => {
+      const item = document.createElement("li");
+      item.append(textElement("span", "pick-tag", name));
+      return item;
+    }));
   }
 
   function noteCard(note) {
@@ -103,20 +125,27 @@
 
   function fillTag(section, tag) {
     section.dataset.tag = tag.name;
-    const intro = document.createElement("div");
-    intro.className = "source-titles";
-    intro.append(textElement("h3", "sheet-heading", tag.name),
-      textElement("p", "sheet-sub", `${plural(tag.count)} proposed it`));
+    sheet.mark = { kind: "tag", name: tag.name };
+    const scroll = document.createElement("div");
+    scroll.className = "sheet-scroll";
+    const notes = document.createElement("div");
+    notes.className = "tags-list-gap";
+    notes.append(...tag.notes.map(noteCard));
+    scroll.append(textElement("span", "kicker", "Suggested tag"), textElement("h3", "sheet-heading tag-heading", tag.name),
+      textElement("p", "sheet-note", `${plural(tag.count)} proposed it`), notes);
+    // Block on the left, Approve on the right, as on the rows.
     const actions = document.createElement("div");
     actions.className = "sheet-actions";
-    const approve = textElement("button", "primary", "Approve");
-    approve.type = "button";
-    approve.addEventListener("click", () => decide(tag.name, "approve"));
     const block = textElement("button", "", "Block");
     block.type = "button";
     block.addEventListener("click", () => decide(tag.name, "block"));
-    actions.append(approve, block);
-    section.replaceChildren(intro, ...tag.notes.map(noteCard), actions);
+    const approve = document.createElement("button");
+    approve.type = "button";
+    approve.className = "primary";
+    approve.append(icon("check"), "Approve");
+    approve.addEventListener("click", () => decide(tag.name, "approve"));
+    actions.append(block, approve);
+    section.replaceChildren(scroll, actions);
   }
 
   function openTag(tag, opener) {
@@ -137,6 +166,7 @@
       const data = await api("GET", "/api/tags");
       if (mine !== loads) return;  // a decision was saved meanwhile; this list may still hold that tag
       suggested = data.suggested || [];
+      approved = data.approved || [];
       render();
     } catch (error) {
       if (error.status !== 401) message("Could not load the suggested tags. Check your connection and try again.");
