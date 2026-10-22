@@ -226,12 +226,19 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 /* The composer is pinned to the bottom over a fade, so the thread scrolls under it. */
 .composer { position: absolute; left: 0; right: 0; bottom: 0; padding: 48px 24px calc(20px + env(safe-area-inset-bottom)); background: linear-gradient(to bottom, rgba(246, 244, 239, 0), var(--ground) 42%); pointer-events: none; }
 .composer-box, .composer-hint, .starters { pointer-events: auto; }
-.starters { max-width: 680px; margin: 14px auto 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
-.view-ask:not(.is-empty) .starters { display: none; }
-.starter { width: 100%; justify-content: flex-start; text-align: left; padding: 0 14px; background: transparent; color: var(--ink-soft); font-size: 13.5px; }
+.starters { max-width: 640px; margin: 28px auto 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
+.starters[hidden] { display: none; }
+.starters::before { content: "From notes you added this week"; padding: 0 4px 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.starters li { border-top: 1px solid var(--hairline-bar); }
+.starters li:last-child { border-bottom: 1px solid var(--hairline-bar); }
+.starter { width: 100%; min-height: 44px; height: 44px; padding: 0 4px; border-radius: 0; background: transparent; display: flex; align-items: center; justify-content: flex-start; gap: 12px; text-align: left; color: var(--ink); }
 .starter:hover:not(:disabled) { background: var(--hover); }
-.starter-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.composer-box { max-width: 680px; min-height: 56px; margin: 0 auto; border-radius: 22px; background: var(--paper); box-shadow: var(--shadow-paper); display: flex; align-items: flex-end; gap: 8px; padding: 8px 8px 8px 22px; }
+.starter-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--serif); font-size: 17px; }
+.starter-kind { flex: none; font-size: 12px; color: var(--muted); }
+.view-ask:not(.is-empty) .starters { display: none; }
+/* The phone list sits under the heading; the wide one under the question bar. */
+.starters-compact { display: none; }
+.composer-box { max-width: 680px; min-height: 56px; margin: 0 auto; border-radius: 22px; background: var(--paper); box-shadow: var(--shadow-paper); display: flex; align-items: flex-end; gap: 8px; padding: 10px 10px 10px 22px; }
 .composer-box:focus-within { box-shadow: 0 0 0 1px rgba(29, 28, 26, 0.22), var(--shadow-paper); }
 .app[data-sheet] .composer-box { max-width: 640px; }
 .composer textarea { border: 0; flex: 1; min-width: 0; resize: none; overflow-y: auto; scrollbar-width: none; min-height: 36px; max-height: 200px; padding: 7px 0; background: transparent; border-radius: 0; font-size: 16px; line-height: 1.45; }
@@ -462,7 +469,7 @@ span.pick-tag { background: var(--paper); box-shadow: 0 0 0 1px rgba(29, 28, 26,
   .sidebar-collapsed .account-menu { left: 4px; }
   .view-ask.is-empty .composer { position: static; width: 100%; max-width: 688px; padding: 36px 24px 0; background: none; }
   .view-ask.is-empty .composer-hint { display: none; }
-  .view-ask.is-empty .composer-box { max-width: 640px; min-height: 60px; }
+  .view-ask.is-empty .composer-box { max-width: 640px; min-height: 60px; padding-top: 12px; padding-bottom: 12px; }
   /* Source, Gaps and a tag's notes: a floating paper drawer inset from the window edge. */
   .scrim { background: transparent; }
   .sheet { left: auto; right: 10px; top: 10px; bottom: 10px; width: var(--panel-w); max-height: none; border-radius: 18px; padding: 0; box-shadow: var(--shadow-drawer); }
@@ -527,7 +534,13 @@ span.pick-tag { background: var(--paper); box-shadow: 0 0 0 1px rgba(29, 28, 26,
   .empty-state h1 { margin-top: 12px; font-size: 36px; line-height: 1.08; letter-spacing: -0.026em; }
   .empty-state p { margin-top: 10px; font-size: 14.5px; }
   .composer { padding: 40px 12px calc(34px + env(safe-area-inset-bottom)); }
-  .composer-box { min-height: 54px; border-radius: 27px; padding: 7px 7px 7px 20px; }
+  .composer-box { min-height: 54px; border-radius: 27px; padding: 9px 9px 9px 20px; }
+  .view-ask.is-empty .starters { display: none; }
+  .view-ask.is-empty .starters-compact { display: flex; margin: 28px 0 0; }
+  .starters-compact::before { content: none; }
+  .starters-compact .starter { height: auto; min-height: 52px; padding: 0; }
+  .starters-compact .starter-label { white-space: normal; overflow: visible; line-height: 1.3; }
+  .starters-compact .starter-kind { display: none; }
   .view-add h1, .view-settings h1 { font-size: 32px; line-height: 1.1; letter-spacing: -0.024em; }
   .add-sub { margin-top: 8px; font-size: 14.5px; }
   .add-sub-more { display: none; }

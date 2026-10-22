@@ -217,29 +217,36 @@ function setTitle(title) {
 }
 
 // Up to three questions made from notes added this week. A failure just leaves them out.
+// Two lists carry the same rows: under the question bar on a wide screen, under the heading on a phone.
+const STARTER_KINDS = { transcript: "Transcript", article: "Article", highlights: "Highlights", social_post: "Post" };
 let startersLoads = 0;
 async function loadStarters() {
   const mine = ++startersLoads;
-  const list = $("starters");
+  const lists = ["starters", "starters-compact"].map((id) => $(id));
   try {
     const { starters } = await api("GET", "/api/starters");
     if (mine !== startersLoads) return;
-    list.replaceChildren(...(starters || []).map((item) => {
-      const row = document.createElement("li");
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "chip-button starter";
-      const label = document.createElement("span");
-      label.className = "starter-label";
-      label.textContent = item.question;
-      button.append(label);
-      button.addEventListener("click", () => ask(item.question));
-      row.append(button);
-      return row;
-    }));
-    list.hidden = list.children.length === 0;
+    for (const list of lists) {
+      list.replaceChildren(...(starters || []).map((item) => {
+        const row = document.createElement("li");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "starter";
+        const label = document.createElement("span");
+        label.className = "starter-label";
+        label.textContent = item.question;
+        const kind = document.createElement("span");
+        kind.className = "starter-kind";
+        kind.textContent = item.source_type ? STARTER_KINDS[item.source_type] || "Note" : "Note";
+        button.append(label, kind);
+        button.addEventListener("click", () => ask(item.question));
+        row.append(button);
+        return row;
+      }));
+      list.hidden = list.children.length === 0;
+    }
   } catch (error) {
-    if (mine === startersLoads) list.hidden = true;
+    if (mine === startersLoads) for (const list of lists) list.hidden = true;
   }
 }
 
