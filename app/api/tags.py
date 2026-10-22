@@ -38,16 +38,21 @@ RECENT_SQL = """select d.relative_path, r.parsed->'metadata', p.properties
     limit 3"""
 
 
+def _kind(metadata: dict[str, Any], properties: dict[str, Any]) -> str | None:
+    frontmatter = metadata.get("frontmatter") if isinstance(metadata.get("frontmatter"), dict) else {}
+    kind = frontmatter.get("type") or frontmatter.get("source_type") or properties.get("source_type")
+    return kind if isinstance(kind, str) else None
+
+
 def _note(row, vault_name: str) -> dict[str, Any]:
     _, document_id, relative_path, metadata, properties = row
     metadata = metadata if isinstance(metadata, dict) else {}
     properties = properties if isinstance(properties, dict) else {}
     title, people, _ = source_label({**metadata, "generated": properties}, relative_path)
-    frontmatter = metadata.get("frontmatter") if isinstance(metadata.get("frontmatter"), dict) else {}
-    kind = frontmatter.get("type") or frontmatter.get("source_type") or properties.get("source_type")
+    kind = _kind(metadata, properties)
     description = metadata.get("description") or properties.get("description")
     return {"document_id": document_id, "title": title, "people": people,
-            "source_type": kind if isinstance(kind, str) else None,
+            "source_type": kind,
             "description": description if isinstance(description, str) else None,
             "obsidian_url": obsidian_link(vault_name, relative_path)}
 
@@ -80,7 +85,8 @@ class TagStore:
             metadata = metadata if isinstance(metadata, dict) else {}
             properties = properties if isinstance(properties, dict) else {}
             title, _, _ = source_label({**metadata, "generated": properties}, relative_path)
-            starters.append({"title": title, "question": f"What do my notes say about {title}?"})
+            starters.append({"title": title, "question": f"What do my notes say about {title}?",
+                             "source_type": _kind(metadata, properties)})
         return starters
 
     def decide(self, name: str, status: str) -> None:

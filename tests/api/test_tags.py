@@ -73,10 +73,12 @@ class TagStoreTests(unittest.TestCase):
 
     def test_starters_turn_this_weeks_notes_into_questions(self) -> None:
         conn = FakeConnection()
-        conn.recent = [("Knowledge/Notes/Pilot.md", {"title": "Pilot lessons"}, {}), ("Knowledge/Notes/Bare.md", {}, None)]
+        conn.recent = [("Knowledge/Notes/Pilot.md", {"title": "Pilot lessons", "frontmatter": {"type": "transcript"}}, {}), ("Knowledge/Notes/Bare.md", {}, None)]
         result = store(conn).starters()
-        self.assertEqual(result[0], {"title": "Pilot lessons", "question": "What do my notes say about Pilot lessons?"})
+        self.assertEqual(result[0], {"title": "Pilot lessons", "question": "What do my notes say about Pilot lessons?",
+                                     "source_type": "transcript"})
         self.assertEqual(result[1]["title"], "Bare")
+        self.assertIsNone(result[1]["source_type"])
         self.assertEqual(store(FakeConnection()).starters(), [])
 
     def test_suggestions_group_by_tag_biggest_first_with_note_cards(self) -> None:
