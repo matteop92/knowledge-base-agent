@@ -110,10 +110,11 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 .column { width: 100%; max-width: 640px; margin: 0 auto; }
 
 /* Sidebar */
-.sidebar { display: flex; flex-direction: column; padding: 14px 12px 12px; background: var(--sidebar); min-height: 0; }
+.sidebar { display: flex; flex-direction: column; padding: 14px 12px 12px; background: var(--sidebar); min-height: 0; overflow-x: hidden; }
 .sidebar-top { height: var(--ctl); display: flex; align-items: center; gap: 10px; padding: 0 4px 0 6px; }
 .brand-tile { width: 26px; height: 26px; border-radius: 7px; box-shadow: 0 0 0 1px rgba(29, 28, 26, 0.08), 0 1px 2px rgba(29, 28, 26, 0.06); flex: none; }
-.sidebar-top .brand { flex: 1; min-width: 0; }
+.sidebar-top .brand { flex: 1; min-width: 0; white-space: nowrap; }
+.sidebar .label { white-space: nowrap; }
 #collapse, .nav-close { border-radius: 9px; color: var(--ink-soft); }
 .nav-close { display: none; }
 .side-nav { margin-top: 14px; display: flex; flex-direction: column; gap: 2px; }
