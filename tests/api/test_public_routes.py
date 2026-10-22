@@ -30,6 +30,7 @@ class PublicRouteTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(self.client.post(path, json={}).status_code, 401)
         self.assertEqual(self.client.get("/api/tags").status_code, 401)
+        self.assertEqual(self.client.get("/api/starters").status_code, 401)
 
     def test_codes_go_only_to_the_allowed_address(self):
         self.client.post("/auth/code", json={"email": "someone@example.com"})

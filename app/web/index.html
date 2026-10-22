@@ -20,7 +20,6 @@
   <svg class="sprite" aria-hidden="true" focusable="false">
     <symbol id="i-ask" viewBox="0 0 256 256"><path fill="currentColor" d="M128,26A102,102,0,0,0,38.35,176.69L26.73,211.56a14,14,0,0,0,17.71,17.71l34.87-11.62A102,102,0,1,0,128,26Zm0,192a90,90,0,0,1-45.06-12.08,6.09,6.09,0,0,0-3-.81,6.2,6.2,0,0,0-1.9.31L40.65,217.88a2,2,0,0,1-2.53-2.53L50.58,178a6,6,0,0,0-.5-4.91A90,90,0,1,1,128,218Z"/></symbol>
     <symbol id="i-add" viewBox="0 0 256 256"><path fill="currentColor" d="M222,128a6,6,0,0,1-6,6H134v82a6,6,0,0,1-12,0V134H40a6,6,0,0,1,0-12h82V40a6,6,0,0,1,12,0v82h82A6,6,0,0,1,222,128Z"/></symbol>
-    <symbol id="i-history" viewBox="0 0 256 256"><path fill="currentColor" d="M134,80v44.6l37.09,22.25a6,6,0,0,1-6.18,10.3l-40-24A6,6,0,0,1,122,128V80a6,6,0,0,1,12,0Zm-6-46A93.4,93.4,0,0,0,61.51,61.56c-8.58,8.68-16,17-23.51,25.8V64a6,6,0,0,0-12,0v40a6,6,0,0,0,6,6H72a6,6,0,0,0,0-12H44.73C52.86,88.29,60.79,79.35,70,70a82,82,0,1,1,1.7,117.62,6,6,0,1,0-8.24,8.72A94,94,0,1,0,128,34Z"/></symbol>
     <symbol id="i-panel" viewBox="0 0 256 256"><path fill="currentColor" d="M216,42H40A14,14,0,0,0,26,56V200a14,14,0,0,0,14,14H216a14,14,0,0,0,14-14V56A14,14,0,0,0,216,42ZM38,200V56a2,2,0,0,1,2-2H82V202H40A2,2,0,0,1,38,200Zm180,0a2,2,0,0,1-2,2H94V54H216a2,2,0,0,1,2,2Z"/></symbol>
     <symbol id="i-send" viewBox="0 0 256 256"><path fill="currentColor" d="M204.24,116.24a6,6,0,0,1-8.48,0L134,54.49V216a6,6,0,0,1-12,0V54.49L60.24,116.24a6,6,0,0,1-8.48-8.48l72-72a6,6,0,0,1,8.48,0l72,72A6,6,0,0,1,204.24,116.24Z"/></symbol>
     <symbol id="i-down" viewBox="0 0 256 256"><path fill="currentColor" d="M128,26A102,102,0,1,0,230,128,102.12,102.12,0,0,0,128,26Zm0,192a90,90,0,1,1,90-90A90.1,90.1,0,0,1,128,218Zm46-58a6,6,0,0,1-6,6H88a6,6,0,0,1,0-12h80A6,6,0,0,1,174,160ZM82,108a10,10,0,1,1,10,10A10,10,0,0,1,82,108Zm92,0a10,10,0,1,1-10-10A10,10,0,0,1,174,108Z"/></symbol>
@@ -65,28 +64,29 @@
   <div id="app" class="app" hidden>
     <aside id="sidebar" class="sidebar" aria-label="Navigation">
       <div class="sidebar-top">
+        <img class="brand-tile" src="/static/icons/icon-192.png" alt="" width="26" height="26">
         <span class="brand label">Knowledge Agent</span>
         <button type="button" id="collapse" class="icon-button" aria-label="Sidebar" aria-expanded="true"><svg class="icon"><use href="#i-panel"/></svg></button>
         <button type="button" id="nav-close" class="icon-button nav-close" aria-label="Close navigation"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button>
       </div>
       <nav class="side-nav" aria-label="Main">
         <button type="button" class="side-item" data-tab="ask" aria-label="Ask"><svg class="icon" aria-hidden="true"><use href="#i-ask"/></svg><span class="label">Ask</span></button>
-        <button type="button" class="side-item" data-tab="add" aria-label="Add"><svg class="icon" aria-hidden="true"><use href="#i-add"/></svg><span class="label">Add</span></button>
-        <button type="button" id="sidebar-history" class="side-item" aria-label="History" aria-expanded="true" aria-controls="history-panel"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg><span class="label">History</span><svg class="icon chevron label" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+        <button type="button" class="side-item" data-tab="add" aria-label="Add to notes"><svg class="icon" aria-hidden="true"><use href="#i-add"/></svg><span class="label">Add to notes</span></button>
       </nav>
+      <button type="button" id="sidebar-history" class="history-toggle" aria-label="History" aria-expanded="true" aria-controls="history-panel"><span class="section-title">History</span><svg class="icon chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
       <div id="history-panel" class="history-panel">
-        <ul id="conversation-list" class="conversation-list"></ul>
+        <div id="conversation-list" class="conversation-list"></div>
         <p class="conversation-empty" hidden>No conversations yet.</p>
       </div>
       <div class="sidebar-foot">
         <button type="button" id="account-button" class="avatar" aria-label="Account" aria-expanded="false" aria-controls="account-menu"><svg class="icon" aria-hidden="true"><use href="#i-user"/></svg></button>
+        <span class="account-name label">Account</span>
+        <button type="button" id="open-settings" class="icon-button gear" aria-label="Settings"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg></button>
         <div id="account-menu" class="account-menu" aria-label="Account" hidden>
-          <button type="button" id="open-settings" class="menu-item"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg>Settings</button>
           <button type="button" class="menu-item sign-out">Sign out</button>
           <button type="button" class="menu-item sign-out-everywhere">Sign out everywhere</button>
           <p class="message small sign-out-message" role="alert"></p>
         </div>
-        <button type="button" id="new-question" class="new-pill" aria-label="New question"><svg class="icon" aria-hidden="true"><use href="#i-add"/></svg><span class="label">New question</span></button>
       </div>
     </aside>
     <div id="nav-scrim" class="scrim nav-scrim" hidden></div>
@@ -104,8 +104,10 @@
           <main class="thread">
             <div class="column">
               <section id="empty-state" class="empty-state">
+                <p id="empty-date" class="empty-date"></p>
                 <h1>Ask your notes anything.</h1>
                 <p class="muted">Answers cite the exact passages they used.</p>
+                <ul id="starters-compact" class="starters starters-compact" aria-label="Suggested questions" hidden></ul>
               </section>
               <ol id="turns" class="turns"></ol>
             </div>
@@ -116,16 +118,25 @@
               <textarea id="question" rows="1" placeholder="Ask a question" required></textarea>
               <button type="submit" id="ask" class="send" aria-label="Ask"><svg class="icon"><use href="#i-send"/></svg></button>
             </div>
+            <ul id="starters" class="starters" aria-label="Suggested questions" hidden></ul>
+            <p class="composer-hint">Enter to ask · Shift + Enter for a new line</p>
           </form>
         </section>
 
         <section id="capture" class="view view-add capture" hidden aria-labelledby="add-title">
           <div class="column">
+            <button type="button" id="gap-back" class="gap-back" hidden><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg>Back to the answer</button>
             <h1 id="add-title">Add to your notes</h1>
+            <p id="add-sub" class="add-sub">Text, a link, a screenshot or a Markdown file.<span class="add-sub-more"> It’s filed in the right folder for you.</span></p>
             <p id="capture-disabled" class="message" hidden>Adding notes is not switched on yet: the server's sync is still download-only.</p>
+            <section id="gap-panel" class="gap-panel" aria-label="Gap to fill" hidden>
+              <span class="kicker">Missing from your notes</span>
+              <p id="gap-panel-text" class="gap-panel-text"></p>
+              <span id="gap-panel-from" class="gap-panel-from"></span>
+            </section>
             <form id="capture-form" class="capture-form card">
               <label for="capture-text" class="sr-only">Paste text or a link</label>
-              <textarea id="capture-text" rows="2" placeholder="Paste text or a link, or attach a screenshot or .md file"></textarea>
+              <textarea id="capture-text" rows="2" placeholder="Paste or type here…"></textarea>
               <img id="capture-preview" class="capture-preview" alt="Screenshot to be saved" hidden>
               <div id="capture-detect" class="detect" aria-live="polite" hidden>
                 <span class="detect-icon"><svg class="icon" aria-hidden="true"><use id="capture-detect-icon" href="#i-doc"/></svg></span>
@@ -135,26 +146,40 @@
                 </div>
               </div>
               <details id="capture-more" class="more">
-                <summary>Title and tags (optional)<svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
+                <summary>Title and tags<span class="muted">&nbsp;· optional</span><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
                 <div class="more-fields">
-                  <label class="small field">Title
+                  <label class="field">Title
                     <input id="capture-title" maxlength="200">
                   </label>
-                  <label class="small field">Tags (separated by commas)
-                    <input id="capture-tags" maxlength="400">
-                  </label>
+                  <div class="field" role="group" aria-labelledby="capture-tags-label">
+                    <span id="capture-tags-label">Tags</span>
+                    <div id="capture-tag-field" class="tag-field">
+                      <ul id="capture-tag-chips" class="tag-chips"></ul>
+                      <input id="capture-tags" maxlength="400" placeholder="Add a tag" aria-labelledby="capture-tags-label">
+                    </div>
+                    <div id="capture-tag-pick" class="tag-pick" hidden>
+                      <span class="kicker">In use</span>
+                      <ul id="capture-tag-pick-list" class="pick-list"></ul>
+                    </div>
+                  </div>
+                  <p id="capture-tag-status" class="sr-only" aria-live="polite"></p>
                 </div>
               </details>
               <input id="capture-kind" type="hidden" value="text">
               <div class="card-actions">
                 <button type="button" id="capture-attach" class="attach" aria-label="Attach a screenshot or .md file"><svg class="icon" aria-hidden="true"><use href="#i-paperclip"/></svg></button>
+                <span id="capture-drop-hint" class="drop-hint">or drop a file anywhere</span>
                 <input id="capture-file" type="file" hidden accept="image/png,image/jpeg,image/webp,.md,.markdown,.txt,text/markdown,text/plain">
                 <button type="submit" id="capture-save" class="primary" disabled>Save</button>
               </div>
               <p id="capture-message" class="message" role="alert"></p>
             </form>
+            <p id="gap-after" class="gap-after" hidden>Once it’s searchable, ask again and the answer can use it.</p>
             <section class="recent" aria-labelledby="recent-title">
-              <h2 id="recent-title" class="section-title">Recent</h2>
+              <div class="recent-head">
+                <h2 id="recent-title" class="section-title">Recent</h2>
+                <span id="recent-count" class="recent-count" hidden></span>
+              </div>
               <ul id="capture-list" class="capture-list"></ul>
             </section>
           </div>
@@ -167,18 +192,33 @@
             <nav class="settings-tabs" aria-label="Settings sections">
               <button type="button" class="settings-tab" aria-current="page">Tags</button>
             </nav>
-            <div class="tags-head">
+            <p class="tags-intro"><span class="tags-intro-full">When several notes point at a topic your tag list doesn’t have, the agent suggests a new tag. Approve it to use it on notes you add from now on; block it to stop it coming back.</span><span class="tags-intro-short">New tags the agent suggests. Approve to use one from now on; block to stop it coming back.</span></p>
+            <div id="tags-head" class="tags-head">
               <h2 id="tags-title" class="section-title" tabindex="-1">Suggested</h2>
               <button type="button" id="tags-approve-all" class="chip-button" hidden>Approve all</button>
             </div>
             <ul id="tag-list" class="tag-list" aria-labelledby="tags-title"></ul>
-            <p id="tags-empty" class="muted caption" hidden>No suggested tags right now.</p>
+            <div id="tags-empty" class="tags-empty" tabindex="-1" hidden>
+              <span class="tags-empty-mark"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg></span>
+              <span class="tags-empty-title">All caught up</span>
+              <p>New suggestions appear here when your notes point at a topic the tag list doesn’t cover.</p>
+            </div>
+            <div id="tags-inuse" class="tags-inuse" hidden>
+              <h2 id="tags-inuse-title" class="section-title">In use</h2>
+              <ul class="pick-list" aria-labelledby="tags-inuse-title"></ul>
+            </div>
             <p id="tags-message" class="message" role="alert"></p>
-            <p class="muted caption">Approved tags apply to notes you add from now on. Older notes keep their tags.</p>
+            <p class="muted caption tags-note">Approved tags apply to notes you add from now on. Older notes keep their tags.</p>
           </div>
         </section>
       </div>
 
+      <!-- Shown while a file is dragged over the page. -->
+      <div id="drop-target" class="drop-target" aria-hidden="true" hidden>
+        <span class="drop-tile"><svg class="icon" aria-hidden="true"><use href="#i-image"/></svg></span>
+        <span class="drop-title">Drop to add</span>
+        <span class="drop-sub">Screenshots, .md and .txt files</span>
+      </div>
     </div>
 
     <!-- One sheet for Source, Gaps, Feedback and a tag's notes: a bottom sheet on phones, a panel from the right on desktop. -->
@@ -197,11 +237,19 @@
     </div>
   </div>
 
+  <!-- The phone's "Saving…" message. -->
+  <div id="toast" class="toast" role="status" aria-live="polite">
+    <span class="toast-icon"><svg class="icon" aria-hidden="true"><use href="#i-saving"/></svg></span>
+    <span class="toast-text"><span class="toast-title"></span><span class="toast-sub"></span></span>
+  </div>
+
   <template id="turn-template">
     <li class="turn">
+      <div class="turn-meta"></div>
       <h2 class="question"></h2>
       <div class="answer-block">
-        <p class="turn-state muted"></p>
+        <div class="turn-state"></div>
+        <div class="skeleton" aria-hidden="true" hidden><span></span><span></span><span></span></div>
         <div class="answer"></div>
         <p class="run-note" hidden></p>
         <div class="answer-row" hidden>
