@@ -25,26 +25,28 @@ versions by name.
 
 ## Changelog
 
+The notes below come from the commit that introduced each version.
+
 **Answer agent**
-- v1 to v5: first harness, tools and action schema.
-- v6 to v9: tighter search habits (short queries, no long lists of facets), host-run first search.
-- v10 to v12: speaker-aware attribution, no closing offers, safe stop reasons when the budget runs low.
-- v13: replaces "cover every point in the passages read" with a relevance test in the question's own words.
+- v1 to v8: the first local retrieval and cited-answer harness, refined over several rounds.
+- v9: deeper, source-grounded investigation.
+- v11 to v13: the host runs the first search and the agent reads whole chunks.
+- v13: adds a relevance test in the question's own words in place of "cover every point in the passages read".
   On one run per question it cut points outside the question's scope from 9 to 3 against v12, with a similar overall checklist score. The accepted baseline.
 - v14: the follow-up variant of v13, with conversation memory.
 
 **Grader**
-- v1: grades an answer against a short list of checks.
-- v2 and v3: trial versions with a numeric scale.
-- v4: gives the grader each source's title and people, and grades the 85-check checklist on three dimensions (coverage, grounding, scope).
+- v1: grades an answer against frozen question-specific checks.
+- v2 and v3: the three-dimension checklist (coverage, grounding, scope).
+- v4: gives the grader each source's title and people. Used for the frozen 85-check checklist.
 
 **Properties classifier**
-- v1: source type only.
-- v2: adds tags from the approved list.
-- v3: tags may come from the note's own tags only if they are on the approved list; empty list allowed; suggests new tags.
+- v1: fills missing type, tags, people, date and description from an approved tag list.
+- v2: each tag gets a one-line definition, and a note gets at most three tags.
+- v3: a note's own list tags are hints beside the approved ones, seven approved tags added, and the tag "technology" blocked.
 
 **Summaries (trial)**
-- document and section v1 to v17, group v2 and v3: seventeen rounds of the hierarchical summary experiment. Summaries were later dropped from the live profile, so only v1 stays in this folder.
+- document and section v1 to v17, group v2 and v3: rounds of the hierarchical summary experiment, run as bounded trials. Summaries are not part of the live profile, so only v1 stays in this folder.
 
 **Chunk context**
-- v1: first one-sentence context. v2: capped at 60 words, no invented facts, speaker attribution kept.
+- v1: one-sentence context for each chunk. v2: capped at 60 words, no invented facts, speaker attribution kept (used by the chunking trial).
