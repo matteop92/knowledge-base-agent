@@ -124,6 +124,20 @@ class AnswerCostTests(unittest.TestCase):
         self.assertGreater(worst, 0)
         self.assertLessEqual(worst, settings().answer.max_usd_per_answer)
 
+    def test_the_web_answer_limit_is_2500_and_the_worst_case_counts_its_full_allowance(self) -> None:
+        from decimal import Decimal
+        from app.agent.records import AnswerLimits
+        from app.api.answers import OpenRouterAnswerEngine
+
+        engine = OpenRouterAnswerEngine(settings(), connect=lambda: None)
+        self.assertEqual(engine.limits.max_output_tokens, 2500)
+        raised = engine.worst_case_usd()
+        engine.limits = AnswerLimits()
+        answer = settings().answer
+        # Every allowed request at four times the visible limit, at the generation price ceiling.
+        extra = Decimal(answer.request_budget * (2500 - 900) * 4) * answer.max_generation_usd_per_million / 1_000_000
+        self.assertEqual(raised - engine.worst_case_usd(), extra)
+
     def test_unknown_or_missing_usage_is_flagged(self) -> None:
         from decimal import Decimal
         from app.agent.endpoints import AnswerRoutes, measured_usd

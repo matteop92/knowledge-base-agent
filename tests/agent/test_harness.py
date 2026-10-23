@@ -395,6 +395,59 @@ class HarnessTest(unittest.TestCase):
         self.assertEqual(result.actions[0], {'action': 'invalid', 'reason': 'malformed_output'})
         self.assertIn('no prose or Markdown fences', client.correction_input)
 
+    def test_a_cut_off_reply_gets_one_retry_asking_for_a_shorter_one(self):
+        from app.models.client import ModelClientError
+
+        class CutOnce(FakeClient):
+            calls = 0
+            retry_input = None
+
+            def generate_json(self, **kwargs):
+                self.calls += 1
+                if self.calls == 2:
+                    raise ModelClientError('OpenRouter structured output was incomplete (finish=length)')
+                if self.calls == 3:
+                    self.retry_input = kwargs['input_text']
+                return super().generate_json(**kwargs)
+
+        client = CutOnce([action('read', reference_id='E1', span_index=0),
+            action('finish', answer='Verified [E1.0]', citation_ids=['E1.0'],
+                   completeness='complete', sufficient=True)])
+        result = answer_question('Explain', retriever=FakeRetriever(), client=client,
+                                 model=MODEL, limits=AnswerLimits(max_model_calls=4))
+        self.assertEqual(result.termination, 'completed')
+        self.assertEqual(result.model_calls, 3)
+        self.assertEqual(result.actions[1], {'action': 'invalid', 'reason': 'completion_budget'})
+        self.assertIn('cut off because it was too long', client.retry_input)
+        self.assertEqual(result.citations['E1.0'].text, 'actual source')
+
+    def test_a_second_cut_off_reply_stops_after_one_retry(self):
+        from app.models.client import ModelClientError
+
+        class AlwaysCut(FakeClient):
+            def generate_json(self, **kwargs):
+                raise ModelClientError('OpenRouter structured output was incomplete (finish=length)')
+
+        result = answer_question('Explain', retriever=FakeRetriever(), client=AlwaysCut([]),
+                                 model=MODEL, limits=AnswerLimits(max_model_calls=5))
+        self.assertEqual(result.termination, 'model_failed')
+        self.assertEqual(result.model_calls, 2)
+        self.assertEqual(result.gaps, ['Model stopped: completion_budget.'])
+        self.assertEqual([a['action'] for a in result.actions], ['invalid', 'model_failed'])
+
+    def test_a_cut_off_reply_is_not_retried_without_a_model_call_left(self):
+        from app.models.client import ModelClientError
+
+        class AlwaysCut(FakeClient):
+            def generate_json(self, **kwargs):
+                raise ModelClientError('OpenRouter structured output was incomplete (finish=length)')
+
+        result = answer_question('Explain', retriever=FakeRetriever(), client=AlwaysCut([]),
+                                 model=MODEL, limits=AnswerLimits(max_model_calls=1))
+        self.assertEqual(result.termination, 'model_failed')
+        self.assertEqual(result.model_calls, 1)
+        self.assertEqual([a['action'] for a in result.actions], ['model_failed'])
+
     def test_second_malformed_json_stops_after_one_correction(self):
         from app.models.client import ModelClientError
 

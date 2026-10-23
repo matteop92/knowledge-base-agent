@@ -52,6 +52,10 @@ def passage(text="The pear is ripe.") -> SourcePassage:
                          end_char=len(text), text=text)
 
 
+USAGE = {"model": "openai/gpt-5-mini", "input_tokens": 900, "output_tokens": 3600, "reasoning_tokens": 3400,
+         "finish_reason": "length"}
+
+
 class FakeEngine:
     def __init__(self) -> None:
         self.limits = AnswerLimits(max_seconds=5)
@@ -71,7 +75,7 @@ class FakeEngine:
         if self.mode == "error":
             raise RuntimeError("model failed")
         if self.mode == "failed_after_billing":
-            raise AnswerFailed(0.05) from RuntimeError(f"provider echoed: {question}")
+            raise AnswerFailed(0.05, [USAGE]) from RuntimeError(f"provider echoed: {question}")
         if self.mode == "gaps":
             result = AnswerResult(answer="Partly.", completeness="partial", citations={"E1.1": passage()},
                                   gaps=["No source covers winter."], actions=[], model_calls=3, termination="exhausted")
@@ -79,7 +83,7 @@ class FakeEngine:
             result = AnswerResult(answer="The pear is ripe [E1.1].", completeness="complete",
                                   citations={"E1.1": passage()}, inspected={"E1.1": passage()}, gaps=[], actions=[],
                                   model_calls=2)
-        return AnswerOutcome(result, 0.02)
+        return AnswerOutcome(result, 0.02, [USAGE])
 
 
 @unittest.skipUnless(TestClient and os.getenv("KNOWLEDGE_TEST_DATABASE_URL"),
@@ -155,6 +159,7 @@ class ApiTests(unittest.TestCase):
         self.engine.release.set()
         turn = self.finished(started["turn_id"])
         self.assertEqual(turn["status"], "done")
+        self.assertEqual(turn["receipt"]["model_usage"], [USAGE])
         citation = turn["receipt"]["citations"]["E1.1"]
         self.assertEqual(citation["text"], "The pear is ripe.")
         self.assertEqual(citation["obsidian_url"], obsidian_link("New Vault", "Knowledge/Notes/pear tree.md"))
@@ -177,6 +182,7 @@ class ApiTests(unittest.TestCase):
         turn = self.finished(self.ask().json()["turn_id"])
         self.assertEqual(turn["status"], "failed")
         self.assertIn("try again", turn["error"])
+        self.assertIsNone(turn["receipt"])
 
     def test_a_second_ask_while_one_runs_is_refused_and_follow_ups_continue_the_conversation(self):
         self.sign_in()
@@ -278,6 +284,7 @@ class ApiTests(unittest.TestCase):
         with self.assertLogs("knowledge", level=logging.INFO) as captured:
             turn = self.finished(self.ask("Secret orchard question?").json()["turn_id"])
         self.assertEqual(turn["status"], "failed")
+        self.assertEqual(turn["receipt"], {"model_usage": [USAGE]})
         self.assertNotIn("Secret orchard", "\n".join(captured.output))
         with psycopg.connect(os.environ["KNOWLEDGE_TEST_DATABASE_URL"], autocommit=True) as conn:
             self.assertEqual(conn.execute("select source, estimated_usd from knowledge.spend").fetchall(),
@@ -307,3 +314,51 @@ class ApiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReceiptTokenTests(unittest.TestCase):
+    """No database: the receipt a turn stores carries each request's token counts."""
+
+    def run_turn(self, mode: str) -> dict:
+        class Store:
+            finished: dict = {}
+
+            def prior_turns(self, *args):
+                return []
+
+            def finish_turn(self, turn_id, **values):
+                self.finished = values
+
+        class Conn:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def execute(self, *args):
+                return self
+
+            def fetchall(self):
+                return []
+
+        from app.api.answers import AnswerJobs
+        engine = FakeEngine()
+        engine.mode = mode
+        store = Store()
+        AnswerJobs(store, engine, Conn, settings())._run("conversation-1", "turn-1", "Is the pear ripe?")
+        return store.finished
+
+    def test_an_answered_turn_stores_its_token_counts(self):
+        finished = self.run_turn("done")
+        self.assertEqual(finished["status"], "done")
+        self.assertEqual(finished["receipt"]["model_usage"], [USAGE])
+
+    def test_a_failed_turn_stores_only_its_token_counts(self):
+        finished = self.run_turn("failed_after_billing")
+        self.assertEqual(finished["status"], "failed")
+        self.assertEqual(finished["receipt"], {"model_usage": [USAGE]})
+        self.assertEqual(finished["cost_usd"], 0.05)
+
+    def test_a_turn_that_fails_before_any_request_stores_no_receipt(self):
+        self.assertIsNone(self.run_turn("error")["receipt"])

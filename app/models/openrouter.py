@@ -66,6 +66,8 @@ class OpenRouterClient:
         self.billable_usages: list[ModelUsage] = []
         self.billable_requests: list[tuple[str, ModelUsage]] = []
         self.request_timings: list[tuple[str, float]] = []
+        # Token counts per billed request, for answer receipts; never any request or reply text.
+        self.usage_log: list[dict[str, Any]] = []
         self.rate_limit_retries = 0
 
     @property
@@ -215,6 +217,10 @@ class OpenRouterClient:
             usage = self._usage(data)
             self.billable_usages.append(usage)
             self.billable_requests.append((str(payload.get("model", "")), usage))
+            details = (data.get("usage") or {}).get("completion_tokens_details")
+            self.usage_log.append({"model": str(payload.get("model", "")), "input_tokens": usage.input_tokens,
+                                   "output_tokens": usage.output_tokens,
+                                   "reasoning_tokens": details.get("reasoning_tokens") if isinstance(details, dict) else None})
             return data
         raise ModelClientError("OpenRouter rate limit retries exhausted")
 
@@ -269,9 +275,12 @@ class OpenRouterClient:
         route = self._model_providers.get(model.model_id, self._provider)
         if route is not None:
             payload["provider"] = route
+        logged = len(self.usage_log)
         response = self._post("/chat/completions", payload, [system_prompt, input_text, *images])
         choices = response.get("choices")
         finish = choices[0].get("finish_reason") if isinstance(choices, list) and choices and isinstance(choices[0], dict) else None
+        if len(self.usage_log) > logged:
+            self.usage_log[-1]["finish_reason"] = finish if isinstance(finish, str) else None
         if finish not in (None, "stop"):
             if self._capture_failed_outputs:
                 message = choices[0].get("message")
