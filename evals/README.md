@@ -36,7 +36,7 @@ python -m evals.answer_review score <judgments.json> --output .local/score.json
 | `answer_rubric.py`, `answer_review.py`, `answer_trial.py` | Load the rubric, rate saved answers, run a bounded trial of one configuration. |
 | `answer_grader.py`, `grade_answers.py`, `grader_agreement.py` | The model grader and how well it agrees with a person. |
 | `retrieval_trial.py` | Recall@K for vector, full-text and merged search. |
-| `compare_chunking.py`, `compare_embeddings.py`, `compare_generation.py`, `summarize_context_trials.py`, `live_run.py` | Trials used to pick the chunking, embedding model and enrichment. |
+| `compare_chunking.py`, `compare_embeddings.py`, `summarize_context_trials.py` | Trials used to pick the chunking, embedding model and enrichment. |
 | `hosted_smoke.py` | A small check of a hosted database login. |
 
 ## Trial results that shaped the design
@@ -45,7 +45,7 @@ python -m evals.answer_review score <judgments.json> --output .local/score.json
 - **Summaries and evidence cards.** Model-written summaries and evidence cards did not pass a source-grounding review (for example, joining two separate highlights into one cause), so the live index has neither.
 - **Embeddings.** The selected profile is six files, 83 vectors.
 
-The chunk-context and summary trials cost about $1.43 in total.
+The enrichment trials cost about $1.43 in total.
 
 ## Running things
 
