@@ -61,7 +61,7 @@ class FolderAndScanTests(unittest.TestCase):
     def test_scan_reads_only_selected_markdown_and_skips_noise(self) -> None:
         self.vault.write("Knowledge/Notes/kept.md", "# Kept\n\nText.\n")
         self.vault.write("Inbox/new.md", "# New\n\nText.\n")
-        self.vault.write("Career/private.md", "# Private\n\nNot selected.\n")
+        self.vault.write("Elsewhere/private.md", "# Private\n\nNot selected.\n")
         self.vault.write("Knowledge/.obsidian/workspace.md", "x")
         self.vault.write("Knowledge/.trash/old.md", "x")
         self.vault.write("Knowledge/Notes/kept (Conflicted copy Laptop 202610161200).md", "x")
@@ -93,11 +93,11 @@ class FolderAndScanTests(unittest.TestCase):
         settings = VaultSettings(self.vault.root, "primary", parse_folders("Knowledge"), Path(self.temp.name) / "runs")
         scan = Scan(files={"keep": VaultFile("Knowledge/a.md", Path("a"), "sha-a", 3, False)}, missing_folders=[], duplicates=[])
         active = {"keep": ("Knowledge/a.md", "sha-a"), "gone": ("Knowledge/b.md", "sha-b"),
-                  "other": ("Career/c.md", "sha-c")}
+                  "other": ("Elsewhere/c.md", "sha-c")}
         plan = plan_pass(settings, scan, active, FailureLog(Path(self.temp.name) / "f.json"))
         self.assertEqual(plan.unchanged, 1)
         self.assertEqual(plan.retire_missing, [("gone", "Knowledge/b.md")])
-        self.assertEqual(plan.retire_unselected, [("other", "Career/c.md")])
+        self.assertEqual(plan.retire_unselected, [("other", "Elsewhere/c.md")])
         self.assertIn("no longer selected", plan.guard)
 
     def test_plan_guards_large_retirement(self) -> None:

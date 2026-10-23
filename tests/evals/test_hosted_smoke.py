@@ -1,4 +1,6 @@
+import os
 import unittest
+from unittest.mock import patch
 
 from evals.hosted_smoke import verify_dsn
 
@@ -15,8 +17,14 @@ class HostedSmokeTest(unittest.TestCase):
             verify_dsn(GOOD, "zzzzzzzzzzzzzzzzzzzz")
 
     def test_rejects_a_missing_project_ref(self) -> None:
-        with self.assertRaises(ValueError):
+        with patch.dict(os.environ, {}, clear=True), self.assertRaises(ValueError):
             verify_dsn(GOOD, "")
+
+    def test_rejects_the_wrong_host_port_or_tls_mode(self) -> None:
+        for bad in (GOOD.replace("pooler.supabase.com", "example.com"), GOOD.replace(":5432", ":6543"),
+                    GOOD.replace("sslmode=require", "sslmode=disable")):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                verify_dsn(bad, REF)
 
 
 if __name__ == "__main__":
