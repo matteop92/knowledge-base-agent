@@ -2,7 +2,7 @@
 
 **Ask questions across your own notes and get answers that quote the passages they came from.**
 
-A personal knowledge agent. It indexes a vault of Markdown notes (podcast transcripts, articles, book highlights, plain notes) and answers questions with citations that link back to the exact passage in the original note. It runs as a private web app you can install on a phone.
+A personal knowledge agent. It indexes a vault of Markdown notes (podcast transcripts, articles, book highlights, plain notes) and answers questions with citations that link back to the exact passage in the original note. It runs as a private web app you can install on a phone, and you grow it over time by adding sources from any device in seconds.
 
 | Ask | Answer with citations | The cited passage | What is missing |
 | --- | --- | --- | --- |
@@ -33,6 +33,18 @@ This project tries to do three things that a simple "chat with your documents" s
 - Keeps the index in step with the vault: new, edited and deleted notes are picked up every few minutes.
 - Tags each note by type and topic with a classifier, and lets you approve or block the tags it proposes.
 - Caps spending: every live model call has a dollar limit, and there is a daily cap.
+
+## It gets more useful the more you add
+
+A knowledge base only pays off if adding to it is quick enough to do every day. That is the other half of this project: a capture path that works from a phone or a desktop in a few seconds.
+
+- **Add anything from any device.** Paste text or a link, drop a Markdown file, share a screenshot, or share a YouTube link. On Android, the installed app is a share target, so "Share to Knowledge Agent" works from any app. On desktop you can paste, drag and drop.
+- **It becomes a proper note.** A screenshot is read into text. A YouTube video becomes a transcript with the speakers named. Each note is filed in the right folder (transcripts, articles, highlights, notes) and tagged from your own tag list.
+- **It reaches all your devices.** Captures are written as new files in your Obsidian vault, and Obsidian Sync carries them to your phone and computers like any other note. The server never edits or overwrites an existing note.
+- **It is searchable within minutes.** The server watches the vault and indexes new, edited and deleted notes every few minutes, so tomorrow's question can use what you saved today.
+- **It tells you what is missing.** When an answer has a gap, the app says what the notes did not cover and offers "Add a note to fill this gap", which opens the capture sheet with the gap shown above the box, so you know what to write or paste. Questions point at what to collect next, so the collection grows where it is thin.
+
+Over weeks, the loop is: ask, see the gaps, add a source in seconds, and ask again with a better answer.
 
 ## How it works
 
