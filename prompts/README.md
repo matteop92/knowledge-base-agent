@@ -18,7 +18,6 @@ This folder holds only the versions in use. Older versions were removed; the cha
 | `youtube_transcript_v1.md` | `app/capture/youtube.py` | Turns a video transcript into a clean note. |
 | `youtube_speakers_v1.md` | `app/capture/captions.py` | Labels speakers when a transcript comes from captions. |
 | `chunk_context_v1.md`, `chunk_context_v2.md` | `app/ingestion/enrichment.py`, `evals/compare_chunking.py` | One-sentence context written for a chunk. Only used in the chunking trial, which found it did not beat raw chunks. |
-| `document_summary_v1.md`, `section_summary_v1.md` | `app/ingestion/summary.py` | The default summary prompts of the generation trial. The profile in use has no summaries. |
 | `answer_grader_v1.md`, `answer_grader_v4.md` | `evals/answer_grader.py` | The graders. v4 grades an answer against the frozen 85-check checklist. |
 
 ## Changelog
@@ -42,9 +41,6 @@ The notes below come from the commit that introduced each version.
 - v1: fills missing type, tags, people, date and description from an approved tag list.
 - v2: each tag gets a one-line definition, and a note gets at most three tags.
 - v3: a note's own list tags are hints beside the approved ones, seven approved tags added, and the tag "technology" blocked.
-
-**Summaries (trial)**
-- document and section v1 to v17, group v2 and v3: rounds of the hierarchical summary experiment, run as bounded trials. Summaries are not part of the live profile, so only v1 remains here.
 
 **Chunk context**
 - v1: one-sentence context for each chunk. v2: capped at 60 words, no invented facts, speaker attribution kept (used by the chunking trial).

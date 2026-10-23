@@ -16,9 +16,8 @@ class RoutesTest(unittest.TestCase):
         self.assertAlmostEqual(routes.price_usd(routes.EMBEDDING_MODEL, 2_000_000), 0.008)
 
     def test_evals_use_the_shared_routes(self):
-        from evals import compare_chunking, compare_generation
+        from evals import compare_chunking
         self.assertIs(compare_chunking.verify_routes, routes.verify_routes)
-        self.assertIs(compare_generation.provider_routes, routes.provider_routes)
 
 
 if __name__ == "__main__":
