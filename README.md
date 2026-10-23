@@ -1,8 +1,8 @@
 # Knowledge Agent
 
-**Ask questions across your own notes and get answers that quote the passages they came from.**
+**Save anything from any device. Ask questions across all of it and get answers that quote the passages they came from.**
 
-A personal knowledge agent. It indexes a vault of Markdown notes (podcast transcripts, articles, book highlights, plain notes) and answers questions with citations that link back to the exact passage in the original note. It runs as a private web app you can install on a phone, and you grow it over time by adding sources from any device in seconds.
+A personal knowledge agent that grows with you. Add any source in seconds from your phone or desktop (text, a link, a screenshot, a Markdown file or a YouTube video). It becomes a note in your own knowledge folder, which syncs across all your devices and is searchable within minutes. Then ask questions across everything you have saved and get answers that quote the exact passages they came from. It runs as a private web app you can install on a phone, and every answer shows what your notes did not cover, so you know what to add next.
 
 | Ask | Answer with citations | The cited passage | What is missing |
 | --- | --- | --- | --- |
