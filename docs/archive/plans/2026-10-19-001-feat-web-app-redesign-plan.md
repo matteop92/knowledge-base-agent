@@ -8,16 +8,18 @@ product_contract_source: ce-plan-bootstrap
 execution: code
 ---
 
+> **Archived example plan.** Kept to show how this project was scoped and built. The names of the owner and of private folders are removed, and links to files that were later merged or deleted (for example `FOUNDATION.md`, `SYSTEM.md`) no longer resolve. Current docs: [architecture](../../architecture.md), [decisions](../../decisions.md).
+
 # Knowledge Agent Web App Redesign - Plan
 
 ## Goal Capsule
 
-- **Objective:** Replace the web app's look and layout with the design Matt agreed on 2026-10-19: two tabs (Ask, Add), a Paper look, answers whose sources and gaps open in a bottom sheet, and one smart Add box. The change is frontend only.
-- **Authority:** KTD1-KTD9 are Matt's settled decisions and are not reopened by executors. KTD10 onward are planning decisions an executor may revisit with evidence and a note in this plan. The design reference is a Claude Design canvas ("Paper" boards: Ask, Source, Add, Desktop, Feedback, Gaps) and two mock pages that live in the project thread, not in this repo; the executor asks Matt for them when a measurement is missing. Existing contracts in `SYSTEM.md` and `FOUNDATION.md` still hold: no API, schema or agent change.
+- **Objective:** Replace the web app's look and layout with the design the owner agreed on 2026-10-19: two tabs (Ask, Add), a Paper look, answers whose sources and gaps open in a bottom sheet, and one smart Add box. The change is frontend only.
+- **Authority:** KTD1-KTD9 are the owner's settled decisions and are not reopened by executors. KTD10 onward are planning decisions an executor may revisit with evidence and a note in this plan. The design reference is a Claude Design canvas ("Paper" boards: Ask, Source, Add, Desktop, Feedback, Gaps) and two mock pages that live in the project thread, not in this repo; the executor asks the owner for them when a measurement is missing. Existing contracts in `SYSTEM.md` and `FOUNDATION.md` still hold: no API, schema or agent change.
 - **Design boards are required input:** before building any unit, read the source of the matching "A Paper" boards in the design canvas (its link is in the project thread and project memory) and take colours, type sizes, spacing, radii and layout from them; this plan's wording alone is not enough (Release A was rebuilt after missing this). Boards per unit: U1-U4 `Main.dc.html` (phone Ask), `A-Add.dc.html`, `A-Desktop.dc.html`; U5 `A-Add.dc.html`; U6 `Main.dc.html`, `A-Source.dc.html`, `A-Desktop.dc.html`; U7 `A-Gaps.dc.html`, `A-Desktop.dc.html`; U8 `A-Feedback.dc.html`, `A-Desktop.dc.html`; U9 `Main.dc.html`. Where a board and this plan differ, the board wins and the difference is noted here.
-- **Execution profile:** Three releases, each its own PR to `main`. Release A (look and navigation shell, U1-U4) is merged. Release B (Add screen, answers, sources, gaps, feedback, U5-U9) is built on `claude/web-redesign-release-b`, was reviewed twice and has had Matt's design review applied (see "Changes agreed after Release B review"); it waits for Matt's local check before its PR. Release C is what is left after that (see "Release C" below). Each release leaves a working app.
-- **Stop conditions:** Stop and ask Matt when a design measurement needed for a unit is missing from the canvas; when a font cannot be self-hosted under its licence; when the gap sentences the agent returns cannot be shown in plain words without losing meaning; or when a change would need a server or database change.
-- **Process rule:** Matt does the visual and device checks himself, on his phone and desktop. The executor runs only the automated tests and static checks, never opens or screenshots the app on his behalf, and hands him each release and waits. The manual checks below are Matt's. The executor opens each release PR but does not merge it, or start the next release, until Matt has checked the branch and accepted it; if a check fails after merge, revert the PR.
+- **Execution profile:** Three releases, each its own PR to `main`. Release A (look and navigation shell, U1-U4) is merged. Release B (Add screen, answers, sources, gaps, feedback, U5-U9) is built on `claude/web-redesign-release-b`, was reviewed twice and has had the owner's design review applied (see "Changes agreed after Release B review"); it waits for the owner's local check before its PR. Release C is what is left after that (see "Release C" below). Each release leaves a working app.
+- **Stop conditions:** Stop and ask the owner when a design measurement needed for a unit is missing from the canvas; when a font cannot be self-hosted under its licence; when the gap sentences the agent returns cannot be shown in plain words without losing meaning; or when a change would need a server or database change.
+- **Process rule:** The owner does the visual and device checks himself, on his phone and desktop. The executor runs only the automated tests and static checks, never opens or screenshots the app on his behalf, and hands him each release and waits. The manual checks below are the owner's. The executor opens each release PR but does not merge it, or start the next release, until the owner has checked the branch and accepted it; if a check fails after merge, revert the PR.
 - **Tail ownership:** Each release ends with `$finish-task`, which reconciles `FOUNDATION.md#current-progress` and the one relevant system doc.
 
 ---
@@ -30,7 +32,7 @@ The app keeps every capability it has today and changes how it looks and is orga
 
 ### Problem Frame
 
-Matt finds the current UI "a mess". The Add screen replaces the thread but keeps the old question's title and buttons, so he cannot tell where he is. The phone top bar crowds four controls. Add shows five equal-weight fields. Sources are small chips that push the answer around when opened. Gaps and the thumbs-down are easy to miss. There is one plain colour treatment, no type hierarchy and no desktop-specific layout.
+The owner finds the current UI "a mess". The Add screen replaces the thread but keeps the old question's title and buttons, so he cannot tell where he is. The phone top bar crowds four controls. Add shows five equal-weight fields. Sources are small chips that push the answer around when opened. Gaps and the thumbs-down are easy to miss. There is one plain colour treatment, no type hierarchy and no desktop-specific layout.
 
 ### Requirements
 
@@ -80,7 +82,7 @@ Matt finds the current UI "a mess". The Add screen replaces the thread but keeps
 
 ### Success Criteria
 
-Matt can use every flow he uses today on his phone and desktop, and calls the result acceptable. No existing capability is lost (U-level checklist in the Verification Contract). The complaints in the Problem Frame are gone: he can say which screen he is in (the page title says it); opening a source does not move the answer text; he notices the gap icon on an answer that has gaps without being told; the phone's top area holds only the menu icon.
+The owner can use every flow he uses today on his phone and desktop, and calls the result acceptable. No existing capability is lost (U-level checklist in the Verification Contract). The complaints in the Problem Frame are gone: he can say which screen he is in (the page title says it); opening a source does not move the answer text; he notices the gap icon on an answer that has gaps without being told; the phone's top area holds only the menu icon.
 
 ---
 
@@ -97,11 +99,11 @@ Matt can use every flow he uses today on his phone and desktop, and calls the re
 
 ### Key Technical Decisions
 
-- KTD1. Ask and Add are two equal tabs with a History panel. (session-settled: user-directed — chosen over tidying the current layout and over one combined box: the tab bar always shows where you are.) Revised 2026-10-20 at Matt's request: Ask and Add are entries in one sidebar, which on phones is a drawer opened by a menu icon.
+- KTD1. Ask and Add are two equal tabs with a History panel. (session-settled: user-directed — chosen over tidying the current layout and over one combined box: the tab bar always shows where you are.) Revised 2026-10-20 at the owner's request: Ask and Add are entries in one sidebar, which on phones is a drawer opened by a menu icon.
 - KTD2. Add is one smart box with a detected-type label, optional Title and tags folded away, and Recent saves visible. (session-settled: user-directed — chosen over type-first forms and a tidied copy of today's form.)
-- KTD3. Footnote-sized numbers in the text, a small row of numbers under the answer, and a bottom sheet for the passage with only an Obsidian link (now the underlined words "See in Obsidian" beside the folder path). (session-settled: user-directed — chosen over inline chips with an inline passage and over always-visible quotes: Matt asked for much smaller numbers and a bottom row.)
+- KTD3. Footnote-sized numbers in the text, a small row of numbers under the answer, and a bottom sheet for the passage with only an Obsidian link (now the underlined words "See in Obsidian" beside the folder path). (session-settled: user-directed — chosen over inline chips with an inline passage and over always-visible quotes: The owner asked for much smaller numbers and a bottom row.)
 - KTD4. The look is Paper, with the desktop sidebar a slightly darker warm beige and collapsible. (session-settled: user-directed — chosen over the Graphite and Clear directions.)
-- KTD5. Gaps use a dark green icon plus a number, no word label, and open a "What's missing" sheet in plain words. (session-settled: user-directed — chosen over an icon with the word "gap": Matt chose icon and number only.)
+- KTD5. Gaps use a dark green icon plus a number, no word label, and open a "What's missing" sheet in plain words. (session-settled: user-directed — chosen over an icon with the word "gap": The owner chose icon and number only.)
 - KTD6. Thumbs-down is the only feedback: a note box and Send, no reason chips, no thumbs-up. (session-settled: user-directed — matches what the app already stores.)
 - KTD7. Three releases: look and navigation, then Add and answers, then accessibility and polish. (session-settled: user-directed — chosen over one big release and over Add first.)
 - KTD8. The question box is pinned to the bottom on phone and desktop. (session-settled: user-directed.)
@@ -140,38 +142,38 @@ Matt can use every flow he uses today on his phone and desktop, and calls the re
 ### Release B decisions (made during the build)
 
 - Built from the "A Paper" boards' source plus the gaps and feedback mock. Where they differ from each other or from this plan: the gap icon is the mock's soft green chip with the accent text (the Ask board draws it amber; KTD5 and R11 say green, so green wins); the board's "Looked for:" line is not built (KTD14: nothing to show after the code is stripped, and the receipt has no such field); the Add board's "(filled in for you)" is "(optional)" because the app does not fill title and tags itself; the detected-type subtitle only says what is true ("Saved to Transcripts" for YouTube, otherwise "The app files it in the right folder").
-- Type: two typefaces, Newsreader and Geist (Matt chose this over keeping Geist Mono for the Add box, 2026-10-20), on a six-step size scale: 12 labels, 14 controls and lists, 16 inputs, 18 answer text, 22 question titles, 26 page titles. Button text is never bold. The service worker cache is `ka-shell-v7`.
+- Type: two typefaces, Newsreader and Geist (the owner chose this over keeping Geist Mono for the Add box, 2026-10-20), on a six-step size scale: 12 labels, 14 controls and lists, 16 inputs, 18 answer text, 22 question titles, 26 page titles. Button text is never bold. The service worker cache is `ka-shell-v7`.
 - Source numbers in the row are drawn 24 px; their touch area is larger than what is drawn (about 44 px tall on touch screens).
 - The spending-cap and "answer still running" messages moved out of the Ask tab into one banner above the page, so they show on both tabs; the cap message stays, the other fades after 8 seconds.
 - Thumbs-down opens the bottom sheet on phones and the board's inline panel under the answer at 900 px and wider. On desktop the Source and Gaps panels sit on the right, push the page at 1200 px and wider, overlay it below that, and swap in place when another number or the gap icon is tapped.
 
 ### Changes agreed after Release B review (2026-10-20)
 
-Matt reviewed the Release B build and asked for these; they override the earlier wording where they differ.
+The owner reviewed the Release B build and asked for these; they override the earlier wording where they differ.
 
 - **One sidebar for navigation.** Phones get a menu icon at the top left that opens the sidebar as a drawer (scrim, Escape and a choice close it); the bottom tab bar and the History sheet are gone. History's chats list sits under the History item. The foot of the sidebar has the account circle (opens sign out and sign out everywhere) on the left and a "New question" pill on the right.
 - **Right-edge panel on desktop.** Source and Gaps open as a full-height panel from the right edge; clicking outside closes it. Feedback is inline under the answer on desktop and a bottom sheet on phones.
-- **Gaps look** follows Matt's screenshot: green "N gaps in this answer" line, "What's missing", entries between hairlines, a plain "+ Add a note to fill this gap" link under each. The Obsidian link is the words "See in Obsidian", underlined, beside the folder path.
+- **Gaps look** follows the owner's screenshot: green "N gaps in this answer" line, "What's missing", entries between hairlines, a plain "+ Add a note to fill this gap" link under each. The Obsidian link is the words "See in Obsidian", underlined, beside the folder path.
 - **Compact controls.** 32 px with a mouse (44 px on touch), smaller headings, a 48 px question bar; no thick or coloured outlines on text boxes; button text is never bold.
 - **Type and icons.** Two typefaces and six sizes (12, 14, 16, 18, 22, 26); Geist Mono dropped (the Add box uses Geist); Phosphor Light icons with a meh face for feedback and the YouTube logo for video. The service worker cache is `ka-shell-v7`.
 - **Empty conversation:** the heading and the question bar sit together in the middle of the page; the bar drops to the bottom once a question is asked. The Add column is 480 px wide and centred on desktop.
 
-### Release C (built on `claude/web-redesign-release-c`; waits for Matt's device checks)
+### Release C (built on `claude/web-redesign-release-c`; waits for the owner's device checks)
 
-U10 below was written before the design review; much of its polish was folded into Release B. What is genuinely left, in the order Matt may want it:
+U10 below was written before the design review; much of its polish was folded into Release B. What is genuinely left, in the order the owner may want it:
 
-1. Real-device checks Matt has not yet done: installed Android app (drawer, safe areas, share target), landscape phone, 200 percent text zoom, reduced motion.
+1. Real-device checks the owner has not yet done: installed Android app (drawer, safe areas, share target), landscape phone, 200 percent text zoom, reduced motion.
 2. The accessibility checklist in U10 (contrast pairs, tab and focus order in the drawer, account menu and panel, screen-reader announcements).
 3. Small hardening items found in review and left on purpose: polling loops retry forever on a non-sign-in error, the sheet closes only when the browser's Back event fires (no fallback), `afterClose` callbacks can queue twice on a double tap.
 4. More JavaScript runner coverage: gap clean-up already runs under node in `tests/api/test_static.py`; source numbering and add-box classification still need it.
 
-Done in Release C: items 2, 3 and 4 above, plus Android Back closing the phone drawer (the open drawer takes one history entry; the sheet takes priority when both could close). The muted text colour went from `#6b675f` to `#625e57` because the old one was 4.3:1 on the pill background (AA needs 4.5:1); a test now checks every text colour against every background it sits on. Polls (answers and saves) stop after five failed checks in a row and say so; a stale poll from another conversation does nothing. A sheet closes by itself after half a second if the browser never reports Back. The sheet and side panel keep clear of a landscape camera cut-out. Still Matt's hands: item 1 (installed Android app, landscape phone, 200 percent text zoom, reduced motion) and a screen-reader pass (tabs named with the active one, answer-ready announcement, sheets close with Escape and return focus). Known and left on purpose: reopening the drawer within about 100 ms of closing it can let the late Back event close the new one; the 500 ms fallback leaves one stale history entry if Back never came.
+Done in Release C: items 2, 3 and 4 above, plus Android Back closing the phone drawer (the open drawer takes one history entry; the sheet takes priority when both could close). The muted text colour went from `#6b675f` to `#625e57` because the old one was 4.3:1 on the pill background (AA needs 4.5:1); a test now checks every text colour against every background it sits on. Polls (answers and saves) stop after five failed checks in a row and say so; a stale poll from another conversation does nothing. A sheet closes by itself after half a second if the browser never reports Back. The sheet and side panel keep clear of a landscape camera cut-out. Still the owner's hands: item 1 (installed Android app, landscape phone, 200 percent text zoom, reduced motion) and a screen-reader pass (tabs named with the active one, answer-ready announcement, sheets close with Escape and return focus). Known and left on purpose: reopening the drawer within about 100 ms of closing it can let the late Back event close the new one; the 500 ms fallback leaves one stale history entry if Back never came.
 
-Not in Release C: dark mode and the suggested-tags page (separate work). If Matt's device checks find nothing, Release C can shrink to items 2 and 4 or be dropped.
+Not in Release C: dark mode and the suggested-tags page (separate work). If the owner's device checks find nothing, Release C can shrink to items 2 and 4 or be dropped.
 
 ### Open Questions (deferred)
 
-- OQ1. Exact starter text when "Add a note to fill this gap" opens Add; default is the cleaned gap sentence on the first line so Matt can answer it.
+- OQ1. Exact starter text when "Add a note to fill this gap" opens Add; default is the cleaned gap sentence on the first line so the owner can answer it.
 - OQ2. Final font file sizes after subsetting; if the pair exceeds about 150 KB total, drop Newsreader italics. Resolved in Release A: Latin subset, Newsreader with its optical-size axis (weights 200-800, no italics), 162 KB for the pair.
 - OQ3. How History, New question and the account menu appear when the desktop sidebar is collapsed; default is one icon each, History opening the conversation list as a popover and the account icon at the sidebar's foot opening a menu. Superseded 2026-10-20: no History popover; History expands in place in the sidebar (clicking it on a collapsed sidebar expands the sidebar), and the account circle opens its own sign-out menu.
 
@@ -437,19 +439,19 @@ Not in Release C: dark mode and the suggested-tags page (separate work). If Matt
 - Manual: tab through Ask, Add, a source sheet, the gap sheet and the feedback sheet using only the keyboard; Escape closes each and returns focus.
 - Manual: a screen reader announces the answer when ready and names the tabs and the active one.
 
-**Verification:** a recorded pass of the checklist with each failure fixed or listed for Matt.
+**Verification:** a recorded pass of the checklist with each failure fixed or listed for the owner.
 
 ---
 
 ## Verification Contract
 
 - **Automated:** `python -m unittest discover -s tests/api -p 'test_static.py'` after every unit that changes static files; the full `tests/api` suite before each release PR (database tests need a disposable `KNOWLEDGE_TEST_DATABASE_URL`).
-- **Manual, by Matt, on the release branch before it merges:** desktop browser first, then the installed Android app once the branch is deployed (the hosted app deploys from `main`, see `deploy/README.md`, so an Android-only failure found after merge is fixed by reverting the PR). Release A covers sign-in, tabs, History, sidebar collapse, pinned box, offline open, and sharing a link from Android into Add. Release B adds one save of each Add kind, a shared Android item, a source sheet, a gap sheet (use a question that returns gaps), and one thumbs-down saved and removed. Release C adds the accessibility checklist. There is no JavaScript test runner, so every test scenario not marked Static is a manual check; adding a runner for the pure helpers is deferred.
-- **Release gate:** Matt sees no console CSP errors; the share target still opens Add.
+- **Manual, by the owner, on the release branch before it merges:** desktop browser first, then the installed Android app once the branch is deployed (the hosted app deploys from `main`, see `deploy/README.md`, so an Android-only failure found after merge is fixed by reverting the PR). Release A covers sign-in, tabs, History, sidebar collapse, pinned box, offline open, and sharing a link from Android into Add. Release B adds one save of each Add kind, a shared Android item, a source sheet, a gap sheet (use a question that returns gaps), and one thumbs-down saved and removed. Release C adds the accessibility checklist. There is no JavaScript test runner, so every test scenario not marked Static is a manual check; adding a runner for the pure helpers is deferred.
+- **Release gate:** The owner sees no console CSP errors; the share target still opens Add.
 
 ## Definition of Done
 
-- All requirements R1-R17 are met on phone and desktop and Matt has accepted each release.
+- All requirements R1-R17 are met on phone and desktop and the owner has accepted each release.
 - Every row of "Existing States That Must Survive" has been exercised once.
 - No server, schema or prompt file changed.
 - Abandoned experiments, unused CSS and unused font files are removed from the diff.
