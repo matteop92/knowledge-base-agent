@@ -8,9 +8,9 @@ from evals.answer_rubric import AnswerRubric, evidence_hits, load_rubric, rubric
 
 class AnswerRubricTest(unittest.TestCase):
     def test_versioned_draft_keeps_legacy_fingerprint_and_cannot_compare(self):
-        historical = load_rubric(Path('evals/answer_questions_v3.yaml'))
+        historical = load_rubric(Path('evals/archive/answer_questions_v3.yaml'))
         self.assertEqual(rubric_fingerprint(historical), rubric_fingerprint(self.rubric))
-        revised = load_rubric(Path('evals/answer_questions_v4.yaml'))
+        revised = load_rubric(Path('evals/archive/answer_questions_v4.yaml'))
         self.assertEqual(revised.version, 4)
         self.assertEqual(revised.status, 'draft')
         self.assertGreater(sum(len(q.checks) for q in revised.questions), 70)
@@ -27,7 +27,7 @@ class AnswerRubricTest(unittest.TestCase):
                                               for source in revised.source_revisions.values()})
 
     def test_evidence_counts_only_overlapping_passages_of_the_same_revision(self):
-        rubric = load_rubric(Path("evals/answer_questions_v4.yaml"))
+        rubric = load_rubric(Path("evals/archive/answer_questions_v4.yaml"))
         question = rubric.questions[0]
         check = next(item for item in question.checks
                      if any(alt.start_char is not None for alt in item.evidence_alternatives))
