@@ -24,6 +24,10 @@ from app.storage.spend import SpendCapError, check_daily_cap, record_spend
 
 log = logging.getLogger("knowledge.api.answers")
 WEB_MAX_OUTPUT_TOKENS = 2500
+# At about 110 output tokens a second a full 10,000-token reply takes about 90 s, so one request
+# gets 120 s and the whole answer 300 s (the broad CLI profile, with the same limit, has 420 s).
+WEB_MAX_SECONDS = 300
+WEB_REQUEST_TIMEOUT_SECONDS = 120
 
 
 @dataclass
@@ -59,7 +63,7 @@ class OpenRouterAnswerEngine:
         self.connect = connect
         # GPT-5 mini spends most of its completion allowance on reasoning; at 900 (3,600 sent)
         # longer answers were cut off. 2,500 (10,000 sent) matches the broad CLI profile.
-        self.limits = AnswerLimits(max_output_tokens=WEB_MAX_OUTPUT_TOKENS)
+        self.limits = AnswerLimits(max_output_tokens=WEB_MAX_OUTPUT_TOKENS, max_seconds=WEB_MAX_SECONDS)
 
     def worst_case_usd(self) -> Decimal:
         # The CLI bound, priced at the approved ceilings because no endpoint has been checked yet,
@@ -92,7 +96,7 @@ class OpenRouterAnswerEngine:
         client = OpenRouterClient(allow_live=True, request_budget=answer.request_budget + (1 if prior else 0),
                                   estimated_input_token_budget=answer.input_byte_budget,
                                   conservative_input_budget=True, provider=private_route,
-                                  model_providers=model_providers)
+                                  model_providers=model_providers, timeout_seconds=WEB_REQUEST_TIMEOUT_SECONDS)
         routes, embedding_model, rewrite_prices = None, None, {}
         try:
             # The deadline covers the endpoint checks too, so a slow preflight cannot outlive the turn.
