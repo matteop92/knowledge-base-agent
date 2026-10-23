@@ -33,7 +33,7 @@ class AnswerSettings:
     embedding_provider_tag: str = TAGS[EMBEDDING_MODEL]
     max_generation_usd_per_million: Decimal = Decimal(str(PRICE_CEILINGS[ANSWER_MODEL][1]))
     max_embedding_usd_per_million: Decimal = Decimal(str(PRICE_CEILINGS[EMBEDDING_MODEL][0]))
-    max_usd_per_answer: Decimal = Decimal("0.40")
+    max_usd_per_answer: Decimal = Decimal("0.60")
     request_budget: int = 18
     input_byte_budget: int = 800_000
 
@@ -78,5 +78,5 @@ class Settings:
             capture_folder=os.getenv("KNOWLEDGE_CAPTURE_FOLDER", "Knowledge"),
             index_interval_seconds=int(os.getenv("KNOWLEDGE_INDEX_INTERVAL_SECONDS", "300")),
             index_max_usd_per_pass=Decimal(os.getenv("KNOWLEDGE_INDEX_MAX_USD_PER_PASS", "0.10")),
-            answer=AnswerSettings(max_usd_per_answer=Decimal(os.getenv("KNOWLEDGE_MAX_USD_PER_ANSWER", "0.40"))),
+            answer=AnswerSettings(max_usd_per_answer=Decimal(os.getenv("KNOWLEDGE_MAX_USD_PER_ANSWER", "0.60"))),
         )

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Callable, Protocol
 from urllib.parse import quote
@@ -23,20 +23,28 @@ from app.models.routes import PRICE_CEILINGS, TAGS, price_usd
 from app.storage.spend import SpendCapError, check_daily_cap, record_spend
 
 log = logging.getLogger("knowledge.api.answers")
+WEB_MAX_OUTPUT_TOKENS = 2500
+# At about 110 output tokens a second a full 10,000-token reply takes about 90 s, so one request
+# gets 120 s and the whole answer 300 s (the broad CLI profile, with the same limit, has 420 s).
+WEB_MAX_SECONDS = 300
+WEB_REQUEST_TIMEOUT_SECONDS = 120
 
 
 @dataclass
 class AnswerOutcome:
     result: AnswerResult
     cost_usd: float
+    # Token counts per model request (model, input, output, reasoning, finish reason); no text.
+    model_usage: list[dict[str, Any]] = field(default_factory=list)
 
 
 class AnswerFailed(Exception):
-    """An answer failed after it may already have been billed; carries what it cost."""
+    """An answer failed after it may already have been billed; carries what it cost and its token counts."""
 
-    def __init__(self, cost_usd: float) -> None:
+    def __init__(self, cost_usd: float, model_usage: list[dict[str, Any]] | None = None) -> None:
         super().__init__("answer failed")
         self.cost_usd = cost_usd
+        self.model_usage = model_usage or []
 
 
 class AnswerEngine(Protocol):
@@ -53,7 +61,9 @@ class OpenRouterAnswerEngine:
     def __init__(self, settings: Settings, connect: Callable[[], Any]) -> None:
         self.settings = settings.answer
         self.connect = connect
-        self.limits = AnswerLimits()
+        # GPT-5 mini spends most of its completion allowance on reasoning; at 900 (3,600 sent)
+        # longer answers were cut off. 2,500 (10,000 sent) matches the broad CLI profile.
+        self.limits = AnswerLimits(max_output_tokens=WEB_MAX_OUTPUT_TOKENS, max_seconds=WEB_MAX_SECONDS)
 
     def worst_case_usd(self) -> Decimal:
         # The CLI bound, priced at the approved ceilings because no endpoint has been checked yet,
@@ -86,7 +96,7 @@ class OpenRouterAnswerEngine:
         client = OpenRouterClient(allow_live=True, request_budget=answer.request_budget + (1 if prior else 0),
                                   estimated_input_token_budget=answer.input_byte_budget,
                                   conservative_input_budget=True, provider=private_route,
-                                  model_providers=model_providers)
+                                  model_providers=model_providers, timeout_seconds=WEB_REQUEST_TIMEOUT_SECONDS)
         routes, embedding_model, rewrite_prices = None, None, {}
         try:
             # The deadline covers the endpoint checks too, so a slow preflight cannot outlive the turn.
@@ -113,8 +123,10 @@ class OpenRouterAnswerEngine:
                                          limits=self.limits, reasoning_effort=answer.reasoning_effort,
                                          memory=memory, search_query=query)
         except Exception as exc:
-            raise AnswerFailed(self._cost(client, routes, answer.model, embedding_model, rewrite_prices)) from exc
-        return AnswerOutcome(result, self._cost(client, routes, answer.model, embedding_model, rewrite_prices))
+            raise AnswerFailed(self._cost(client, routes, answer.model, embedding_model, rewrite_prices),
+                               list(client.usage_log)) from exc
+        return AnswerOutcome(result, self._cost(client, routes, answer.model, embedding_model, rewrite_prices),
+                             list(client.usage_log))
 
     def _cost(self, client, routes, model: str, embedding_model: str | None = None,
               extra_prices: dict | None = None) -> float:
@@ -262,11 +274,14 @@ class AnswerJobs:
             outcome = self.engine.answer(question, prior)
             cost = outcome.cost_usd
             status, error = turn_status(outcome.result)
-            receipt = build_receipt(outcome.result, self._labels(outcome.result), self.settings.vault_name)
+            receipt = {**build_receipt(outcome.result, self._labels(outcome.result), self.settings.vault_name),
+                       "model_usage": outcome.model_usage}
         except SpendCapError:
             error = "the daily spending cap was reached"
         except AnswerFailed as exc:
             cost = exc.cost_usd
+            # Token counts only, so a failed answer still shows where its tokens went.
+            receipt = {"model_usage": exc.model_usage} if exc.model_usage else None
             log.warning("answer failed turn=%s error=%s", turn_id, type(exc.__cause__).__name__)
         except Exception as exc:  # noqa: BLE001 - the turn must always leave the running state
             log.warning("answer failed turn=%s error=%s", turn_id, type(exc).__name__)
