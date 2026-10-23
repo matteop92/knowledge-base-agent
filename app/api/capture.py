@@ -117,7 +117,7 @@ class YouTubeTranscriber:
 
     The text model's cost is unknown until the captions are fetched, so the worst case here is 0 and approve()
     checks the cap just before each model call. Gemini's free tier bills nothing, so it never reaches the ledger;
-    deploy/README.md says to use a free-tier key.
+    docs/deploy.md says to use a free-tier key.
     """
 
     def __init__(self, approve: Callable[[float], None] | None = None) -> None:
