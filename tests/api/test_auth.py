@@ -138,6 +138,32 @@ class AnswerCostTests(unittest.TestCase):
         extra = Decimal(answer.request_budget * (2500 - 900) * 4) * answer.max_generation_usd_per_million / 1_000_000
         self.assertEqual(raised - engine.worst_case_usd(), extra)
 
+    def test_the_web_time_limits_leave_room_for_a_full_length_reply(self) -> None:
+        from unittest import mock
+        from app.api import answers
+
+        created = {}
+
+        class RecordingClient:
+            request_timings: list = []
+            usage_log: list = []
+
+            def __init__(self, **kwargs) -> None:
+                created.update(kwargs)
+
+            def set_deadline(self, deadline: float) -> None:
+                pass
+
+        def no_database():
+            raise RuntimeError("no database")
+
+        engine = answers.OpenRouterAnswerEngine(settings(), connect=no_database)
+        with mock.patch("app.models.openrouter.OpenRouterClient", RecordingClient),                 self.assertRaises(answers.AnswerFailed):
+            engine.answer("Question")
+        # About 110 output tokens a second: a 10,000-token reply takes about 90 s.
+        self.assertEqual(created["timeout_seconds"], 120)
+        self.assertEqual(engine.limits.max_seconds, 300)
+
     def test_unknown_or_missing_usage_is_flagged(self) -> None:
         from decimal import Decimal
         from app.agent.endpoints import AnswerRoutes, measured_usd

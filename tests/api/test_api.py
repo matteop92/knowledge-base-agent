@@ -312,8 +312,6 @@ class ApiTests(unittest.TestCase):
         self.assertNotIn("pear is ripe", text)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class ReceiptTokenTests(unittest.TestCase):
@@ -362,3 +360,7 @@ class ReceiptTokenTests(unittest.TestCase):
 
     def test_a_turn_that_fails_before_any_request_stores_no_receipt(self):
         self.assertIsNone(self.run_turn("error")["receipt"])
+
+
+if __name__ == "__main__":
+    unittest.main()

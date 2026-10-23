@@ -448,6 +448,20 @@ class HarnessTest(unittest.TestCase):
         self.assertEqual(result.model_calls, 1)
         self.assertEqual([a['action'] for a in result.actions], ['model_failed'])
 
+    def test_a_timed_out_request_stops_without_the_cut_off_retry(self):
+        from app.models.client import ModelClientError
+
+        class TimesOut(FakeClient):
+            def generate_json(self, **kwargs):
+                raise ModelClientError('OpenRouter request failed: TimeoutError')
+
+        result = answer_question('Explain', retriever=FakeRetriever(), client=TimesOut([]),
+                                 model=MODEL, limits=AnswerLimits(max_model_calls=5))
+        self.assertEqual(result.termination, 'model_failed')
+        self.assertEqual(result.model_calls, 1)
+        self.assertEqual(result.gaps, ['Model stopped: model_or_route_failure.'])
+        self.assertEqual([a['action'] for a in result.actions], ['model_failed'])
+
     def test_second_malformed_json_stops_after_one_correction(self):
         from app.models.client import ModelClientError
 
