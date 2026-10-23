@@ -33,7 +33,3 @@ The choices that shaped the project, and why. Each one was made against a measur
 - **Connections across sources.** Search finds what matches the question's words. It does not surface a related idea in another source. Candidates are related-chunk links from the existing embeddings and a small theme layer, and they should be tried only after the evaluation includes cross-source and whole-vault questions.
 - **Questions about the whole vault.** "Find all" and recurring-theme questions need more passages than a top-20 search returns.
 - **Faster answers.** A typical hosted answer takes about 100 seconds (about a dozen model calls at $0.04). Options to test against the frozen checklist: show progress while it works, lower the reasoning effort, cap the rounds, or run searches in parallel.
-
-## Where the first design went
-
-The original design brief is kept in [archive/knowledge-agent-architecture.md](archive/knowledge-agent-architecture.md). It planned evidence cards and summaries, which the trials above removed. Two plans from the build are in [archive/plans/](archive/plans/) to show how work was scoped.
