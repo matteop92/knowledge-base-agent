@@ -74,6 +74,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
     discoveries_since_read = 0
     finish_correction_used = False
     malformed_correction_used = False
+    budget_correction_used = False
     reads_at_coverage_check: int | None = None
     base_schema = ACTION_SCHEMA_V3
     coverage_checks = 0
@@ -249,6 +250,15 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                 malformed_correction_used = True
                 actions.append({"action": "invalid", "reason": reason})
                 feedback = "Your previous response was not valid JSON. Return exactly one JSON action object matching every required schema field. Put answer prose inside the answer string; no prose or Markdown fences outside the JSON object."
+                continue
+            # A reply cut off at its length limit gets one retry asking for a shorter one.
+            if (reason == "completion_budget" and not budget_correction_used
+                    and calls < limits.max_model_calls):
+                budget_correction_used = True
+                actions.append({"action": "invalid", "reason": reason})
+                feedback = (feedback + "\nYour previous response was cut off because it was too long. "
+                            "Think briefly and return a shorter action: if you finish, write a concise answer "
+                            "that keeps only the material points and their citations.")
                 continue
             actions.append({"action": "model_failed", "reason": reason})
             return stopped(f"Model stopped: {reason}.", "model_failed")

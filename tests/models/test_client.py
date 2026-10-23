@@ -23,6 +23,30 @@ class ModelClientTests(unittest.TestCase):
             if capture:
                 self.assertEqual(client.failed_outputs[0]['message']['content'], 'private malformed JSON')
 
+    def test_each_request_logs_its_token_counts_and_finish_reason_but_no_text(self):
+        import json
+        responses = [
+            {'choices': [{'finish_reason': 'length', 'message': {'content': '{"cut'}}],
+             'usage': {'prompt_tokens': 900, 'completion_tokens': 3600,
+                       'completion_tokens_details': {'reasoning_tokens': 3400}}},
+            {'choices': [{'finish_reason': 'stop', 'message': {'content': '{"ok": true}'}}],
+             'usage': {'prompt_tokens': 950, 'completion_tokens': 400}},
+        ]
+        client = OpenRouterClient(allow_live=True, api_key='synthetic', request_budget=2,
+                                  estimated_input_token_budget=100)
+        with patch('app.models.openrouter.request.urlopen',
+                   side_effect=[io.BytesIO(json.dumps(item).encode()) for item in responses]):
+            with self.assertRaises(ModelClientError):
+                client.generate_json(model=self.model, system_prompt='Return JSON', input_text='private source',
+                                     schema_name='test', json_schema={'type': 'object'}, max_output_tokens=32)
+            client.generate_json(model=self.model, system_prompt='Return JSON', input_text='private source',
+                                 schema_name='test', json_schema={'type': 'object'}, max_output_tokens=32)
+        self.assertEqual(client.usage_log, [
+            {'model': 'example/open-model', 'input_tokens': 900, 'output_tokens': 3600,
+             'reasoning_tokens': 3400, 'finish_reason': 'length'},
+            {'model': 'example/open-model', 'input_tokens': 950, 'output_tokens': 400,
+             'reasoning_tokens': None, 'finish_reason': 'stop'}])
+
     def setUp(self) -> None:
         self.model = ModelSpec(
             provider="openrouter", model_id="example/open-model", model_version="2026-09"
