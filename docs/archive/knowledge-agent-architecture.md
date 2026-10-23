@@ -1,7 +1,7 @@
 # Personal Knowledge Agent
 ## V1 Architecture and Build Plan
 
-This is the original design brief, kept for its ideas and rationale. For current progress use [FOUNDATION.md#current-progress](FOUNDATION.md#current-progress), and for the current system map use [SYSTEM.md](SYSTEM.md).
+> **Archived design brief.** This is the first design for the project, kept for its rationale. The built system differs: evidence cards and chunk summaries were tried and removed, and answers rely on chunk retrieval alone. For the current design read [architecture.md](../architecture.md) and [decisions.md](../decisions.md).
 
 ### Goal
 
