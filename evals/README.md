@@ -38,7 +38,6 @@ python -m evals.answer_review score <judgments.json> --output .local/score.json
 | `retrieval_trial.py` | Recall@K for vector, full-text and merged search. |
 | `compare_chunking.py`, `compare_embeddings.py`, `compare_generation.py`, `summarize_context_trials.py`, `live_run.py` | Trials used to pick the chunking, embedding model and enrichment. |
 | `hosted_smoke.py` | A small check of a hosted database login. |
-| `archive/` | Superseded question sets, kept for reference. |
 
 ## Trial results that shaped the design
 

@@ -43,12 +43,8 @@ def _validate_evidence_method_grounding(summary: str, source_input: str) -> None
 
 
 def read_prompt(name: str) -> str:
-    """Read a prompt by version name, falling back to prompts/archive/ for retired trial versions."""
-    for folder in (PROMPT_ROOT, PROMPT_ROOT / "archive"):
-        path = folder / f"{name}.md"
-        if path.is_file():
-            return path.read_text(encoding="utf-8")
-    raise FileNotFoundError(f"no prompt named {name}")
+    """Read a prompt by version name from the prompts folder."""
+    return (PROMPT_ROOT / f"{name}.md").read_text(encoding="utf-8")
 
 
 def _generate(

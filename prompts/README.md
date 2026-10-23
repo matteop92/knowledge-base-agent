@@ -4,9 +4,7 @@ Each prompt is a Markdown file named `<family>_v<N>.md`. The code names the exac
 (a `PROMPT_VERSION` constant), and run receipts record the version and a hash of the text, so a result
 can always be traced to the prompt that produced it. A change to a prompt is a new file, never an edit.
 
-`prompts/` holds the versions in use. `prompts/archive/` holds retired versions, kept so old
-trial results stay reproducible. The summary trial in `app/ingestion/summary.py` also reads archived
-versions by name.
+This folder holds only the versions in use. Older versions were removed; the changelog below records what each one changed.
 
 ## In use
 
@@ -46,7 +44,7 @@ The notes below come from the commit that introduced each version.
 - v3: a note's own list tags are hints beside the approved ones, seven approved tags added, and the tag "technology" blocked.
 
 **Summaries (trial)**
-- document and section v1 to v17, group v2 and v3: rounds of the hierarchical summary experiment, run as bounded trials. Summaries are not part of the live profile, so only v1 stays in this folder.
+- document and section v1 to v17, group v2 and v3: rounds of the hierarchical summary experiment, run as bounded trials. Summaries are not part of the live profile, so only v1 remains here.
 
 **Chunk context**
 - v1: one-sentence context for each chunk. v2: capped at 60 words, no invented facts, speaker attribution kept (used by the chunking trial).

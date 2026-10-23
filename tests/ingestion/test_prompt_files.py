@@ -8,9 +8,6 @@ PROMPTS = Path(__file__).resolve().parents[2] / "prompts"
 
 
 class PromptFilesTest(unittest.TestCase):
-    def test_archived_summary_prompt_is_still_readable(self) -> None:
-        self.assertTrue(read_prompt("document_summary_v17").strip())
-
     def test_current_prompt_is_read_from_the_main_folder(self) -> None:
         self.assertEqual(read_prompt("section_summary_v1"), (PROMPTS / "section_summary_v1.md").read_text(encoding="utf-8"))
 
