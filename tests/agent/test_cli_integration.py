@@ -20,6 +20,10 @@ from tests.storage.database import apply_migrations
 from tests.storage.test_stage3_integration import fixture_run
 
 
+def setUpModule():
+    os.makedirs(".local", exist_ok=True)
+
+
 @unittest.skipUnless(os.getenv("KNOWLEDGE_TEST_DATABASE_URL"), "set disposable KNOWLEDGE_TEST_DATABASE_URL")
 class CLIIntegrationTest(unittest.TestCase):
     def test_cli_reads_published_fixture_without_vault_and_isolates_requests(self):

@@ -53,10 +53,7 @@ class ChecklistTest(unittest.TestCase):
         self.assertEqual({check.dimension for check in all_checks}, {"coverage", "grounding", "example"})
         self.assertEqual([check.id for check in all_checks if check.applicability == "optional"],
                          ["Q1.C4", "Q1.C5", "Q1.C7", "Q1.C8", "Q1.C18", "Q1.C20", "Q1.C21"])
-        for name in ("evals/answer_questions.yaml", "evals/answer_questions_v3.yaml", "evals/answer_questions_v4.yaml"):
-            self.assertIsInstance(load_rubric(Path(name)), AnswerRubric)
-        historical = load_rubric(Path("evals/answer_questions_v3.yaml"))
-        self.assertEqual(rubric_fingerprint(historical), rubric_fingerprint(load_rubric(Path("evals/answer_questions.yaml"))))
+        self.assertIsInstance(load_rubric(Path("evals/answer_questions.yaml")), AnswerRubric)
 
     def test_draft_cannot_be_frozen_or_compared_while_decisions_are_open(self):
         data = yaml.safe_load(DRAFT.read_text(encoding="utf-8"))

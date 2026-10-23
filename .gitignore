@@ -4,3 +4,6 @@ __pycache__/
 *.py[cod]
 .venv/
 *.egg-info/
+
+# Local planning notes (kept on the owner's machine only)
+docs/plans/

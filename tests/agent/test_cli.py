@@ -1,6 +1,7 @@
 import contextlib
 import io
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +10,10 @@ from unittest.mock import MagicMock, patch
 from app.agent.cli import main
 from app.models.client import ModelClientError
 from tests.storage.test_retrieval import hit
+
+
+def setUpModule():
+    os.makedirs(".local", exist_ok=True)
 
 
 class CLITest(unittest.TestCase):

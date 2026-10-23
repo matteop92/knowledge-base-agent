@@ -1,51 +1,52 @@
-# Source-span eval labels
+# Evaluation
 
-## Frozen answer pilot
+This folder measures two things: whether search finds the right passages, and whether the written answer is good. Everything here runs without a model call unless you pass `--live`. Reports are written under the ignored `.local/` folder.
 
-`answer_questions.yaml` and its byte-identical archival copy `answer_questions_v3.yaml` contain eight user-reviewed, frozen version-3 questions bound to the six selected source hashes. Essential facets are coverage expectations, with alternate wording and evidence allowed. Relevant examples are mandatory; `suggested_examples` are interchangeable illustrations. Qualifications preserve nuance, prohibited inferences identify overclaims, and usefulness describes the user outcome rather than a fixed answer structure. The version-3 fingerprint still matches the retained pilot reports.
+## What is measured
 
-For a completed private answer report, prepare a review sheet and summarize the completed review:
+**Search (retrieval).** `questions_*.yaml` holds 37 questions about six real source files: two interview transcripts, an article, a set of book highlights and two short notes. Each supported question points to the exact source text needed to answer it, 51 passages in total. Each file also has one question it cannot answer. Labels are bound to a document ID and the hash of the source text, so a changed source has to be relabelled before results are compared.
 
-```powershell
-python -m evals.answer_trial make-review .local/answer-Q4.json .local/review-Q4.json --question-id Q4
-python -m evals.answer_trial summarize .local/review-Q4.json .local/score-Q4.json
+The score is Recall@K: how many of the 51 required passages appear in the top K results.
+
+| Method | Top 5 | Top 10 | Top 20 |
+| --- | --- | --- | --- |
+| Vector search | 41 | 44 | 47 |
+| Full-text search | 28 | 40 | 44 |
+| Both, merged by rank | 39 | 44 | 47 |
+
+Run it with `python -m evals.retrieval_trial` (a dry run checks the labels against the stored sources).
+
+**Answers.** `answer_questions_v4_restructured.yaml` is the frozen answer checklist: 85 yes/no checks across eight questions, grouped into coverage (does the answer include the point), grounding (is the claim supported by the cited source) and example. It also lists, per question, a relevance scope, so points outside the question count against the answer. 179 source passages are verified against the source hashes. Prompt `answer_agent_v13` scores **63 of 80 scored checks (78.8%)**, with 3 points outside scope. The pass bar was 70%.
+
+A model grader (`answer_grader.py`) can pre-rate answers, but it missed the pass bar on a held-out calibration, so a person confirms every rating. `answer_review.py` builds a page for rating saved answers and scores the export.
+
+```bash
+python -m evals.answer_review build <answer-receipt.json>... --output .local/review.html
+python -m evals.answer_review score <judgments.json> --output .local/score.json
 ```
 
-Each facet is covered, partial, or missing, with answer evidence or a reason. Grade examples and qualifications separately, review material claims against their cited originals, record inference/attribution failures, and judge usefulness. Unreviewed fields remain unreviewed. Changed source hashes or rubric versions invalidate comparisons. Runtime citation validity does not establish semantic support; the pilot requires human review. Failed or unfinished model attempts cannot enter grading as completed answers.
+## Files
 
-`python -m evals.answer_trial run <private-config.json> .local/pilot-directory --live` executes one sequential configuration over its selected frozen question IDs. The config specifies `question_ids`, `model`, `reasoning_effort`, `generation_provider_tag`, `max_generation_usd_per_million`, and per-attempt `max_usd`. Only the planned pinned model routes are accepted. The `.local/stage5-budget.json` ledger reserves the per-attempt ceiling before calls and replaces it with measured cost only when usage is known; unknown-cost failures retain the reservation. Completed answers resume without another call. A failed attempt requires explicit `--retry-failed`, which preserves its report and creates a new numbered attempt. Changed questions, source revisions, rubric content, or prompt content cannot silently resume a comparison. Finished attempts remain marked review-pending until semantic support and usefulness are graded.
+| File | What it is |
+| --- | --- |
+| `questions_*.yaml` | Source-span labels for the retrieval trial. |
+| `fixture_*.yaml` | One checked span each for the synthetic sources in `sources/fixtures/`; they test the mapping without any real notes. |
+| `answer_questions_v4_restructured.yaml` | The frozen 85-check answer checklist. |
+| `answer_questions.yaml` | The earlier eight-question pilot rubric, still used by `answer_trial.py`. |
+| `answer_rubric.py`, `answer_review.py`, `answer_trial.py` | Load the rubric, rate saved answers, run a bounded trial of one configuration. |
+| `answer_grader.py`, `grade_answers.py`, `grader_agreement.py` | The model grader and how well it agrees with a person. |
+| `retrieval_trial.py` | Recall@K for vector, full-text and merged search. |
+| `compare_chunking.py`, `compare_embeddings.py`, `summarize_context_trials.py` | Trials used to pick the chunking, embedding model and enrichment. |
+| `hosted_smoke.py` | A small check of a hosted database login. |
 
-The answer-quality repair adds an explicit `budget_profile: broad` configuration for questions needing more investigation. It increases finite search, find, read, time, and answer-output allowances; the CLI preflight uses the profile's actual output-token cap when bounding worst-case spend. Before any live repair batch, re-read the Stage 5 ledger and reserve each call under the $8 Stage 5 and $10 cumulative ceilings.
+## Trial results that shaped the design
 
-`answer_questions_v4.yaml` has 91 individually assessable checks and 59 exact source-block alternatives verified against all six captured source hashes. It remains a **draft** pending user review; `legacy_facet_ids` map split checks back to version 3 without transferring old ratings. Question 3 accepts conversations, presentations, or controlled website tests for wording; no one method is mandatory. The submitted 21-entry human review is preserved verbatim under ignored `.local/stage5-pilot-v6/submitted-review.txt`, with a checksum and exact answer-receipt identities in `submitted-review-receipt.json`; ten blank facet ratings remain unreviewed. `evals.answer_trial.load_submitted_review` verifies both files and preserves raw labels. `evals.answer_grader` checks inspected text against the checked originals, exact excerpts, and grounding citations, but has no calibrated model configuration or held-out result. It requires a frozen version-4 rubric; no automatic grade is accepted as a quality pass yet.
+- **Chunking.** Structural chunks of the raw text (600 to 1,000 tokens) were selected over fixed-size chunks and over chunks with a model-written context sentence.
+- **Summaries and evidence cards.** Model-written summaries and evidence cards did not pass a source-grounding review (for example, joining two separate highlights into one cause), so the live index has neither.
+- **Embeddings.** The selected profile is six files, 83 vectors.
 
-[answer_questions_v4_restructured.yaml](answer_questions_v4_restructured.yaml) is the active, **frozen** answer checklist (approved by the user on 2026-10-15): 85 binary checks across coverage, grounding, and example, with parent-dependent coverage details, optional checks reported apart, a relevance scope per question, and 179 verified source passages. `python -m evals.answer_review` builds a private page for rating saved answers against it and scores the export. The [restructuring review](../docs/reviews/2026-10-04-evaluation-checklist-restructuring.md) records every decision. The model grader accepts it, and is built and ready to run, but it missed the pass bar set for its held-out calibration on 2026-10-16, so it pre-rates answers for the user to confirm and never decides them (see `docs/plans/2026-10-16-001-grader-calibration-plan.md`).
+The enrichment trials cost about $1.43 in total.
 
-`evals/answer_rubric.py` loads that file as a `Checklist` and the older files as an `AnswerRubric`. `python -m evals.answer_review build <pilot.json or Q8=receipt.json>... --output .local/<new>.html` writes a private page for rating each check of each saved answer; its Download button exports the judgments, and `python -m evals.answer_review score <judgments.json> --output .local/<new>.json` validates them against the dependency rules and reports one total for all questions, one per dimension, and one per answer; each point the reviewer lists as outside a question's scope counts as one failed relevance check. `--prefill <earlier export>` on `build` carries earlier ratings into a new page. Scores are provisional until the checklist is frozen, and the loader will not freeze it while `open_decisions` is non-empty or a question is missing from `approved_questions`. Neither command calls a model.
+## Running things
 
-Historical card screens and answer receipts remain private under `.local/`; the evaluation commands for cards have been removed. The selected card-free profile is `stage5-card-free-20261002`, with the same six runs and 83 vectors. A live retrieval trial in `.local/stage5-card-free-retrieval-20261002-live.json` found exact-vector recall of 41/44/47 out of 51 at K=5/10/20. One query-embedding request cost $0.000002128 and is recorded in `.local/stage5-budget.json`. Rubric v4 still needs review and the Stage 5 answer gate remains open.
-
-`python -m evals.retrieval_trial` separately measures vector, FTS, and RRF required-span Recall@5/10/20 against stored source revisions, without reading the external vault. All 37 questions remain visible; only the 31 supported questions contribute the 51 required spans to recall. See [RETRIEVAL.md](../RETRIEVAL.md) for the measured results and commands. Stage 5 has $12 / $14 cumulative reservation ceilings for the authorized U4 baseline; accounting remains based on retained private reports and the separate $3 incremental U4 cap.
-
-`questions_*.yaml` contains 37 questions for six real vault files: the Tim Ferriss and Luca Ferrari transcripts, the movie-logic article, Derek Sivers highlights, and two short notes. The long book is deferred. Supported questions point to enough exact source text to answer them, using multiple required passages when the answer has several parts. Each of the newer five files also has one question the file cannot answer. The labels bind to a document ID and source hash, so changed source text must be reviewed and relabeled. Preview with `--eval-file evals/questions_transcript_tim_ferriss.yaml` validates and maps its source spans to both raw chunk variants. Overlapping chunks can contain the same span, but it remains one labeled source span.
-
-`fixture_*.yaml` adds one manually checked source span each for bracket transcripts, highlights, books, articles, and notes. The labels refer to the short synthetic Markdown in `sources/fixtures/`, copied to the corresponding source category and named `sample_*.md`. They test mapping and category coverage without committing vault passages.
-
-The labels also support the checked six-file retrieval trial. It measures required-span Recall@5/10/20 with exact vector search; answer quality still needs representative repair checks and human-calibrated grading. If a source changes, review and relabel its spans before comparing variants.
-
-## Stage 4 trial scripts and handoff
-
-The [Stage 4 plan](../docs/plans/2026-09-24-001-feat-live-enrichment-ingestion-plan.md) holds the aggregate results, agreed model/prompt matrix, quality gates, and spend ceiling. The scripts below validate the checked source hashes and write detailed reports under ignored `.local/`. They do not send model requests without `--live`; a dry run still needs `--max-usd` because the same arguments can later be used for a bounded live run. Run commands from the repository root with Python dependencies installed. Set `$sourceRoot` to the value of `KNOWLEDGE_SOURCE_ROOT` in the ignored `.env`; keep the `primary` root alias stable.
-
-| Script | Purpose | Private reports already on this machine |
-| --- | --- | --- |
-| `python -m evals.compare_chunking` | Test 1: fixed/raw, structural/raw, and a selected context model, with retrieval metrics. | `.local/chunking-trial/`, `.local/stage4-context/`, and `.local/stage4-deepseek-context/` |
-| `python -m evals.summarize_context_trials` | Combine saved Test 1 profile reports; no model calls. | `.local/stage4-context/` |
-| `python -m evals.compare_generation` | Summary model trial, sample or full corpus. | `.local/stage4-cards-v5-full/`, `.local/stage4-next-cards/`, `.local/stage4-deepseek-cards-v7-screen/`, `.local/stage4-deepseek-cards-v7-full/`, `.local/stage4-next-summaries/`, `.local/stage4-deepseek-summary-final2/`, `.local/stage4-gpt5-v16/`, `.local/stage4-gpt5-v17/` |
-| `python -m app.ingestion.live_run` | Test 4: bounded complete ingestion, interruption/resume, local private load, publication, and search proof. | `.local/stage4-complete-raw-cards/` (completed six-file proof) |
-
-The original Test 2 screen selected GPT-5 mini for `evidence_cards_v5`; no cheaper candidate reached the first-response gate then. An approved DeepSeek-only follow-up completed a context comparison and `v6`/`v7` card trials. `v7` reached 83/83 first-response card artifacts and 744 valid source spans, but covered only 15/18 screen facts and had one attribution error in a 40-card review. Structural/raw embeddings remain selected; card generation and evaluation code have been removed. Test 3 has no qualifying summary model: GPT-5 mini and DeepSeek met content coverage but failed source-grounding review, while Gemini and GLM failed structured response or route gates. The [Stage 4 plan](../docs/plans/2026-09-24-001-feat-live-enrichment-ingestion-plan.md) records aggregate quality, latency, reliability, cost, and cumulative spend. Private quality reviews under `.local/` include the source-grounding findings. The CLI validates schema and provenance but cannot decide factual quality on its own.
-
-The approved GPT-5 mini summary follow-up generated new section and document summaries with `v16` and `v17`. `v16` failed factuality on its three-document screen; `v17` passed the screen and covered 42/45 content points with 87/87 first-response artifacts on six files, but a Sivers document summary joined two separate highlights into one causal event. The Hoven video-age error from `v15` was absent from `v17`. Detailed reviews and outputs remain under `.local/stage4-gpt5-v16/` and `.local/stage4-gpt5-v17/`; no summary configuration qualifies. Further summary work needs a checked source-grounding method rather than another unverified prompt-only change. The completed Stage 4 reports total **$1.434878** under their earlier $3.50 ceiling; Stage 5 answer and grader calls use the separate active ledger and ceilings above. Use a distinct ignored runtime and report path for any new configuration so earlier failures remain inspectable.
-
-The original six-file local run remains under `.local/stage4-complete-raw-cards/`, with historical card artifacts retained privately. Its runs and vectors are reused in the selected card-free profile. The ignored `.local/` files and external vault are **not in GitHub**; another chat on this workspace can inspect them, while a fresh checkout needs the vault and reports copied privately.
+Run from the repository root with `pip install -e ".[server,test]"`. Trial scripts that call a model need `OPENROUTER_API_KEY` and a database URL in `.env`, and always take a `--max-usd` ceiling. The six source files are private vault notes that are not in this repository, so the retrieval and answer trials can be read here but not rerun from a fresh clone. The tests in `tests/evals/` run on any clone.

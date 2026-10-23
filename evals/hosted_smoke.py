@@ -61,12 +61,14 @@ def prepare() -> tuple[Path, EmbeddingSpec, ChunkSet]:
     return run_dir, spec, chunks
 
 
-def verify_dsn(dsn: str) -> None:
+def verify_dsn(dsn: str, project_ref: str | None = None) -> None:
+    ref = project_ref or os.environ.get('SUPABASE_PROJECT_REF', '')
     parsed = urlparse(dsn)
-    if (parsed.hostname != 'aws-0-eu-central-1.pooler.supabase.com'
-        or parsed.port != 5432 or parsed.username != 'knowledge_runtime_hosted.<project-ref>'
+    if (not ref or not (parsed.hostname or '').endswith('.pooler.supabase.com')
+        or parsed.port != 5432 or parsed.username != f'knowledge_runtime_hosted.{ref}'
         or parsed.path != '/postgres' or parse_qs(parsed.query).get('sslmode') != ['require']):
-        raise ValueError('hosted DSN must use the project session pooler and restricted login with TLS')
+        raise ValueError('hosted DSN must use the project session pooler and restricted login with TLS '
+                         '(set SUPABASE_PROJECT_REF to the project reference)')
 
 
 def resume(run_id: str) -> tuple[Path, EmbeddingSpec, ChunkSet]:

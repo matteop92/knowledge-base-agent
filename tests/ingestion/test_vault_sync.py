@@ -50,10 +50,10 @@ class FolderAndScanTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.vault = VaultFixture(Path(self.temp.name), folders=("Knowledge", "Learnings"))
+        self.vault = VaultFixture(Path(self.temp.name), folders=("Knowledge", "Library"))
 
     def test_folders_are_deduplicated_and_only_named_folders_are_included(self) -> None:
-        self.assertEqual(parse_folders("Knowledge, knowledge ,Learnings"), ("Knowledge", "Learnings"))
+        self.assertEqual(parse_folders("Knowledge, knowledge ,Library"), ("Knowledge", "Library"))
         self.assertEqual(parse_folders("Knowledge"), ("Knowledge",))
         with self.assertRaises(VaultSyncError):
             parse_folders("Knowledge/Notes")
@@ -61,7 +61,7 @@ class FolderAndScanTests(unittest.TestCase):
     def test_scan_reads_only_selected_markdown_and_skips_noise(self) -> None:
         self.vault.write("Knowledge/Notes/kept.md", "# Kept\n\nText.\n")
         self.vault.write("Inbox/new.md", "# New\n\nText.\n")
-        self.vault.write("Career/private.md", "# Private\n\nNot selected.\n")
+        self.vault.write("Elsewhere/private.md", "# Private\n\nNot selected.\n")
         self.vault.write("Knowledge/.obsidian/workspace.md", "x")
         self.vault.write("Knowledge/.trash/old.md", "x")
         self.vault.write("Knowledge/Notes/kept (Conflicted copy Laptop 202610161200).md", "x")
@@ -71,7 +71,7 @@ class FolderAndScanTests(unittest.TestCase):
         paths = sorted(item.relative_path for item in scan.files.values())
         self.assertEqual(paths, ["Knowledge/Notes/blank.md", "Knowledge/Notes/kept.md"])
         self.assertTrue(next(item for item in scan.files.values() if item.relative_path.endswith("blank.md")).empty)
-        self.assertEqual(scan.missing_folders, ["Learnings"])
+        self.assertEqual(scan.missing_folders, ["Library"])
 
     def test_excluded_subfolders_are_never_read(self) -> None:
         self.vault.write("Knowledge/Private/secret.md", "# Secret\n\nKeep off the server.\n")
@@ -87,17 +87,17 @@ class FolderAndScanTests(unittest.TestCase):
     def test_missing_included_folder_trips_the_guard(self) -> None:
         self.vault.write("Knowledge/a.md", "# A\n\nText.\n")
         plan = plan_pass(self.vault.settings, scan_vault(self.vault.settings), {}, FailureLog(Path(self.temp.name) / "f.json"))
-        self.assertIn("Learnings", plan.guard)
+        self.assertIn("Library", plan.guard)
 
     def test_plan_retires_missing_files_and_holds_unselected_folders(self) -> None:
         settings = VaultSettings(self.vault.root, "primary", parse_folders("Knowledge"), Path(self.temp.name) / "runs")
         scan = Scan(files={"keep": VaultFile("Knowledge/a.md", Path("a"), "sha-a", 3, False)}, missing_folders=[], duplicates=[])
         active = {"keep": ("Knowledge/a.md", "sha-a"), "gone": ("Knowledge/b.md", "sha-b"),
-                  "other": ("Career/c.md", "sha-c")}
+                  "other": ("Elsewhere/c.md", "sha-c")}
         plan = plan_pass(settings, scan, active, FailureLog(Path(self.temp.name) / "f.json"))
         self.assertEqual(plan.unchanged, 1)
         self.assertEqual(plan.retire_missing, [("gone", "Knowledge/b.md")])
-        self.assertEqual(plan.retire_unselected, [("other", "Career/c.md")])
+        self.assertEqual(plan.retire_unselected, [("other", "Elsewhere/c.md")])
         self.assertIn("no longer selected", plan.guard)
 
     def test_plan_guards_large_retirement(self) -> None:
@@ -264,15 +264,15 @@ class LivePassTests(unittest.TestCase):
         self.assertEqual((report["published"], report["stopped"], client.calls), (0, "daily spend cap reached", 0))
 
     def test_unselecting_a_folder_retires_nothing_without_the_flag(self) -> None:
-        self.vault.write("Learnings/lesson.md", "# Lesson\n\nKeep going.\n")
-        wider = VaultSettings(self.vault.root, "primary", parse_folders("Knowledge,Learnings"), self.vault.settings.runtime_dir)
+        self.vault.write("Library/lesson.md", "# Lesson\n\nKeep going.\n")
+        wider = VaultSettings(self.vault.root, "primary", parse_folders("Knowledge,Library"), self.vault.settings.runtime_dir)
         run_pass(wider, conn=self.conn, live=True, max_usd=1.0, client=FakeEmbeddingClient())
         report, _ = self.live()
         self.assertEqual((report["retired"], report["retire_unselected"]), (0, 1))
-        self.assertIn("Learnings/lesson.md", self.active_paths())
+        self.assertIn("Library/lesson.md", self.active_paths())
         report, _ = self.live(allow_mass_retire=True)
         self.assertEqual(report["retired"], 1)
-        self.assertNotIn("Learnings/lesson.md", self.active_paths())
+        self.assertNotIn("Library/lesson.md", self.active_paths())
 
 
 if __name__ == "__main__":

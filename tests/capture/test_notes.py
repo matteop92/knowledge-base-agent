@@ -114,10 +114,10 @@ class WriteTests(unittest.TestCase):
 
     def test_an_existing_note_is_never_overwritten(self):
         existing = self.vault / "Knowledge/Notes/2026-10-19-on-hiring.md"
-        existing.write_text("Matt's own note\n", encoding="utf-8")
+        existing.write_text("The owner's own note\n", encoding="utf-8")
         first = write_note(self.vault, "Knowledge", "Notes", "On hiring", "one\n", TODAY)
         second = write_note(self.vault, "Knowledge", "Notes", "On hiring", "two\n", TODAY)
-        self.assertEqual(existing.read_text(encoding="utf-8"), "Matt's own note\n")
+        self.assertEqual(existing.read_text(encoding="utf-8"), "The owner's own note\n")
         self.assertEqual((first, second), ("Knowledge/Notes/2026-10-19-on-hiring-2.md",
                                            "Knowledge/Notes/2026-10-19-on-hiring-3.md"))
 
@@ -127,7 +127,7 @@ class WriteTests(unittest.TestCase):
         self.assertFalse((self.vault / "Projects").exists())
 
     def test_only_capture_folders_are_accepted(self):
-        for folder in ("Books", "../Career", "Notes/../.."):
+        for folder in ("Books", "../Elsewhere", "Notes/../.."):
             with self.subTest(folder=folder), self.assertRaises(CaptureError):
                 write_note(self.vault, "Knowledge", folder, "x", "content\n", TODAY)
 

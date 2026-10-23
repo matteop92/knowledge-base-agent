@@ -184,7 +184,7 @@ class HealthTests(unittest.TestCase):
 
         app = create_app(settings(), connect=connect, auth=FakeAuth(), engine=FakeEngine(), indexer=Stub())
         with TestClient(app) as client:
-            client.post("/auth/verify", json={"email": "matt@example.com", "code": "111111"})
+            client.post("/auth/verify", json={"email": "user@example.com", "code": "111111"})
             self.assertEqual(client.get("/health").json()["index"]["last_result"], {"published": 1})
 
 

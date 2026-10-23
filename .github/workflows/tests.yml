@@ -1,0 +1,60 @@
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            constraints.txt
+      - run: python -m pip install -c constraints.txt ".[server,test]"
+      # Each suite that touches the database gets its own empty database,
+      # because the tests apply the migrations once and expect a clean start.
+      - name: Run the seven test suites
+        run: |
+          for suite in ingestion models storage agent api capture evals; do
+            createdb "test_${suite}"
+            echo "::group::${suite}"
+            KNOWLEDGE_TEST_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/test_${suite}"               python -m unittest discover -s "tests/${suite}" -p 'test_*.py' -v 2>&1 | tee "${suite}.log"
+            echo "::endgroup::"
+            # These suites hold the database tests; a skip here means the database was not used.
+            if [ "$suite" = storage ] || [ "$suite" = agent ]; then
+              if grep -q -E "[.][.][.] skipped" "${suite}.log"; then
+                echo "::error::${suite} tests were skipped; the database tests did not run"
+                exit 1
+              fi
+            fi
+          done

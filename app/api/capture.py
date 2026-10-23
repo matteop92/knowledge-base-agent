@@ -2,7 +2,7 @@
 
 A job classifies the captured text, writes it as a new note into the right Knowledge folder, then asks
 the indexer to run at once so the note is searchable within a minute. Two-way sync carries the note to
-Matt's devices, so capture is refused until the server's sync is two-way.
+the owner's devices, so capture is refused until the server's sync is two-way.
 """
 
 from __future__ import annotations
@@ -117,7 +117,7 @@ class YouTubeTranscriber:
 
     The text model's cost is unknown until the captions are fetched, so the worst case here is 0 and approve()
     checks the cap just before each model call. Gemini's free tier bills nothing, so it never reaches the ledger;
-    deploy/README.md says to use a free-tier key.
+    docs/deploy.md says to use a free-tier key.
     """
 
     def __init__(self, approve: Callable[[float], None] | None = None) -> None:

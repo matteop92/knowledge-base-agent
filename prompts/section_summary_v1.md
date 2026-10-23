@@ -1,1 +1,0 @@
-Summarize only the supplied raw source passage. Keep names, roles, speaker attribution, and personal-note attribution accurate. State the central ideas concisely. Do not add facts from unseen sections or image contents. Return JSON with one field: summary.
