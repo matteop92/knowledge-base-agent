@@ -29,7 +29,7 @@ Text offsets are Unicode character offsets in the decoded snapshot. Editing a fi
 
 After the first load, `app/ingestion/vault_sync.py` keeps the index current. It indexes the vault's `Knowledge` folder incrementally by content hash, retires deleted files behind a guard (it refuses to retire more than 10% or 20 files at once), and classifies each note's type, tags, people, date and description (`properties.py`, using the live tag list in the `knowledge.tags` table).
 
-**Not used in the live profile.** Chunk contexts, section and document summaries and evidence cards were all tried (see [decisions.md](decisions.md)). Chunk-context and summary code remains as trial code (`app/ingestion/enrichment.py`, `summary.py`, with older prompts in `prompts/archive/`), and the selected profile needs none of it. The evidence-card code was removed.
+**Not used in the live profile.** Chunk contexts, section and document summaries and evidence cards were all tried (see [decisions.md](decisions.md)). Chunk-context and summary code remains as trial code (`app/ingestion/enrichment.py`, `summary.py`), and the selected profile needs none of it. The evidence-card code was removed.
 
 ## Answering a question
 
