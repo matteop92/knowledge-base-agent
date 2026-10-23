@@ -22,15 +22,15 @@ class AllowlistTests(unittest.TestCase):
         self.root = Path(self.temp.name) / "vault"
         (self.root / "Knowledge/Notes").mkdir(parents=True)
         (self.root / "Knowledge/Notes/kept.md").write_text("# Kept\n", encoding="utf-8")
-        (self.root / "Career").mkdir()
-        (self.root / "Career/private.md").write_text("# Private\n", encoding="utf-8")
+        (self.root / "Cabinet").mkdir()
+        (self.root / "Cabinet/private.md").write_text("# Private\n", encoding="utf-8")
         (self.root / "Brand New Folder").mkdir()
         (self.root / ".obsidian").mkdir()
         (self.root / "loose note.md").write_text("# Loose\n", encoding="utf-8")
 
     def test_everything_outside_the_allowlist_is_removed_and_knowledge_is_untouched(self) -> None:
         outside, loose = allowlist.enforce(self.root, ["Knowledge"], delete=True)
-        self.assertEqual((outside, loose), (["Brand New Folder", "Career"], 1))
+        self.assertEqual((outside, loose), (["Brand New Folder", "Cabinet"], 1))
         self.assertEqual(sorted(path.name for path in self.root.iterdir()), [".obsidian", "Knowledge"])
         self.assertTrue((self.root / "Knowledge/Notes/kept.md").is_file())
 
@@ -40,26 +40,26 @@ class AllowlistTests(unittest.TestCase):
 
     def test_without_permission_to_delete_nothing_is_touched(self) -> None:
         outside, loose = allowlist.enforce(self.root, ["Knowledge"], delete=False)
-        self.assertEqual((outside, loose), (["Brand New Folder", "Career"], 1))
+        self.assertEqual((outside, loose), (["Brand New Folder", "Cabinet"], 1))
         self.assertEqual(len(list(self.root.iterdir())), 5)
 
     def test_an_empty_allowlist_is_refused(self) -> None:
         with self.assertRaises(ValueError):
             allowlist.enforce(self.root, [], delete=True)
-        self.assertTrue((self.root / "Career/private.md").is_file())
+        self.assertTrue((self.root / "Cabinet/private.md").is_file())
 
     def test_skip_list_keeps_the_baseline_and_remembers_new_folders(self) -> None:
         baseline, extra = Path(self.temp.name) / "baseline.txt", Path(self.temp.name) / "extra.txt"
-        baseline.write_text("Career\nTasks\n", encoding="utf-8")
-        names = allowlist.merged_exclusions(baseline, extra, ["Brand New Folder", "career"])
+        baseline.write_text("Cabinet\nTray\n", encoding="utf-8")
+        names = allowlist.merged_exclusions(baseline, extra, ["Brand New Folder", "cabinet"])
         # Each spelling on disk is listed exactly, so the tool skips the folder as it is named.
-        self.assertEqual(names, ["Career", "Tasks", "Brand New Folder", "career"])
-        self.assertEqual(extra.read_text(encoding="utf-8").splitlines(), ["Brand New Folder", "career"])
-        self.assertEqual(allowlist.merged_exclusions(baseline, extra, [])[-2:], ["Brand New Folder", "career"])
+        self.assertEqual(names, ["Cabinet", "Tray", "Brand New Folder", "cabinet"])
+        self.assertEqual(extra.read_text(encoding="utf-8").splitlines(), ["Brand New Folder", "cabinet"])
+        self.assertEqual(allowlist.merged_exclusions(baseline, extra, [])[-2:], ["Brand New Folder", "cabinet"])
 
     def run_main(self, config_output: str, mode: str | None, returncode=0):
         baseline, extra = Path(self.temp.name) / "baseline.txt", Path(self.temp.name) / "extra.txt"
-        baseline.write_text("Tasks\n", encoding="utf-8")
+        baseline.write_text("Tray\n", encoding="utf-8")
         calls = []
 
         def fake_run(command, **kwargs):
@@ -76,16 +76,16 @@ class AllowlistTests(unittest.TestCase):
     def test_main_deletes_and_updates_the_skip_list_only_in_pull_only_mode(self) -> None:
         code, calls = self.run_main("mode: pull-only\n", None)
         self.assertEqual(code, 0)
-        self.assertFalse((self.root / "Career").exists())
+        self.assertFalse((self.root / "Cabinet").exists())
         update = [command for command in calls if "--excluded-folders" in command][0]
-        self.assertEqual(update[update.index("--excluded-folders") + 1], "Tasks,Brand New Folder,Career")
+        self.assertEqual(update[update.index("--excluded-folders") + 1], "Tray,Brand New Folder,Cabinet")
 
     def test_two_way_sync_never_deletes_but_still_stops_syncing_new_folders(self) -> None:
         for config, mode in (("mode: bidirectional\n", None), ("mode: pull-only\n", "bidirectional"), ("", None)):
             with self.subTest(config=config, mode=mode):
                 code, calls = self.run_main(config, mode)
                 self.assertEqual(code, 0)
-                self.assertTrue((self.root / "Career/private.md").is_file())
+                self.assertTrue((self.root / "Cabinet/private.md").is_file())
                 self.assertTrue(any("--excluded-folders" in command for command in calls))
 
     def sync_settings(self, ignore_folders) -> Path:
@@ -103,9 +103,9 @@ class AllowlistTests(unittest.TestCase):
             return self.main_with(run, "--sync-settings", str(settings))
 
     def test_two_way_sync_deletes_only_folders_the_tool_skips(self) -> None:
-        # The tool's settings skip Career but not the brand new folder yet.
-        self.assertEqual(self.run_two_way(self.sync_settings(["Tasks", "Career"])), 0)
-        self.assertFalse((self.root / "Career").exists())
+        # The tool's settings skip Cabinet but not the brand new folder yet.
+        self.assertEqual(self.run_two_way(self.sync_settings(["Tray", "Cabinet"])), 0)
+        self.assertFalse((self.root / "Cabinet").exists())
         self.assertTrue((self.root / "Brand New Folder").is_dir())
         self.assertTrue((self.root / "loose note.md").is_file())
         self.assertTrue((self.root / "Knowledge/Notes/kept.md").is_file())
@@ -113,13 +113,13 @@ class AllowlistTests(unittest.TestCase):
     def test_skip_list_works_without_a_baseline_file(self) -> None:
         # The server runs without --baseline; a new folder must still reach the skip list.
         extra = Path(self.temp.name) / "extra.txt"
-        extra.write_text("Career\n", encoding="utf-8")
-        self.assertEqual(allowlist.merged_exclusions(None, extra, ["Brand New Folder"]), ["Career", "Brand New Folder"])
-        self.assertEqual(extra.read_text(encoding="utf-8").splitlines(), ["Career", "Brand New Folder"])
+        extra.write_text("Cabinet\n", encoding="utf-8")
+        self.assertEqual(allowlist.merged_exclusions(None, extra, ["Brand New Folder"]), ["Cabinet", "Brand New Folder"])
+        self.assertEqual(extra.read_text(encoding="utf-8").splitlines(), ["Cabinet", "Brand New Folder"])
 
     def test_main_without_a_baseline_updates_the_skip_list_and_cleans_up(self) -> None:
         extra = Path(self.temp.name) / "e.txt"
-        extra.write_text("Tasks\n", encoding="utf-8")
+        extra.write_text("Tray\n", encoding="utf-8")
         calls = []
 
         def run(command, **kwargs):
@@ -128,30 +128,30 @@ class AllowlistTests(unittest.TestCase):
         with patch("subprocess.run", run):
             self.assertEqual(allowlist.main(["--root", str(self.root), "--extra", str(extra)]), 0)
         update = [command for command in calls if "--excluded-folders" in command][0]
-        self.assertEqual(update[update.index("--excluded-folders") + 1], "Tasks,Brand New Folder,Career")
-        self.assertFalse((self.root / "Career").exists())
+        self.assertEqual(update[update.index("--excluded-folders") + 1], "Tray,Brand New Folder,Cabinet")
+        self.assertFalse((self.root / "Cabinet").exists())
 
     def test_two_way_sync_never_deletes_a_folder_whose_name_differs_in_case(self) -> None:
-        self.assertEqual(self.run_two_way(self.sync_settings(["career", "brand new folder"])), 0)
-        self.assertTrue((self.root / "Career/private.md").is_file())
+        self.assertEqual(self.run_two_way(self.sync_settings(["cabinet", "brand new folder"])), 0)
+        self.assertTrue((self.root / "Cabinet/private.md").is_file())
         self.assertTrue((self.root / "Brand New Folder").is_dir())
 
     def test_two_way_sync_without_a_readable_settings_file_deletes_nothing(self) -> None:
-        settings = self.sync_settings(["Career", "Brand New Folder"])
+        settings = self.sync_settings(["Cabinet", "Brand New Folder"])
         (settings / "vault-id/config.json").write_text("{not json", encoding="utf-8")
         for folder in (settings, Path(self.temp.name) / "missing"):
             with self.subTest(folder=folder):
                 self.assertEqual(self.run_two_way(folder), 0)
-                self.assertTrue((self.root / "Career/private.md").is_file())
+                self.assertTrue((self.root / "Cabinet/private.md").is_file())
                 self.assertTrue((self.root / "Brand New Folder").is_dir())
 
     def test_a_skip_list_naming_an_allowed_folder_never_deletes_it(self) -> None:
-        self.assertEqual(self.run_two_way(self.sync_settings(["Knowledge", "Career"])), 0)
+        self.assertEqual(self.run_two_way(self.sync_settings(["Knowledge", "Cabinet"])), 0)
         self.assertTrue((self.root / "Knowledge/Notes/kept.md").is_file())
 
     def test_a_failed_skip_list_update_in_two_way_sync_deletes_nothing(self) -> None:
-        self.assertEqual(self.run_two_way(self.sync_settings(["Career"]), update_code=1), 1)
-        self.assertTrue((self.root / "Career/private.md").is_file())
+        self.assertEqual(self.run_two_way(self.sync_settings(["Cabinet"]), update_code=1), 1)
+        self.assertTrue((self.root / "Cabinet/private.md").is_file())
 
     def test_a_failed_skip_list_update_is_reported(self) -> None:
         code, _ = self.run_main("mode: pull-only\n", None, returncode=1)
@@ -166,7 +166,7 @@ class AllowlistTests(unittest.TestCase):
         def run(command, **kwargs):
             return Result("", 1) if "--excluded-folders" in command else Result("mode: pull-only\n", 0)
         self.assertEqual(self.main_with(run), 1)
-        self.assertTrue((self.root / "Career/private.md").is_file())
+        self.assertTrue((self.root / "Cabinet/private.md").is_file())
 
     def test_a_folder_name_with_a_trailing_slash_still_protects_knowledge(self) -> None:
         with patch.dict(os.environ, {"KNOWLEDGE_INCLUDED_FOLDERS": "Knowledge/"}):
@@ -176,7 +176,7 @@ class AllowlistTests(unittest.TestCase):
     def test_a_mistyped_allowlist_changes_nothing(self) -> None:
         with patch.dict(os.environ, {"KNOWLEDGE_INCLUDED_FOLDERS": "Knowlege"}):
             self.assertEqual(self.main_with(lambda *a, **k: Result("mode: pull-only\n", 0)), 1)
-        self.assertTrue((self.root / "Career/private.md").is_file())
+        self.assertTrue((self.root / "Cabinet/private.md").is_file())
         self.assertTrue((self.root / "Knowledge/Notes/kept.md").is_file())
 
     def test_an_allowed_folder_is_dropped_from_the_skip_list(self) -> None:
@@ -186,7 +186,7 @@ class AllowlistTests(unittest.TestCase):
 
     def test_check_reports_without_deleting(self) -> None:
         self.assertEqual(self.main_with(lambda *a, **k: Result("mode: pull-only\n", 0), "--check"), 0)
-        self.assertTrue((self.root / "Career/private.md").is_file())
+        self.assertTrue((self.root / "Cabinet/private.md").is_file())
 
     def test_the_pull_only_check_fails_safe(self) -> None:
         for output, code in (("pull-only", 1), ("pull-only bidirectional", 0), ("", 0), ("mirror-remote", 0)):

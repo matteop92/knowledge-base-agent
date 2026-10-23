@@ -22,7 +22,7 @@ from app.api.settings import Settings
 from app.storage.records import SourcePassage
 
 USER = "11111111-1111-1111-1111-111111111111"
-EMAIL = "matt@example.com"
+EMAIL = "user@example.com"
 
 
 def settings() -> Settings:

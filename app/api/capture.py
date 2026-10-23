@@ -2,7 +2,7 @@
 
 A job classifies the captured text, writes it as a new note into the right Knowledge folder, then asks
 the indexer to run at once so the note is searchable within a minute. Two-way sync carries the note to
-Matt's devices, so capture is refused until the server's sync is two-way.
+the owner's devices, so capture is refused until the server's sync is two-way.
 """
 
 from __future__ import annotations

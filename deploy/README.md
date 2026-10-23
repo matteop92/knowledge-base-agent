@@ -15,7 +15,7 @@ restricted runtime login. Secrets live in the host's secret store, never in the 
 | --- | --- |
 | `KNOWLEDGE_DATABASE_URL` | Runtime login connection string ending in `?sslmode=verify-full&sslrootcert=system` (use the Supavisor session pooler host if the direct IPv6 host is unreachable) |
 | `OPENROUTER_API_KEY` | OpenRouter key |
-| `SUPABASE_URL` | `https://ielkvsfcnwtaljnemxua.supabase.co` |
+| `SUPABASE_URL` | `https://<project-ref>.supabase.co` |
 | `SUPABASE_PUBLISHABLE_KEY` | The project's publishable (anon) key |
 | `SUPABASE_JWT_SECRET` | Only if the project still uses the legacy shared JWT secret |
 | `KNOWLEDGE_ALLOWED_USER_ID` | Your Supabase Auth user id |
