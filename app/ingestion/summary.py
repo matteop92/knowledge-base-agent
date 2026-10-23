@@ -42,6 +42,15 @@ def _validate_evidence_method_grounding(summary: str, source_input: str) -> None
             raise ValueError("summary adds an unsupported evidence-method claim")
 
 
+def read_prompt(name: str) -> str:
+    """Read a prompt by version name, falling back to prompts/archive/ for retired trial versions."""
+    for folder in (PROMPT_ROOT, PROMPT_ROOT / "archive"):
+        path = folder / f"{name}.md"
+        if path.is_file():
+            return path.read_text(encoding="utf-8")
+    raise FileNotFoundError(f"no prompt named {name}")
+
+
 def _generate(
     document: ParsedDocument, chunks: list[Chunk], level: str, input_text: str,
     children: list[str], client: ModelClient, model: ModelSpec,
@@ -49,7 +58,7 @@ def _generate(
     prompt_family: str = "v1",
 ) -> tuple[Summary, str]:
     prompt_version = ("section_summary_v1" if level == "section" else "document_summary_v1") if prompt_family == "v1" else f"{level}_summary_{prompt_family}"
-    prompt = (PROMPT_ROOT / f"{prompt_version}.md").read_text(encoding="utf-8")
+    prompt = read_prompt(prompt_version)
     version = {
         "level": level, "chunk_ids": [chunk.chunk_id for chunk in chunks],
         "child_artifact_ids": children, "prompt_version": prompt_version,
@@ -142,7 +151,7 @@ def summarize_document(
         )
     sections: list[tuple[Summary, str]] = []
     new_count = 0
-    section_prompt = (PROMPT_ROOT / f"section_summary_{section_family}.md").read_text(encoding="utf-8")
+    section_prompt = read_prompt(f"section_summary_{section_family}")
     section_prompt_hash = hashlib.sha256(section_prompt.encode()).hexdigest()
     for chunk in chunks.chunks:
         prior_ready = any(
