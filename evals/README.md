@@ -4,7 +4,7 @@ This folder measures two things: whether search finds the right passages, and wh
 
 ## What is measured
 
-**Search (retrieval).** `questions_*.yaml` holds 37 questions about six real source files: two interview transcripts, an article, a set of book highlights and two short notes. Each supported question points to the exact source text needed to answer it, 51 passages in total. Each of the newer five files also has one question the file cannot answer. Labels are bound to a document ID and the hash of the source text, so a changed source has to be relabelled before results are compared.
+**Search (retrieval).** `questions_*.yaml` holds 37 questions about six real source files: two interview transcripts, an article, a set of book highlights and two short notes. Each supported question points to the exact source text needed to answer it, 51 passages in total. Each file also has one question it cannot answer. Labels are bound to a document ID and the hash of the source text, so a changed source has to be relabelled before results are compared.
 
 The score is Recall@K: how many of the 51 required passages appear in the top K results.
 
@@ -46,7 +46,7 @@ python -m evals.answer_review score <judgments.json> --output .local/score.json
 - **Summaries and evidence cards.** Model-written summaries and evidence cards did not pass a source-grounding review (for example, joining two separate highlights into one cause), so the live index has neither.
 - **Embeddings.** The selected profile is six files, 83 vectors.
 
-The Stage 4 enrichment trials cost about $1.43 in total.
+The chunk-context and summary trials cost about $1.43 in total.
 
 ## Running things
 

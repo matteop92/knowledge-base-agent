@@ -127,7 +127,7 @@ class WriteTests(unittest.TestCase):
         self.assertFalse((self.vault / "Projects").exists())
 
     def test_only_capture_folders_are_accepted(self):
-        for folder in ("Books", "../Career", "Notes/../.."):
+        for folder in ("Books", "../Elsewhere", "Notes/../.."):
             with self.subTest(folder=folder), self.assertRaises(CaptureError):
                 write_note(self.vault, "Knowledge", folder, "x", "content\n", TODAY)
 

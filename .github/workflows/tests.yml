@@ -28,6 +28,9 @@ jobs:
       PGHOST: localhost
       PGUSER: postgres
       PGPASSWORD: postgres
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -43,7 +46,13 @@ jobs:
           for suite in ingestion models storage agent api capture evals; do
             createdb "test_${suite}"
             echo "::group::${suite}"
-            KNOWLEDGE_TEST_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/test_${suite}" \
-              python -m unittest discover -s "tests/${suite}" -p 'test_*.py' -v
+            KNOWLEDGE_TEST_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/test_${suite}"               python -m unittest discover -s "tests/${suite}" -p 'test_*.py' -v 2>&1 | tee "${suite}.log"
             echo "::endgroup::"
+            # These suites hold the database tests; a skip here means the database was not used.
+            if [ "$suite" = storage ] || [ "$suite" = agent ]; then
+              if grep -q -E "[.][.][.] skipped" "${suite}.log"; then
+                echo "::error::${suite} tests were skipped; the database tests did not run"
+                exit 1
+              fi
+            fi
           done
