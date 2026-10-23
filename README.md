@@ -135,7 +135,7 @@ The tests use short synthetic fixtures and fake model clients, so they cost noth
 | `prompts/` | The prompts in use, with a changelog ([prompts/README.md](prompts/README.md)). |
 | `evals/` | Labelled questions, the answer checklist and trial scripts ([evals/README.md](evals/README.md)). |
 | `supabase/migrations/` | The database schema. |
-| `docs/` | Architecture, decisions, evaluation, deployment, and an archive of the original design brief and two example plans. |
+| `docs/` | Architecture, decisions, evaluation and deployment. |
 
 ## Known limits
 
@@ -154,8 +154,6 @@ I built this with [Claude Code](https://claude.com/claude-code) as my coding par
 - **Evidence over opinion.** Chunking, embedding model and answer prompt were chosen by running trials against a labelled question set. Several ideas that looked good (summaries, evidence cards, model-written chunk context) were measured, found not to help, and removed. [docs/decisions.md](docs/decisions.md) lists them.
 - **I rated the answers myself.** The 85-check answer checklist was reviewed and frozen by me. A model grader exists but missed its accuracy bar, so it only pre-rates and I confirm.
 - **Every change was reviewed.** Code went through tests and a multi-reviewer code review before merging, and spending on live model calls was capped at every step.
-
-[docs/archive/plans/](docs/archive/plans/) has two of the plans as examples.
 
 ## Credits
 
