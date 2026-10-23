@@ -146,9 +146,16 @@ The tests use short synthetic fixtures and fake model clients, so they cost noth
 - **No reranking and no approximate vector index** yet; both wait for a corpus large enough to need them.
 - **The sample vault is private.** The labelled evaluation runs on real notes that are not in this repository, so those trials can be read but not rerun. The synthetic fixtures in `sources/fixtures/` and the unit tests run anywhere.
 
-## Built with Claude Code
+## How it was built
 
-Most of this code was written with [Claude Code](https://claude.com/claude-code), working from plans I scoped and reviewed. I set the goals, made the design decisions, defined the evaluation and rated the answers; the agent wrote the implementation under tests and multi-reviewer code reviews. [docs/archive/plans/](docs/archive/plans/) has two of the plans as examples of how work was scoped.
+I built this with [Claude Code](https://claude.com/claude-code) as my coding partner, and I treated it as a team member I had to manage, not a code generator.
+
+- **I owned the decisions.** I chose the goals, the architecture and what counts as a good answer. Each piece of work started as a written plan with requirements and test scenarios, and I approved it before any code was written.
+- **Evidence over opinion.** Chunking, embedding model and answer prompt were chosen by running trials against a labelled question set. Several ideas that looked good (summaries, evidence cards, model-written chunk context) were measured, found not to help, and removed. [docs/decisions.md](docs/decisions.md) lists them.
+- **I rated the answers myself.** The 85-check answer checklist was reviewed and frozen by me. A model grader exists but missed its accuracy bar, so it only pre-rates and I confirm.
+- **Every change was reviewed.** Code went through tests and a multi-reviewer code review before merging, and spending on live model calls was capped at every step.
+
+[docs/archive/plans/](docs/archive/plans/) has two of the plans as examples.
 
 ## Credits
 
