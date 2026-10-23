@@ -92,7 +92,7 @@ class SupabaseCallTests(unittest.TestCase):
         return SupabaseAuth(replace(settings(), supabase_jwt_secret=SECRET), opener=opener)
 
     def test_sending_a_code_never_creates_an_account(self) -> None:
-        self.auth(b"{}").send_code("matt@example.com")
+        self.auth(b"{}").send_code("user@example.com")
         url, body = self.requests[0]
         self.assertTrue(url.endswith("/auth/v1/otp"))
         self.assertIs(body["create_user"], False)
@@ -103,17 +103,17 @@ class SupabaseCallTests(unittest.TestCase):
                  (error.URLError("offline"), 502)]
         for exc, status in cases:
             with self.subTest(status=status), self.assertRaises(AuthError) as caught:
-                self.auth(exc).verify_code("matt@example.com", "123456")
+                self.auth(exc).verify_code("user@example.com", "123456")
             self.assertEqual(caught.exception.status, status)
 
     def test_a_verify_reply_without_a_token_is_refused(self) -> None:
         with self.assertRaises(AuthError) as caught:
-            self.auth(b'{"user": {}}').verify_code("matt@example.com", "123456")
+            self.auth(b'{"user": {}}').verify_code("user@example.com", "123456")
         self.assertEqual(caught.exception.status, 401)
 
     def test_a_verified_token_returns_the_allowed_user(self) -> None:
         reply = ('{"access_token": "%s"}' % token()).encode()
-        self.assertEqual(self.auth(reply).verify_code("matt@example.com", "123456"), USER)
+        self.assertEqual(self.auth(reply).verify_code("user@example.com", "123456"), USER)
 
 
 class AnswerCostTests(unittest.TestCase):
