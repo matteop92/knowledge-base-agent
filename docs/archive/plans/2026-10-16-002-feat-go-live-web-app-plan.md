@@ -462,7 +462,7 @@ stateDiagram-v2
 
 > **Note (2026-10-19): plan the suggested-tags page first.** The owner decided on 2026-10-18 that tags the classifier proposes (stored in `knowledge.document_properties`) get a "Suggested tags" page: one tap approves a tag, adds it to `config/tags.yaml` and assigns it to every note it fits. It has no unit yet. The owner chose to build Phase 2 as written and plan this page at the start of Phase 3.
 >
-> **Update (2026-10-21):** planned and built as [2026-10-21-001-feat-settings-suggested-tags-plan.md](2026-10-21-001-feat-settings-suggested-tags-plan.md): a Settings page with a Tags tab, a `knowledge.tags` table, and a notes sheet or panel.
+> **Update (2026-10-21):** planned and built as 2026-10-21-001-feat-settings-suggested-tags-plan.md: a Settings page with a Tags tab, a `knowledge.tags` table, and a notes sheet or panel.
 
 ### U14. Eval set from thumbs-down and grader pre-ratings
 

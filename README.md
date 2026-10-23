@@ -1,106 +1,141 @@
-# Personal knowledge agent
+# Knowledge Agent
 
-This repository captures Markdown from an external Knowledge folder and produces source-linked local artifacts. It supports bold-label and bracket-label transcripts, notes, articles, highlights, and book exports. The original files remain unchanged. Private Postgres storage, hybrid retrieval, and a bounded local answer CLI are available. The card-free six-file profile is selected locally; answers are rated against a frozen 85-check checklist, and prompt v13 passed the answer gate on 2026-10-16.
+**Ask questions across your own notes and get answers that quote the passages they came from.**
 
-Start with [SYSTEM.md](SYSTEM.md) for the whole flow and [FOUNDATION.md#current-progress](FOUNDATION.md#current-progress) for stage-by-stage progress; [INGESTION.md](INGESTION.md), [RETRIEVAL.md](RETRIEVAL.md), and [DATA.md](DATA.md) describe each part at its current stage.
+A personal knowledge agent. It indexes a vault of Markdown notes (podcast transcripts, articles, book highlights, plain notes) and answers questions with citations that link back to the exact passage in the original note. It runs as a private web app you can install on a phone.
 
-For the current Stage 4 experiment and a new-chat handoff, use the [results and next-screen plan](docs/plans/2026-09-24-001-feat-live-enrichment-ingestion-plan.md) and the [trial script commands](evals/README.md#stage-4-trial-scripts-and-handoff).
+<!--
+Screenshots: add phone screenshots of the demo server to docs/images/ and uncomment.
 
-## Ask a question
+| Ask | Answer with citations | Source passage | Gaps |
+| --- | --- | --- | --- |
+| ![New question](docs/images/01-new-question.png) | ![Answer](docs/images/02-answer.png) | ![Passage](docs/images/03-passage.png) | ![Gaps](docs/images/04-gaps.png) |
+-->
 
-Set `KNOWLEDGE_DATABASE_URL` to the private runtime connection and `OPENROUTER_API_KEY` to your key; the CLI does not load `.env` automatically. It reads only the selected published index, with no `KNOWLEDGE_SOURCE_ROOT` dependency. Configuration and current endpoint checks can run without generation or query embedding:
+## Why I built it
 
-```powershell
-python -m app.agent.cli 'What steps could I take to calm myself down when I realize I feel anger?' `
-  --dry-run --embedding-provider-tag perplexity/int8 --generation-provider-tag azure `
-  --max-embedding-usd-per-million 0.004 --max-generation-usd-per-million 2 `
-  --max-usd 0.25 --report .local/answer-preflight.json
+Notes are easy to collect and hard to use. Keyword search finds the exact words you remember, not the idea you half remember. Asking a chat model about your notes risks an answer that sounds right but is not in them.
+
+This project tries to do three things that a simple "chat with your documents" setup does not:
+
+- **Find ideas, not only words.** It combines meaning-based search with keyword search, so a question can reach a passage that never uses the question's words.
+- **Show its evidence.** Every claim in an answer points at a passage the agent actually read, and the app checks that the passage exists. It also says what it could not find.
+- **Be measured.** Choices such as how to split notes into chunks, and whether extra model-written summaries help, were decided with a labelled test set rather than by feel. The results are in [docs/evaluation.md](docs/evaluation.md).
+
+## What it does
+
+- Answers a question from your notes, with footnote-style citations that open the source passage and link to the original note in Obsidian.
+- Reads whole passages, searches again when something is missing, and reports the gaps instead of guessing.
+- Handles follow-up questions that build on the earlier turns and passages.
+- Captures new notes from pasted text, `.md` files, screenshots and YouTube links (new files only; it never edits an existing note).
+- Keeps the index in step with the vault: new, edited and deleted notes are picked up every few minutes.
+- Tags each note by type and topic with a classifier, and lets you approve or block the tags it proposes.
+- Caps spending: every live model call has a dollar limit, and there is a daily cap.
+
+## How it works
+
+```mermaid
+flowchart LR
+    V[Markdown vault] --> I[Parse and chunk<br/>keeping exact source spans]
+    I --> E[Embed chunks]
+    E --> D[(Postgres<br/>pgvector + full-text)]
+    Q[Question] --> S[Vector + full-text search<br/>merged by rank]
+    D --> S
+    S --> A[Agent loop<br/>read, search again, track gaps]
+    A --> C[Check every citation<br/>against a passage it read]
+    C --> R[Answer with citations]
 ```
 
-Replace `--dry-run` with `--live` and choose a new report filename for an answer. Live mode sends questions/searches and relevant candidate snippets and inspected source passages through OpenRouter to the qualified pinned providers. The default generation configuration is GPT-5 mini at medium reasoning. Each request has fresh usage budgets and an evidence ledger; answering uses a read-only transaction. The compact profile allows 12 model actions, five hybrid searches, two document finds, eight whole-chunk reads, and 120 seconds. Add `--budget-profile broad` for a finite 20-action, seven-search, four-find, ten-read, 420-second allowance and more answer output; its request/input budgets and worst-case cost are checked separately. `--input-byte-budget` conservatively counts serialized request bytes plus 512 tokens per request; ingestion retains its existing default budget behavior.
+**How an answer is made.**
+1. The server runs a first search with the question: meaning-based (vector) search and Postgres full-text search, merged with reciprocal rank fusion.
+2. A language model, limited to four actions (`search`, `find`, `read`, `finish`), reads whole chunks and searches again for anything still missing. The code, not the model, owns the budgets for calls, bytes and time.
+3. The agent keeps a list of what the question needs and marks each need resolved by the passages that cover it.
+4. Before an answer is returned, the host checks that each citation points to a passage the agent read. A claim without a read passage is rejected.
 
-Human output includes the answer, cited locators, bounded excerpts, and evidence gaps. `--json` explicitly outputs the full result. Optional `--report` files must be new paths under ignored `.local/`; they contain private answers, inspected passages, action/rank traces, stop reasons, model configuration, usage, and estimated cost. Interrupted or failed attempts are retained when a report was requested; they are not quality passes. Runtime citation checks establish inspected-source provenance; the frozen pilot review establishes semantic support and usefulness.
+More detail: [docs/architecture.md](docs/architecture.md). Why each choice was made: [docs/decisions.md](docs/decisions.md).
 
-Search can recognize a named source from its title, author, guest, or tag even when those words are absent from the chunk text. The agent sees each candidate's title and people with its rank and short preview.
+## Stack
 
-The current Stage 5 reservation ceiling is $9 and the cumulative ceiling is $11; measured calls are recorded in `.local/stage5-budget.json`. A CLI call enforces its own conservative cost bound; the operator must account for previous reports before selecting a new per-call cap. The web server and app in `app/api/` and `app/web/` run the same answer path; see [deploy/README.md](deploy/README.md) for hosting and `docs/plans/2026-10-16-002-feat-go-live-web-app-plan.md` for the go-live plan.
+- **Python 3.11+**, FastAPI, plain JavaScript front end (no build step), installable as a web app (service worker, share target).
+- **Postgres with pgvector and full-text search**, hosted on Supabase; the schema is private and deployed from versioned SQL migrations.
+- **Models through OpenRouter**, behind a thin `ModelClient` interface, pinned to providers that retain no data. GPT-5 mini answers; a small embedding model (Perplexity 0.6B) makes the vectors.
+- **Hosting**: one Docker container on Railway, with the vault synced through Obsidian Sync ([docs/deploy.md](docs/deploy.md)).
+- **CI**: GitHub Actions runs all seven test suites on every pull request.
 
-## Preview a source
+## Results
 
-For answering an already published index, see [Ask a question](#ask-a-question); that path does not require the external vault.
+On a labelled set of 37 questions over six real files:
 
-Use Python 3.11 or newer and install dependencies with `python -m pip install -e .`. Set `KNOWLEDGE_SOURCE_ROOT` to the parent Knowledge folder. The root alias defaults to `primary`; keep it stable when moving that folder.
+- Search finds **44 of 51** required passages in the top 10 (47 in the top 20).
+- The accepted answer prompt passes **78.8%** of the scored checks on a frozen 85-check checklist (bar: 70%).
+- A typical answer takes about 100 seconds and about $0.04.
 
-```powershell
-$env:KNOWLEDGE_SOURCE_ROOT = '<path to Knowledge folder>'
-python -m app.ingestion.preview --relative-path 'Notes/<filename>.md'
-python -m app.ingestion.preview --relative-path 'Transcripts/<filename>.md' --eval-file evals/questions_transcript_tim_ferriss.yaml
+The test set is small and the ratings come from one person; [docs/evaluation.md](docs/evaluation.md) says what the numbers do and do not show. Things that were tried and removed because they did not help (chunk summaries, model-written chunk context, evidence cards) are in [docs/decisions.md](docs/decisions.md).
+
+## Quick start
+
+You can run the tests and preview how a note is parsed and chunked without a database, a vault or any API key.
+
+```bash
+git clone https://github.com/matteop92/knowledge-base-agent.git
+cd knowledge-base-agent
+python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
+python -m pip install -e ".[server,test]"
+
+# Parse and chunk one of the bundled sample notes (no model calls, nothing leaves your machine)
+KNOWLEDGE_SOURCE_ROOT=sources python -m app.ingestion.preview --relative-path fixtures/sample_article.md
 ```
 
-The command reports the chosen route, parsed block roles, coverage warnings, missing title or author, unresolved assets, fixed and structural chunk counts and boundary reasons, and any eval span mapping. It writes a captured snapshot, parsed document, both chunk sets, and run manifest under ignored `.local/ingestion-runs/<run_id>/`. The preview makes no model calls and prints no source passages. `--source-kind` overrides routing when needed.
+The preview prints the chosen parser, the blocks and the chunk boundaries, and writes the run under `.local/ingestion-runs/`.
 
-After a separate enrichment run, use `python -m app.ingestion.preview --inspect-run '.local/ingestion-runs/<run_id>'` to see artifact versions, ready/failed states, model usage, and configured budgets without showing source passages.
+To run the whole system you need your own Markdown vault, a Postgres database with pgvector (a local Supabase works: `npx supabase start`) and an [OpenRouter](https://openrouter.ai) key. Copy `.env.example` to `.env`, then:
 
-The exact source bytes determine `source_sha256`; Unicode character offsets refer to decoded `source_text`. A changed source keeps its document ID at the same locator but gets a new hash and run ID. Labels must be checked against the new revision.
-
-## Model enrichment
-
-`app/ingestion/enrichment.py`, `summary.py`, and `embeddings.py` accept the project's `ModelClient` interface and a `RunManifest`. They write versioned context, summaries, and embedding batches under the run directory. Partial summary and embedding work remains incomplete and can resume. `EmbeddingSpec` includes provider, model and version, dimensions, metric, input recipe, context prompt version, chunking version, and creation time. Changing a model or recipe creates a separate artifact version.
-
-The direct OpenRouter adapter is opt in. Construct `OpenRouterClient(allow_live=True, request_budget=..., estimated_input_token_budget=...)` only after choosing to send source text externally; it also requires `OPENROUTER_API_KEY`. Request and estimated input budgets are enforced before each call. The automated tests use fake clients and require no key. Model outputs and source snapshots stay in the ignored runtime directory; do not commit them. The token estimate uses a local lexical count, so it is a budget guard rather than provider billing data.
-
-## Private storage and candidate search
-
-### Browse the local database
-
-With local Supabase Postgres running, start the read-only viewer from the repository directory:
-
-```powershell
-python -m app.storage.local_viewer
+```bash
+python -m app.storage.cli --help        # load a run, create a profile, publish, search
+python -m app.agent.cli --help          # ask a question from the command line (--dry-run first)
+uvicorn app.api.main:build --factory    # the web app and API
 ```
 
-Open [http://127.0.0.1:8765/](http://127.0.0.1:8765/) in your browser. The viewer reads `KNOWLEDGE_DATABASE_URL` from your environment or the repository's ignored `.env`, binds only to this computer, and shows the active profile and raw schema tables. Restart the same command after a reboot.
-
-Run a local Supabase Postgres instance with Docker and apply the versioned migration:
-
-```powershell
-npx supabase start
-npx supabase db reset --local
-```
-
-The migration creates a non-exposed `knowledge` schema, a non-login `knowledge_runtime` role, source-linked tables, a GIN full-text index, and pgvector storage. Create a separate login role with membership in `knowledge_runtime` outside the repository, then set `KNOWLEDGE_DATABASE_URL` to its direct or session-pooled Postgres connection string. Keep migration credentials separate. The `knowledge` schema is absent from the Data API's exposed schemas in `supabase/config.toml`; check the hosted project's settings before any deployment.
-
-```powershell
-python -m app.storage.cli load '.local/ingestion-runs/<run-id>'
-python -m app.storage.cli create-profile <profile-id> fixed_raw <chunking-version> <spec-id>
-python -m app.storage.cli publish <profile-id> <run-id>
-python -m app.storage.cli select-profile <profile-id>
-python -m app.storage.cli status
-python -m app.storage.cli search-text 'example phrase' --k 10
-python -m app.storage.cli search-vector '.local/query-vector.json' <spec-id> cosine --k 10
-```
-
-`load` validates the snapshot hash, parsed source, both chunk sets, and ready artifact provenance before staging one transaction. Repeat loads are idempotent; pending artifacts can later become ready. `publish` checks complete ready vectors for the profile and any explicitly required enrichment artifacts before changing the active run. Normal searches only see the selected profile and active run; `--profile-id` together with `--historical-run-id` opts into an older or staged run for evaluation. FTS uses `simple` lexemes; vector search is exact until a measured model-specific HNSW index is justified. CLI search output omits passage text while retaining source IDs and spans.
-
-For a private embedding trial, first preflight the checked files and cost. Live mode requires `OPENROUTER_API_KEY` in the environment or ignored `.env`, a local migrated database URL, and an explicit spend cap. It writes only ignored captures, vectors, and a metric report:
-
-```powershell
-python -m evals.compare_embeddings --source-root '<Knowledge folder>' --max-usd 5
-python -m evals.compare_embeddings --source-root '<Knowledge folder>' --max-usd 5 --live
-```
-
-The trial uses checked source hashes, fixed raw chunks, exact vector search, independent FTS results, and privacy restricted provider routing. It chooses a model only if required-span Recall@10 reaches 0.8 and complete-question coverage reaches 0.7; otherwise the report records no choice. Provider prices and routes must be rechecked when running a new trial.
-
-The first six-file trial selected `perplexity/pplx-embed-v1-0.6b` with fixed 800/80 raw chunks, 1,024 dimensions, and cosine distance. It retrieved 42 of 51 required spans at K=10 across 31 supported questions (26 questions complete); `baai/bge-m3` retrieved 40 spans (25 complete), and independent FTS retrieved 29 spans. The full comparison reported about $0.0012 of model usage; extrapolated indexing of the current ten Markdown files is about $0.0008 for the selected model and about 1 MB of raw vectors. These are small-sample estimates, and OpenRouter's privacy restricted automatic provider route has not been pinned to a single provider version. The private per-question report is in ignored `.local/embedding-trial/report.json`.
+Run the agent command with `--dry-run` first: it checks the configuration and prices without spending anything. A live run needs `--live` and an explicit spending ceiling (`--max-usd`).
 
 ## Tests
 
-```powershell
-python -m unittest discover -s tests/ingestion -p 'test_*.py' -v
-python -m unittest discover -s tests/models -p 'test_*.py' -v
-python -m unittest discover -s tests/storage -p 'test_*.py' -v
-python -m unittest discover -s tests/agent -p 'test_*.py' -v
-python -m unittest discover -s tests/api -p 'test_*.py' -v
+```bash
+for s in ingestion models storage agent api capture evals; do
+  python -m unittest discover -s tests/$s -p 'test_*.py'
+done
 ```
 
-Tests use short synthetic fixtures. Storage integration tests need a fresh disposable pgvector/Supabase database named by `KNOWLEDGE_TEST_DATABASE_URL`; the test applies the migration and creates test roles, so do not point it at a hosted project. Optional read-only ingestion acceptance against the external vault is controlled by `KNOWLEDGE_SOURCE_ROOT`.
+The tests use short synthetic fixtures and fake model clients, so they cost nothing. Tests that need a database are skipped unless `KNOWLEDGE_TEST_DATABASE_URL` points at a fresh, disposable Postgres with pgvector (use a separate database for each suite; never a real one). CI runs all seven suites against a throwaway Postgres.
+
+## Repository map
+
+| Folder | What is in it |
+| --- | --- |
+| `app/ingestion/` | Capture, parsing, chunking, embeddings, vault sync and the tag classifier. |
+| `app/storage/` | Postgres loading, publication, search and the spend ledger. |
+| `app/agent/` | The answer loop, its command line and the follow-up memory. |
+| `app/api/`, `app/web/` | The FastAPI server and the installable web app. |
+| `app/capture/` | Turns text, files, screenshots and YouTube links into new notes. |
+| `app/models/` | The model interface, the OpenRouter adapter and pinned routes and prices. |
+| `prompts/` | The prompts in use, with a changelog ([prompts/README.md](prompts/README.md)). |
+| `evals/` | Labelled questions, the answer checklist and trial scripts ([evals/README.md](evals/README.md)). |
+| `supabase/migrations/` | The database schema. |
+| `docs/` | Architecture, decisions, evaluation, deployment, and an archive of the original design brief and two example plans. |
+
+## Known limits
+
+- **One user, one vault.** Sign-in is for a single allowed account; there is no sharing.
+- **Small evidence base.** The tuning and the quality numbers come from six files and eight benchmark questions. Behaviour on hundreds of files, or on whole-vault questions ("find every note about X"), has not been measured.
+- **Slow answers.** The agent loop takes around 100 seconds for a full answer. Ideas for speeding it up are listed in [docs/decisions.md](docs/decisions.md).
+- **Connections across notes are not surfaced.** Search finds what matches the question; it does not point out a related idea in another note.
+- **No reranking and no approximate vector index** yet; both wait for a corpus large enough to need them.
+- **The sample vault is private.** The labelled evaluation runs on real notes that are not in this repository, so those trials can be read but not rerun. The synthetic fixtures in `sources/fixtures/` and the unit tests run anywhere.
+
+## Built with Claude Code
+
+Most of this code was written with [Claude Code](https://claude.com/claude-code), working from plans I scoped and reviewed. I set the goals, made the design decisions, defined the evaluation and rated the answers; the agent wrote the implementation under tests and multi-reviewer code reviews. [docs/archive/plans/](docs/archive/plans/) has two of the plans as examples of how work was scoped.
+
+## Credits
+
+Icons are [Phosphor Icons](https://phosphoricons.com) (MIT). The web app uses the Geist and Newsreader typefaces, bundled under the SIL Open Font License (`app/web/fonts/`).
