@@ -1,11 +1,16 @@
 import unittest
 import json
 import hashlib
+import os
 import tempfile
 from pathlib import Path
 
 from evals.answer_rubric import load_rubric
 from evals.answer_trial import load_submitted_review, review_template, summarize_review, run_configuration
+
+
+def setUpModule():
+    os.makedirs(".local", exist_ok=True)
 
 
 class AnswerTrialTest(unittest.TestCase):
