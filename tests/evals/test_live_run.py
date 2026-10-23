@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from app.ingestion.chunking import structural_raw_chunks
-from app.ingestion.live_run import estimate
+from evals.live_run import estimate
 from app.ingestion.router import route_source
 from app.ingestion.source_reader import capture_source
 from evals.compare_chunking import Prepared
