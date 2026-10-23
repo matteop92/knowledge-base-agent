@@ -4,13 +4,15 @@
 
 A personal knowledge agent. It indexes a vault of Markdown notes (podcast transcripts, articles, book highlights, plain notes) and answers questions with citations that link back to the exact passage in the original note. It runs as a private web app you can install on a phone.
 
-<!--
-Screenshots: add phone screenshots of the demo server to docs/images/ and uncomment.
-
-| Ask | Answer with citations | Source passage | Gaps |
+| Ask | Answer with citations | The cited passage | What is missing |
 | --- | --- | --- | --- |
-| ![New question](docs/images/01-new-question.png) | ![Answer](docs/images/02-answer.png) | ![Passage](docs/images/03-passage.png) | ![Gaps](docs/images/04-gaps.png) |
--->
+| <img src="docs/images/01-new-question.png" width="200" alt="New question screen"> | <img src="docs/images/02-answer.png" width="200" alt="An answer with numbered citations"> | <img src="docs/images/03-passage.png" width="200" alt="A cited passage open in a sheet"> | <img src="docs/images/04-gaps.png" width="200" alt="The gaps panel listing what the notes did not cover"> |
+
+| Add a note | Tags | History |
+| --- | --- | --- |
+| <img src="docs/images/05-capture.png" width="200" alt="Capture sheet with tag chips"> | <img src="docs/images/06-settings-tags.png" width="200" alt="Settings with suggested tags"> | <img src="docs/images/07-history.png" width="200" alt="Navigation drawer with past conversations"> |
+
+*Screenshots are from a demo server with made-up notes.*
 
 ## Why I built it
 
