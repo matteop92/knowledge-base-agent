@@ -12,7 +12,7 @@ A personal knowledge agent. It indexes a vault of Markdown notes (podcast transc
 | --- | --- | --- |
 | <img src="docs/images/05-capture.png" width="200" alt="Capture sheet with tag chips"> | <img src="docs/images/06-settings-tags.png" width="200" alt="Settings with suggested tags"> | <img src="docs/images/07-history.png" width="200" alt="Navigation drawer with past conversations"> |
 
-*Screenshots are from a demo server with made-up notes.*
+*These screenshots are mock data. They come from a demo server with made-up notes and canned answers, not from a real vault or real model output.*
 
 ## Why I built it
 
@@ -62,7 +62,7 @@ More detail: [docs/architecture.md](docs/architecture.md). Why each choice was m
 - **Postgres with pgvector and full-text search**, hosted on Supabase; the schema is private and deployed from versioned SQL migrations.
 - **Models through OpenRouter**, behind a thin `ModelClient` interface, pinned to providers that retain no data. GPT-5 mini answers; a small embedding model (Perplexity 0.6B) makes the vectors.
 - **Hosting**: one Docker container on Railway, with the vault synced through Obsidian Sync ([docs/deploy.md](docs/deploy.md)).
-- **CI**: GitHub Actions runs all seven test suites on every pull request.
+- **CI**: GitHub Actions runs all seven test suites on every pull request. `constraints.txt` pins every dependency version, and CI and the Docker image both install with it.
 
 ## Results
 
@@ -82,7 +82,7 @@ You can run the tests and preview how a note is parsed and chunked without a dat
 git clone https://github.com/matteop92/knowledge-base-agent.git
 cd knowledge-base-agent
 python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
-python -m pip install -e ".[server,test]"
+python -m pip install -c constraints.txt -e ".[server,test]"
 
 # Parse and chunk one of the bundled sample notes (no model calls, nothing leaves your machine)
 KNOWLEDGE_SOURCE_ROOT=sources python -m app.ingestion.preview --relative-path fixtures/sample_article.md

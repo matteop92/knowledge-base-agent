@@ -16,9 +16,9 @@ COPY --from=obsidian /opt/obsidian/node_modules /opt/obsidian/node_modules
 RUN ln -s /opt/obsidian/node_modules/obsidian-headless/cli.js /usr/local/bin/ob \
     && chmod +x /opt/obsidian/node_modules/obsidian-headless/cli.js && ob --version
 
-COPY pyproject.toml ./
+COPY pyproject.toml constraints.txt ./
 COPY app ./app
-RUN pip install --no-cache-dir ".[server]"
+RUN pip install --no-cache-dir -c constraints.txt ".[server]"
 COPY prompts ./prompts
 COPY config ./config
 COPY deploy ./deploy
