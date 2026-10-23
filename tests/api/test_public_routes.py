@@ -34,7 +34,7 @@ class PublicRouteTests(unittest.TestCase):
 
     def test_codes_go_only_to_the_allowed_address(self):
         self.client.post("/auth/code", json={"email": "someone@example.com"})
-        self.client.post("/auth/code", json={"email": "user@example.com"})
+        self.client.post("/auth/code", json={"email": "USER@example.com"})
         self.assertEqual(self.auth.sent, [EMAIL])
 
     def test_a_wrong_address_and_a_wrong_code_get_the_same_reply(self):

@@ -22,6 +22,7 @@ restricted runtime login. Secrets live in the host's secret store, never in the 
 | `KNOWLEDGE_ALLOWED_EMAIL` | Your sign-in email |
 | `KNOWLEDGE_VAULT_NAME` | The Obsidian vault name used in `obsidian://` links (default `New Vault`) |
 | `KNOWLEDGE_DAILY_CAP_USD` | Daily cap on all model spend (default `2`) |
+| `SUPABASE_PROJECT_REF` | Only for `evals/hosted_smoke.py`: the project reference, to check the hosted login |
 
 ## Check after each deploy
 
