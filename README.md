@@ -155,6 +155,10 @@ I built this with [Claude Code](https://claude.com/claude-code) as my coding par
 - **I rated the answers myself.** The 85-check answer checklist was reviewed and frozen by me. A model grader exists but missed its accuracy bar, so it only pre-rates and I confirm.
 - **Every change was reviewed.** Code went through tests and a multi-reviewer code review before merging, and spending on live model calls was capped at every step.
 
+## Licence
+
+All rights reserved. The code is public so you can read and evaluate it; see [LICENSE](LICENSE). Please ask before reusing any of it.
+
 ## Credits
 
 Icons are [Phosphor Icons](https://phosphoricons.com) (MIT). The web app uses the Geist and Newsreader typefaces, bundled under the SIL Open Font License (`app/web/fonts/`).
