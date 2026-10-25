@@ -62,11 +62,25 @@ def _price(pricing: object, key: str) -> Decimal:
     return value
 
 
-def plan(checklist: Checklist, entries: list[tuple[str, str, dict]], sources: dict[str, bytes]) -> list[dict]:
+def load_other_sources(path: Path | None) -> dict[str, tuple[str, str]]:
+    """`{document_id: {"source_sha256", "path"}}` for notes outside the checklist; each file must match its hash."""
+    if path is None:
+        return {}
+    found = {}
+    for document_id, item in json.loads(path.read_text(encoding="utf-8")).items():
+        raw = Path(item["path"]).read_bytes()
+        if hashlib.sha256(raw).hexdigest() != item["source_sha256"]:
+            raise ValueError("an extra source file does not match its revision")
+        found[document_id] = (item["source_sha256"], raw.decode("utf-8"))
+    return found
+
+
+def plan(checklist: Checklist, entries: list[tuple[str, str, dict]], sources: dict[str, bytes],
+         other_sources: dict[str, tuple[str, str]] | None = None) -> list[dict]:
     """Prepare every grader input up front, so a bad receipt stops the run before any call."""
     planned = []
     for question_id, label, receipt in entries:
-        payload = prepare_evidence(checklist, question_id, receipt, sources)
+        payload = prepare_evidence(checklist, question_id, receipt, sources, other_sources)
         # Measured the way the adapter sends it: the input is itself a JSON string inside an
         # ASCII-escaped request body, so non-ASCII characters count six bytes each.
         size = len(json.dumps({"system": CHECKLIST_PROMPT, "input": json.dumps(payload, ensure_ascii=False),
@@ -89,6 +103,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="ceiling on the route's input and output price per million tokens")
     parser.add_argument("--max-usd", type=Decimal, help="ceiling on the run's worst-case cost")
     parser.add_argument("--output", type=Path, help="new directory under .local/ for grade receipts")
+    parser.add_argument("--other-sources", type=Path,
+                        help="JSON of notes outside the checklist that answers read: document id to hash and file")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--live", action="store_true")
@@ -103,7 +119,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("no receipts to grade")
     entries = load_receipts(inputs)
     sources = gold_sources(checklist)
-    planned = plan(checklist, entries, sources)
+    other_sources = load_other_sources(args.other_sources)
+    planned = plan(checklist, entries, sources, other_sources)
     calls = len(planned) * args.repeats
     # The adapter's conservative input estimate is request bytes plus 512 per request;
     # allow 2 KB more per request for the model, route and message framing.
@@ -163,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
             before = len(client.billable_requests)
             result = grade_answer(checklist, item["question_id"], item["receipt"], sources,
                                   client=client, model=model, max_output_tokens=args.max_output_tokens,
-                                  reasoning_effort=args.reasoning_effort)
+                                  reasoning_effort=args.reasoning_effort, other_sources=other_sources)
             usage = [usage for _, usage in client.billable_requests[before:]]
             cost = sum(Decimal(u.input_tokens or 0) * prompt_price + Decimal(u.output_tokens or 0) * completion_price
                        for u in usage)

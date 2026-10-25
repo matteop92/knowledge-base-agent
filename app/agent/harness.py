@@ -128,6 +128,31 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
         return [(ref, (candidates[ref].hit.title or candidates[ref].hit.relative_path.rsplit("/", 1)[-1])[:40])
                 for ref in dict.fromkeys(refs) if ref not in read_refs][:8]
 
+    def read_chunk(ref: str) -> dict[str, SourcePassage]:
+        """One read inspects every span of the chunk; each passage keeps its own citation ID."""
+        candidate = candidates[ref]
+        hit = candidate.hit
+        passages: dict[str, SourcePassage] = {}
+        for span_index, span in enumerate(hit.source_spans):
+            offset = 0
+            while offset < span["end_char"] - span["start_char"]:
+                citation_id = f"{ref}.{span_index}" + (f"@{offset}" if offset else "")
+                passage = (retriever.read(candidate, span_index, offset=offset) if offset
+                           else retriever.read(candidate, span_index))
+                if (passage.document_id, passage.run_id, passage.source_sha256, passage.chunk_id) != (
+                    hit.document_id, hit.run_id, hit.source_sha256, hit.chunk_id
+                ) or not (passage.start_char == span["start_char"] + offset < passage.end_char <= span["end_char"]) or (
+                    len(passage.text) != passage.end_char - passage.start_char
+                ):
+                    raise ValueError("source read changed candidate provenance")
+                offset += len(passage.text)
+                if passage.span_end_char is None:
+                    passage = passage.model_copy(update={"span_end_char": span["end_char"],
+                        "next_offset": offset if passage.end_char < span["end_char"] else None,
+                        "truncated": passage.end_char < span["end_char"]})
+                passages[citation_id] = passage
+        return passages
+
     # The host searches with the question itself so the first turn already has ranked leads.
     try:
         found = retriever.search(host_query)
@@ -141,6 +166,23 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
     searched = "the question" if host_query == question else f"the standalone query {host_query!r}"
     feedback = (f"The host searched with {searched} and found {len(found)} chunks, listed best first. "
                 "Read promising chunks, or search with a short specific query.")
+    host_read: list[str] = []
+    for ref in unread()[:min(limits.host_reads, limits.max_reads)]:
+        try:
+            passages = read_chunk(ref)
+        except (StorageError, ModelClientError, psycopg.Error):
+            return stopped("Original source read failed.", "tool_failed")
+        except (IndexError, ValueError):
+            continue
+        reads += 1
+        inspected.update(passages)
+        read_refs.add(ref)
+        host_read.append(ref)
+    if host_read:
+        actions.append({"action": "host_read", "inspected_ids": [key for key in inspected
+                                                                  if key.split(".")[0] in host_read]})
+        feedback += (f" The host has already read the best {len(host_read)} ({', '.join(host_read)}); their passages "
+                     "are under `inspected`. Finish if they answer the question; otherwise read or search for what is missing.")
     while calls < limits.max_model_calls and time.monotonic() - started < limits.max_seconds:
         available = [{"id": ref, "title": candidates[ref].hit.title or candidates[ref].hit.relative_path.rsplit("/", 1)[-1],
                       "people": candidates[ref].hit.people, "rank": best_rank[ref],
@@ -363,29 +405,8 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                             f"Read a different chunk ({unread()[:8]}), search, or finish.")
                 actions[-1]["rejected"] = "Already inspected chunk"
                 continue
-            # One read inspects every span of the chunk; each passage keeps its own citation ID.
-            candidate = candidates[ref]
-            hit = candidate.hit
-            passages: dict[str, SourcePassage] = {}
             try:
-                for span_index, span in enumerate(hit.source_spans):
-                    offset = 0
-                    while offset < span["end_char"] - span["start_char"]:
-                        citation_id = f"{ref}.{span_index}" + (f"@{offset}" if offset else "")
-                        passage = (retriever.read(candidate, span_index, offset=offset) if offset
-                                   else retriever.read(candidate, span_index))
-                        if (passage.document_id, passage.run_id, passage.source_sha256, passage.chunk_id) != (
-                            hit.document_id, hit.run_id, hit.source_sha256, hit.chunk_id
-                        ) or not (passage.start_char == span["start_char"] + offset < passage.end_char <= span["end_char"]) or (
-                            len(passage.text) != passage.end_char - passage.start_char
-                        ):
-                            raise ValueError("source read changed candidate provenance")
-                        offset += len(passage.text)
-                        if passage.span_end_char is None:
-                            passage = passage.model_copy(update={"span_end_char": span["end_char"],
-                                "next_offset": offset if passage.end_char < span["end_char"] else None,
-                                "truncated": passage.end_char < span["end_char"]})
-                        passages[citation_id] = passage
+                passages = read_chunk(ref)
             except (StorageError, ModelClientError, psycopg.Error) as exc:
                 actions[-1]["error_type"] = type(exc).__name__
                 return stopped("Original source read failed.", "tool_failed")
@@ -416,7 +437,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
             same_source = [ref for ref in unread() if candidates[ref].hit.document_id in used_documents]
             if (same_source and not force_finish and reads < limits.max_reads
                     and calls < limits.max_model_calls and reads != reads_at_coverage_check
-                    and coverage_checks < 2):
+                    and coverage_checks < limits.coverage_checks):
                 reads_at_coverage_check = reads
                 coverage_checks += 1
                 actions[-1]["rejected"] = "Unread chunks remain in sources already used"

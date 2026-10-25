@@ -69,6 +69,8 @@ class OpenRouterClient:
         # Token counts per billed request, for answer receipts; never any request or reply text.
         self.usage_log: list[dict[str, Any]] = []
         self.rate_limit_retries = 0
+        # A client serves one answer or one run, so each pinned route is checked once in its life.
+        self._checked_routes: dict[tuple[str, str, bool], dict[str, Any]] = {}
 
     @property
     def remaining_input_bytes(self) -> int | None:
@@ -147,6 +149,12 @@ class OpenRouterClient:
 
     def require_zdr_route(self, model_id: str, tag: str, *, structured: bool = False) -> dict[str, Any]:
         """Return current metadata only for an explicitly pinned private endpoint."""
+        key = (model_id, tag, structured)
+        if key not in self._checked_routes:
+            self._checked_routes[key] = self._check_zdr_route(model_id, tag, structured=structured)
+        return self._checked_routes[key]
+
+    def _check_zdr_route(self, model_id: str, tag: str, *, structured: bool) -> dict[str, Any]:
         if self._provider is None or self._provider.get("zdr") is not True or self._provider.get("data_collection") != "deny":
             raise ModelClientError("private route must deny collection and require ZDR")
         if not self._api_key:
@@ -218,9 +226,12 @@ class OpenRouterClient:
             self.billable_usages.append(usage)
             self.billable_requests.append((str(payload.get("model", "")), usage))
             details = (data.get("usage") or {}).get("completion_tokens_details")
+            prompt_details = (data.get("usage") or {}).get("prompt_tokens_details")
             self.usage_log.append({"model": str(payload.get("model", "")), "input_tokens": usage.input_tokens,
+                                   "cached_tokens": prompt_details.get("cached_tokens") if isinstance(prompt_details, dict) else None,
                                    "output_tokens": usage.output_tokens,
-                                   "reasoning_tokens": details.get("reasoning_tokens") if isinstance(details, dict) else None})
+                                   "reasoning_tokens": details.get("reasoning_tokens") if isinstance(details, dict) else None,
+                                   "seconds": round(self.request_timings[-1][1], 3)})
             return data
         raise ModelClientError("OpenRouter rate limit retries exhausted")
 

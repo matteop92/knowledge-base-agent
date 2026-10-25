@@ -304,6 +304,29 @@ class HarnessTest(unittest.TestCase):
         self.assertEqual(result.termination, "completed")
         self.assertEqual(result.model_calls, 3)
 
+        # With the check off, the first finish is accepted.
+        client = CapturingClient([action_v3("read", reference_id="E1"), early])
+        result = answer_question("Explain", retriever=TwoChunks(), client=client, model=MODEL,
+                                 limits=AnswerLimits(coverage_checks=0))
+        self.assertNotIn("rejected", result.actions[-1])
+        self.assertEqual(result.model_calls, 2)
+
+        # Host reads: the best chunks are read before the first turn, count as reads, and can be cited.
+        import json
+        both = [{**resolved[0], "evidence_ids": ["E1.0", "E2.0"]}]
+        client = CapturingClient([action_v3("finish", answer="Grounded [E1.0] and [E2.0]",
+                                            citation_ids=["E1.0", "E2.0"], completeness="complete",
+                                            sufficient=True, need_updates=both)])
+        result = answer_question("Explain", retriever=TwoChunks(), client=client, model=MODEL,
+                                 limits=AnswerLimits(host_reads=2, coverage_checks=0, max_reads=8))
+        first = json.loads(client.inputs[0])
+        self.assertEqual([item["chunk"] for item in first["inspected"]], ["E1", "E2"])
+        self.assertEqual([item["id"] for item in first["candidates"]], ["E3"])
+        self.assertEqual(first["remaining"]["reads"], 6)
+        self.assertEqual(result.actions[0], {"action": "host_read", "inspected_ids": ["E1.0", "E2.0"]})
+        self.assertEqual((result.termination, result.model_calls, set(result.citations)),
+                         ("completed", 1, {"E1.0", "E2.0"}))
+
     def test_repeated_query_is_rejected_and_low_ranked_sources_stay_visible(self):
         class TwoSources(FakeRetriever):
             def search(self, query):

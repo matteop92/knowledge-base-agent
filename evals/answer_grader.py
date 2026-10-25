@@ -83,8 +83,14 @@ def _question(rubric: AnswerRubric | Checklist, question_id: str):
 
 
 def prepare_evidence(rubric: AnswerRubric | Checklist, question_id: str, answer_receipt: dict,
-                     gold_sources: dict[str, bytes]) -> dict:
-    """Keep answer, inspected evidence, and revision-checked gold alternatives distinct."""
+                     gold_sources: dict[str, bytes],
+                     other_sources: dict[str, tuple[str, str]] | None = None) -> dict:
+    """Keep answer, inspected evidence, and revision-checked gold alternatives distinct.
+
+    `other_sources` maps a document outside the checklist to its (source SHA-256, text): an
+    answer from a larger index may read notes the checklist does not pin, and their passages
+    are checked against these texts instead.
+    """
     if rubric.version != 4:
         raise ValueError("grader requires version-4 criteria")
     observed = answer_receipt.get("configuration", {}).get("source_revisions", {})
@@ -110,9 +116,14 @@ def prepare_evidence(rubric: AnswerRubric | Checklist, question_id: str, answer_
             checked_sources[document_id] = raw.decode("utf-8")
     for evidence in inspected.values():
         document_id = evidence.get("document_id")
-        if evidence.get("source_sha256") != revisions.get(document_id):
+        if document_id not in revisions and document_id in (other_sources or {}):
+            expected_sha, source_text = other_sources[document_id]
+            if evidence.get("source_sha256") != expected_sha:
+                raise ValueError("inspected passage has an unexpected source revision")
+        elif evidence.get("source_sha256") != revisions.get(document_id):
             raise ValueError("inspected passage has an unexpected source revision")
-        source_text = checked_sources.get(document_id)
+        else:
+            source_text = checked_sources.get(document_id)
         start, end = evidence.get("start_char"), evidence.get("end_char")
         if (source_text is None or not isinstance(start, int) or not isinstance(end, int)
                 or not 0 <= start < end <= len(source_text)
@@ -307,9 +318,10 @@ def _validate_checklist_judgments(payload: dict, checks: dict, response: GraderR
 
 def grade_answer(rubric: AnswerRubric | Checklist, question_id: str, answer_receipt: dict,
                  gold_sources: dict[str, bytes], *, client: ModelClient, model: ModelSpec,
-                 max_output_tokens: int = 8000, reasoning_effort: str | None = None) -> dict:
+                 max_output_tokens: int = 8000, reasoning_effort: str | None = None,
+                 other_sources: dict[str, tuple[str, str]] | None = None) -> dict:
     """One bounded grader call; all failures remain ungraded for review or retry."""
-    payload = prepare_evidence(rubric, question_id, answer_receipt, gold_sources)
+    payload = prepare_evidence(rubric, question_id, answer_receipt, gold_sources, other_sources)
     checklist = payload.get("layout") == CHECKLIST_LAYOUT
     prompt, schema_name, schema, version = (
         (CHECKLIST_PROMPT, "answer_grader_v4", GRADE_SCHEMA_V3, 3) if checklist

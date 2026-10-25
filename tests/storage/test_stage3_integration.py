@@ -25,7 +25,8 @@ from app.storage.publication import create_profile, publish_run, select_profile
 from app.storage.records import PublicationSelection, SearchProfile, spec_id
 from app.storage.search import search_text, search_vector
 from tests.storage.database import apply_migrations
-from app.storage.retrieval import DatabaseRetriever, find_in_document, hybrid_search, read_passage, selected_embedding_spec
+from app.storage.retrieval import (DatabaseRetriever, find_in_document, hybrid_search, passage_from_chunk, read_chunk,
+                                   read_passage, selected_embedding_spec)
 
 
 def add_vectors(run_dir: Path, spec: EmbeddingSpec):
@@ -138,6 +139,16 @@ class Stage3IntegrationTest(unittest.TestCase):
                         source_sha256=hit.source_sha256, chunk_id=hit.chunk_id,
                         start_char=span["start_char"], end_char=span["end_char"])
             self.assertIn("coral pear", read_passage(self.conn, **args).text)
+            # A whole-chunk read gives the same passage as the single read.
+            chunk = read_chunk(self.conn, **{key: args[key] for key in
+                                             ("document_id", "run_id", "source_sha256", "chunk_id")})
+            self.assertEqual(passage_from_chunk(chunk, span["start_char"], span["end_char"]),
+                             read_passage(self.conn, **args))
+            # The properties of every active source load in one query.
+            from app.agent.properties import load_sources
+            sources = load_sources(self.conn)
+            self.assertEqual([(item.document_id, item.chunks) for item in sources], [(hit.document_id, 1)])
+            self.assertEqual(sources[0].first_chunk["chunk_id"], hit.chunk_id)
             for changed in ({"source_sha256": "0" * 64}, {"document_id": "unknown"},
                             {"chunk_id": "unknown"}, {"start_char": -1},
                             {"end_char": span["end_char"] + 1}):

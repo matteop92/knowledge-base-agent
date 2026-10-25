@@ -29,11 +29,33 @@ A checklist of 85 yes/no checks over eight questions, in three groups: *coverage
 
 The pass bar was 70%. v13 is lower on coverage (27 of 37 against 34 of 38) and better on relevance. One run per question cannot separate the two on overall score, so the choice favoured fewer off-topic points. v13's two grounding slips were an adaptation presented as the interviewee's own advice, and a verb that overstated the source.
 
-A model grader (`evals/answer_grader.py`) was calibrated on held-out answers and missed the pass bar, so it only pre-rates answers; a person confirms every rating.
+A model grader (`evals/answer_grader.py`, `gpt-5-mini` at medium reasoning, prompt v4) pre-rates answers; a person confirms ratings that decide a prompt. On held-out answers it agreed with the person on 97.1% of grounding checks with no false pass, caught 4 of 4 planted errors, but agreed on only 75% of coverage checks (bar: 90%) and scores about 11 points above the person. `gpt-6-luna` as grader was worse (50% grounding agreement). It is used to compare configurations graded the same way, read per dimension, not as an absolute score.
+
+Reasoning effort: `gpt-5-mini` at medium beat low and minimal on answer quality in an earlier test, so it is fixed and was not rerun.
 
 ## Cost and speed
 
-A typical hosted answer takes about 100 seconds and 12 model calls and costs about $0.04. The eight benchmark questions ran between 16 and 150 seconds locally. The enrichment trials that were later dropped cost about $1.43 in total.
+A speed set of 25 questions (6 count or list questions about the sources, 8 single-source, 8 multi-source and 3 follow-ups; 5 are real questions asked in the app and 8 are the checklist questions), each run 3 times through the web app's answer engine against the hosted database. Times are the answer's elapsed time; model time is the sum of model request times.
+
+| | Before | After |
+| --- | --- | --- |
+| Elapsed p50 / p95 | 114 s / 280 s | 37 s / 92 s |
+| Model time p50 / p95 | 69 s / 151 s | 20 s / 65 s |
+| Model calls per answer | 5.5 | 1.7 |
+| Cost per answer | $0.020 | $0.008 |
+| Failed answers (of 75) | 9 | 1 |
+| Graded checklist score | 89.3% | 88.9% |
+
+"Before" is the answer loop with two host fixes that change nothing the model sees (the database cuts each passage instead of sending the whole note, and the model route is checked once per answer); without them a laptop run hit the 300 s limit. "After" adds the router for count and list questions, six chunks read by the host before the first model turn, and no finish sent back for unread chunks. Count and list questions went from about 200 s to 8 s, multi-source questions about 61% faster, single-source p95 46% faster with the median unchanged.
+
+Where the time went before, on the eight checklist questions: finishes sent back for unread chunks 40%, turns that only chose a chunk to read 33%, the accepted finish 24%, the host about 2%. Other causes checked:
+
+- Prompt caching already works: 95 to 99% of input tokens per call were served from the cache.
+- Repeated searches: 28 of 49 model searches repeated an earlier query, but the loop already refuses a repeat without running it, so a search cache would save nothing.
+- Tighter limits: the faster loop averages 1.7 model calls, well under the cap of 12, so a lower cap would only cut off the rare long answer.
+- Running the first search alongside the first model call: the first call needs the search results, and the host's search and reads take about 2% of the time. Streaming does not shorten a JSON action.
+
+Alternatives measured on the eight checklist questions: keeping one finish sent back scored 90.2% but its model time was about twice as long; reading ten chunks up front scored 87.7% and was slower than six; `gpt-6-luna` as the answer model had a worse p95. The grader scores differ by less than its own noise, so the faster configuration was chosen.
 
 ## What the tests cover
 

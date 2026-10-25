@@ -13,6 +13,7 @@ This folder holds only the versions in use. Older versions were removed; the cha
 | `answer_agent_v13.md` | `app/agent/harness.py` | The answer loop for a new question. Tells the agent how to search, read whole chunks, track what the question needs, attribute statements to the right speaker, and stop without a closing offer. |
 | `answer_agent_v14.md` | `app/agent/harness.py` | The same loop for a follow-up question, with the earlier turns and the passages already read passed in as memory. |
 | `followup_rewrite_v1.md` | `app/agent/memory.py` | Rewrites a follow-up into a stand-alone search query for the first search. |
+| `property_router_v1.md` | `app/agent/properties.py` | Decides whether a first question counts or lists sources by their properties (author, guest, tag, type, date, title) and, if so, which filters it states; those questions skip the answer loop. |
 | `properties_v3.md` | `app/ingestion/properties.py` | Classifies a note: source type and one to three tags from the approved list. |
 | `screenshot_extract_v1.md` | `app/capture/screenshot.py` | Reads text and structure out of a screenshot. |
 | `youtube_transcript_v1.md` | `app/capture/youtube.py` | Turns a video transcript into a clean note. |
@@ -44,3 +45,6 @@ The notes below come from the commit that introduced each version.
 
 **Chunk context**
 - v1: one-sentence context for each chunk. v2: capped at 60 words, no invented facts, speaker attribution kept (used by the chunking trial).
+
+**Property router**
+- v1: sends count, list and "who wrote" questions about the sources to a stored-properties lookup, with filters copied from the vault's own people, tags and types. On 24 new phrasings it routed 23 correctly and sent no content question to the lookup.
