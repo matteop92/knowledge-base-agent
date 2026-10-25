@@ -36,6 +36,13 @@ class AnswerSettings:
     max_usd_per_answer: Decimal = Decimal("0.60")
     request_budget: int = 18
     input_byte_budget: int = 800_000
+    # Speed options, chosen by the answer-speed trials (docs/evaluation.md). If answers feel incomplete,
+    # set coverage_checks = 1: about 30% slower, about one point higher on the graded checklist.
+    host_reads: int = 6  # chunks the host reads before the first model turn
+    coverage_checks: int = 0  # finishes that may be sent back for unread chunks of used sources
+    max_model_calls: int = 12
+    max_seconds: float = 300
+    property_router: bool = True  # count and list questions about the sources skip the loop
 
 
 @dataclass(frozen=True)

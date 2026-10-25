@@ -30,7 +30,8 @@ class ModelClientTests(unittest.TestCase):
              'usage': {'prompt_tokens': 900, 'completion_tokens': 3600,
                        'completion_tokens_details': {'reasoning_tokens': 3400}}},
             {'choices': [{'finish_reason': 'stop', 'message': {'content': '{"ok": true}'}}],
-             'usage': {'prompt_tokens': 950, 'completion_tokens': 400}},
+             'usage': {'prompt_tokens': 950, 'completion_tokens': 400,
+                       'prompt_tokens_details': {'cached_tokens': 768}}},
         ]
         client = OpenRouterClient(allow_live=True, api_key='synthetic', request_budget=2,
                                   estimated_input_token_budget=100)
@@ -41,10 +42,12 @@ class ModelClientTests(unittest.TestCase):
                                      schema_name='test', json_schema={'type': 'object'}, max_output_tokens=32)
             client.generate_json(model=self.model, system_prompt='Return JSON', input_text='private source',
                                  schema_name='test', json_schema={'type': 'object'}, max_output_tokens=32)
+        # Each entry also carries the request's wall time; it is measured, so only its type is checked.
+        self.assertTrue(all(isinstance(entry.pop('seconds'), float) for entry in client.usage_log))
         self.assertEqual(client.usage_log, [
-            {'model': 'example/open-model', 'input_tokens': 900, 'output_tokens': 3600,
+            {'model': 'example/open-model', 'input_tokens': 900, 'cached_tokens': None, 'output_tokens': 3600,
              'reasoning_tokens': 3400, 'finish_reason': 'length'},
-            {'model': 'example/open-model', 'input_tokens': 950, 'output_tokens': 400,
+            {'model': 'example/open-model', 'input_tokens': 950, 'cached_tokens': 768, 'output_tokens': 400,
              'reasoning_tokens': None, 'finish_reason': 'stop'}])
 
     def setUp(self) -> None:
@@ -269,9 +272,12 @@ class ModelClientTests(unittest.TestCase):
                                   provider={"data_collection": "deny", "zdr": True},
                                   model_providers={self.model.model_id: route})
         payload = b'{"data":[{"model_id":"example/open-model","tag":"provider-one","pricing":{"prompt":"0.0000001","completion":"0.0000002"},"supported_parameters":["response_format","structured_outputs"]}]}'
-        with patch("app.models.openrouter.request.urlopen", return_value=io.BytesIO(payload)):
+        with patch("app.models.openrouter.request.urlopen", return_value=io.BytesIO(payload)) as send:
             self.assertEqual(client.require_zdr_route(self.model.model_id, "provider-one",
                                                        structured=True)["tag"], "provider-one")
+            # The same client (one answer) checks a route once; later searches reuse the result.
+            client.require_zdr_route(self.model.model_id, "provider-one", structured=True)
+            self.assertEqual(send.call_count, 1)
         with patch.object(client, "_post", return_value={
             "choices": [{"message": {"content": '{"value": 1}'}}],
         }) as post:

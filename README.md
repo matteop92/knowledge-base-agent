@@ -82,7 +82,7 @@ On a labelled set of 37 questions over six real files:
 
 - Search finds **44 of 51** required passages in the top 10 (47 in the top 20).
 - The accepted answer prompt passes **78.8%** of the scored checks on a frozen 85-check checklist (bar: 70%).
-- A typical answer takes about 100 seconds and about $0.04.
+- A typical answer takes about 37 seconds (92 at p95) and about $0.01; a count or list question about the sources about 8 seconds.
 
 The test set is small and the ratings come from one person; [docs/evaluation.md](docs/evaluation.md) says what the numbers do and do not show. Things that were tried and removed because they did not help (chunk summaries, model-written chunk context, evidence cards) are in [docs/decisions.md](docs/decisions.md).
 
@@ -141,7 +141,7 @@ The tests use short synthetic fixtures and fake model clients, so they cost noth
 
 - **One user, one vault.** Sign-in is for a single allowed account; there is no sharing.
 - **Small evidence base.** The tuning and the quality numbers come from six files and eight benchmark questions. Behaviour on hundreds of files, or on whole-vault questions ("find every note about X"), has not been measured.
-- **Slow answers.** The agent loop takes around 100 seconds for a full answer. Ideas for speeding it up are listed in [docs/decisions.md](docs/decisions.md).
+- **Answers still take tens of seconds.** Most of the wait is one model call that writes the answer, and the page does not yet show progress while it runs.
 - **Connections across notes are not surfaced.** Search finds what matches the question; it does not point out a related idea in another note.
 - **No reranking and no approximate vector index** yet; both wait for a corpus large enough to need them.
 - **The sample vault is private.** The labelled evaluation runs on real notes that are not in this repository, so those trials can be read but not rerun. The synthetic fixtures in `sources/fixtures/` and the unit tests run anywhere.

@@ -69,6 +69,20 @@ class AnswerGraderTest(unittest.TestCase):
                    'result': {'answer': 'Claim [E1.0]', 'inspected': {'E1.0': evidence},
                               'citations': {'E1.0': evidence}}}
         self.assertEqual(prepare_evidence(rubric, 'Q1', receipt, {'doc': raw})['question_id'], 'Q1')
+        # A note outside the checklist is checked against the extra source given for it.
+        other = 'Another note.'
+        other_sha = hashlib.sha256(other.encode()).hexdigest()
+        extra = {'document_id': 'other', 'source_sha256': other_sha, 'start_char': 0, 'end_char': 7,
+                 'text': 'Another'}
+        receipt['result']['inspected']['E2.0'] = extra
+        with self.assertRaisesRegex(ValueError, 'unexpected source revision'):
+            prepare_evidence(rubric, 'Q1', receipt, {'doc': raw})
+        self.assertIn('E2.0', prepare_evidence(rubric, 'Q1', receipt, {'doc': raw},
+                                               {'other': (other_sha, other)})['inspected'])
+        extra['text'] = 'Altered'
+        with self.assertRaisesRegex(ValueError, 'checked original'):
+            prepare_evidence(rubric, 'Q1', receipt, {'doc': raw}, {'other': (other_sha, other)})
+        del receipt['result']['inspected']['E2.0']
         evidence['text'] = 'An altered source fact.'
         with self.assertRaisesRegex(ValueError, 'checked original'):
             prepare_evidence(rubric, 'Q1', receipt, {'doc': raw})

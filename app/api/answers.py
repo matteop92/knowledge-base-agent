@@ -20,13 +20,13 @@ from app.storage.search import LABEL_METADATA, source_label
 from app.models.client import ModelClientError
 from app.models.openrouter import completion_limit
 from app.models.routes import PRICE_CEILINGS, TAGS, price_usd
+from app.storage import StorageError
 from app.storage.spend import SpendCapError, check_daily_cap, record_spend
 
 log = logging.getLogger("knowledge.api.answers")
 WEB_MAX_OUTPUT_TOKENS = 2500
 # At about 110 output tokens a second a full 10,000-token reply takes about 90 s, so one request
 # gets 120 s and the whole answer 300 s (the broad CLI profile, with the same limit, has 420 s).
-WEB_MAX_SECONDS = 300
 WEB_REQUEST_TIMEOUT_SECONDS = 120
 
 
@@ -63,7 +63,9 @@ class OpenRouterAnswerEngine:
         self.connect = connect
         # GPT-5 mini spends most of its completion allowance on reasoning; at 900 (3,600 sent)
         # longer answers were cut off. 2,500 (10,000 sent) matches the broad CLI profile.
-        self.limits = AnswerLimits(max_output_tokens=WEB_MAX_OUTPUT_TOKENS, max_seconds=WEB_MAX_SECONDS)
+        self.limits = AnswerLimits(max_output_tokens=WEB_MAX_OUTPUT_TOKENS, max_seconds=self.settings.max_seconds,
+                                   max_model_calls=self.settings.max_model_calls,
+                                   host_reads=self.settings.host_reads, coverage_checks=self.settings.coverage_checks)
 
     def worst_case_usd(self) -> Decimal:
         # The CLI bound, priced at the approved ceilings because no endpoint has been checked yet,
@@ -77,7 +79,16 @@ class OpenRouterAnswerEngine:
             completion_usd_per_token=answer.max_generation_usd_per_million / Decimal(1_000_000)
         ) + Decimal(str(price_usd(REWRITE_MODEL, REWRITE_INPUT_CHARS,
                                   completion_limit(REWRITE_MODEL, "followup_rewrite_v1",
-                                                   REWRITE_MAX_OUTPUT_TOKENS, None)[1])))
+                                                   REWRITE_MAX_OUTPUT_TOKENS, None)[1]))) + self._router_worst_case()
+
+    def _router_worst_case(self) -> Decimal:
+        """A first question may also make one router call; a follow-up makes the rewrite instead."""
+        from app.agent.properties import ROUTER_INPUT_CHARS, ROUTER_MAX_OUTPUT_TOKENS, ROUTER_MODEL
+        if not self.settings.property_router:
+            return Decimal(0)
+        return Decimal(str(price_usd(ROUTER_MODEL, ROUTER_INPUT_CHARS,
+                                     completion_limit(ROUTER_MODEL, "property_router_v1",
+                                                      ROUTER_MAX_OUTPUT_TOKENS, None)[1])))
 
     def answer(self, question: str, prior: list[PriorTurn] | None = None) -> AnswerOutcome:
         from app.agent.harness import answer_question
@@ -89,11 +100,12 @@ class OpenRouterAnswerEngine:
         answer = self.settings
         private_route, model_providers = private_routes(answer.model, answer.embedding_provider_tag,
                                                         answer.generation_provider_tag)
-        if prior:
+        if prior or answer.property_router:
             model_providers[REWRITE_MODEL] = {**private_route, "only": [TAGS[REWRITE_MODEL]],
                                               "require_parameters": True}
         # A follow-up's rewrite gets its own request so the answer keeps its full allowance.
-        client = OpenRouterClient(allow_live=True, request_budget=answer.request_budget + (1 if prior else 0),
+        client = OpenRouterClient(allow_live=True, request_budget=answer.request_budget + (1 if prior else 0)
+                                  + (1 if answer.property_router and not prior else 0),
                                   estimated_input_token_budget=answer.input_byte_budget,
                                   conservative_input_budget=True, provider=private_route,
                                   model_providers=model_providers, timeout_seconds=WEB_REQUEST_TIMEOUT_SECONDS)
@@ -114,6 +126,12 @@ class OpenRouterAnswerEngine:
                 retriever = DatabaseRetriever(conn, client, provider_tag=answer.embedding_provider_tag,
                                               max_embedding_usd_per_million=answer.max_embedding_usd_per_million)
                 memory, query = None, None
+                routing_started = time.monotonic()
+                if not prior and answer.property_router:
+                    routed = route_properties(client, conn, question, retriever, rewrite_prices)
+                    if routed is not None:
+                        return AnswerOutcome(routed, self._cost(client, routes, answer.model, embedding_model,
+                                                                rewrite_prices), list(client.usage_log))
                 if prior:
                     memory = build_memory(prior, active=active_revisions(conn, prior))
                     query = rewrite_followup(client, question, memory.turns, rewrite_prices)
@@ -122,6 +140,9 @@ class OpenRouterAnswerEngine:
                                                          model_version="current"),
                                          limits=self.limits, reasoning_effort=answer.reasoning_effort,
                                          memory=memory, search_query=query)
+                if not prior and answer.property_router:
+                    # Time spent deciding the route is part of the answer's wait.
+                    result = result.model_copy(update={"elapsed_seconds": time.monotonic() - routing_started})
         except Exception as exc:
             raise AnswerFailed(self._cost(client, routes, answer.model, embedding_model, rewrite_prices),
                                list(client.usage_log)) from exc
@@ -162,6 +183,39 @@ def rewrite_followup(client, question: str, recent: list[dict[str, str]],
                              Decimal(str(checked["output_usd_per_million"])) / Decimal(1_000_000))
     return standalone_query(question, recent, client=client,
                             model=ModelSpec(provider="openrouter", model_id=REWRITE_MODEL, model_version="current"))
+
+
+def route_properties(client, conn, question: str, retriever,
+                     prices: dict[str, tuple[Decimal, Decimal]]) -> AnswerResult | None:
+    """A count or list question answered from stored properties, or None for the answer loop.
+
+    The router model (gpt-6-luna) is optional like the follow-up rewrite: if its route fails
+    the privacy or price check, or the call fails, the question goes to the loop.
+    """
+    from app.agent.properties import ROUTER_MODEL, answer_properties, route_model, to_sources
+    from app.models.client import ModelSpec
+    from app.models.routes import verify_routes
+    from app.storage.search import load_sources
+
+    started = time.monotonic()
+    sources = to_sources(load_sources(conn))
+    try:
+        checked = verify_routes(client, [ROUTER_MODEL], structured_ids={ROUTER_MODEL})[ROUTER_MODEL]
+        prices[ROUTER_MODEL] = (Decimal(str(checked["input_usd_per_million"])) / Decimal(1_000_000),
+                                Decimal(str(checked["output_usd_per_million"])) / Decimal(1_000_000))
+        query = route_model(question, sources, client=client,
+                            model=ModelSpec(provider="openrouter", model_id=ROUTER_MODEL, model_version="current"))
+    except (ModelClientError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        log.warning("property router skipped error=%s", type(exc).__name__)
+        return None
+    if query is None:
+        return None
+    try:
+        return answer_properties(query, sources, retriever=retriever, started=started,
+                                 model_calls=1, route={"model": ROUTER_MODEL})
+    except (StorageError, IndexError, ValueError) as exc:
+        log.warning("property answer skipped error=%s", type(exc).__name__)
+        return None
 
 
 def active_revisions(conn, prior: list[PriorTurn]) -> set[tuple[str, str]]:

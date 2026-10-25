@@ -30,8 +30,7 @@ class RetrievalTest(unittest.TestCase):
     def test_read_rejects_range_outside_chunk_even_if_historical_card_used_it(self):
         conn = MagicMock()
         cur = conn.cursor.return_value.__enter__.return_value
-        cur.fetchone.return_value = ("x" * 30, "root", "note.md",
-                                     [{"start_char": 0, "end_char": 8}], [])
+        cur.fetchone.return_value = (30, "root", "note.md", [{"start_char": 0, "end_char": 8}], ["x" * 8], [])
         with patch("app.storage.retrieval._profile", return_value=("profile",)), self.assertRaises(StorageError):
             read_passage(conn, document_id="doc", run_id="run", source_sha256="a" * 64,
                          chunk_id="chunk", start_char=10, end_char=13)
@@ -40,8 +39,7 @@ class RetrievalTest(unittest.TestCase):
     def test_read_cannot_cross_excluded_source_gap(self):
         conn = MagicMock()
         cur = conn.cursor.return_value.__enter__.return_value
-        cur.fetchone.return_value = ("x" * 30, "root", "note.md",
-            [{"start_char": 0, "end_char": 8}, {"start_char": 10, "end_char": 20}],
+        cur.fetchone.return_value = (30, "root", "note.md", [{"start_char": 0, "end_char": 20}], ["x" * 20],
             [{"reason": "unclassified", "span": {"start_char": 8, "end_char": 10}}])
         with patch("app.storage.retrieval._profile", return_value=("profile",)), self.assertRaises(StorageError):
             read_passage(conn, document_id="doc", run_id="run", source_sha256="a" * 64,
@@ -79,14 +77,37 @@ class RetrievalTest(unittest.TestCase):
                              {"start_char": 100, "end_char": 5100}]}))
         retriever = DatabaseRetriever(MagicMock(), MagicMock(), provider_tag="pinned",
                                       max_embedding_usd_per_million=Decimal("1"))
-        with patch("app.storage.retrieval.read_passage") as read:
+        with patch("app.storage.retrieval.read_chunk") as read,                 patch("app.storage.retrieval.chunk_is_active", return_value=True),                 patch("app.storage.retrieval.passage_from_chunk") as cut:
             retriever.read(sample, 0, offset=2400)
-            self.assertEqual(read.call_args.kwargs["start_char"], 2500)
-            self.assertEqual(read.call_args.kwargs["end_char"], 4900)
+            self.assertEqual(cut.call_args.args[1:], (2500, 4900))
             for offset in (-1, 5000, 5001):
                 with self.assertRaises((IndexError, ValueError)):
                     retriever.read(sample, 0, offset=offset)
+            retriever.read(sample, 0)
+            # Every passage of a chunk comes from one database read.
             self.assertEqual(read.call_count, 1)
+            self.assertEqual(cut.call_count, 2)
+            # A cached chunk whose revision is no longer active is refused.
+            with patch("app.storage.retrieval.chunk_is_active", return_value=False), self.assertRaises(StorageError):
+                retriever.read(sample, 0)
+
+    def test_chunk_passages_keep_the_single_read_checks(self):
+        from app.storage.retrieval import passage_from_chunk
+        chunk = {"document_id": "doc", "run_id": "run", "source_sha256": "a" * 64, "chunk_id": "c",
+                 "source_length": 40, "root_alias": "root", "relative_path": "note.md",
+                 "spans": [{"start_char": 0, "end_char": 8}, {"start_char": 10, "end_char": 20}],
+                 "texts": ["abcdefgh", "klmnopqrst"],
+                 "gaps": [{"reason": "unclassified", "span": {"start_char": 8, "end_char": 10}}]}
+        self.assertEqual(passage_from_chunk(chunk, 12, 15).text, "mno")
+        for start, end in ((0, 20), (5, 9), (12, 41), (3, 3)):
+            with self.subTest(start=start, end=end), self.assertRaises(StorageError):
+                passage_from_chunk(chunk, start, end)
+        # A gap inside one span: only a non-whitespace gap that the passage crosses is refused.
+        inside = {**chunk, "spans": [{"start_char": 0, "end_char": 20}], "texts": ["abcdefghijklmnopqrst"],
+                  "gaps": [{"reason": "unclassified", "span": {"start_char": 8, "end_char": 10}}]}
+        with self.assertRaises(StorageError):
+            passage_from_chunk(inside, 5, 12)
+        self.assertEqual(passage_from_chunk(inside, 10, 13).text, "klm")
 
     def test_rrf_uses_rank_not_raw_score(self):
         fused = fuse_hits([hit("A", 0, score=999), hit("B", 20, score=-10)],

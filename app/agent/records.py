@@ -17,6 +17,11 @@ class AnswerLimits(StrictRecord):
     max_reads: int = Field(default=8, ge=1, le=30)
     max_seconds: float = Field(default=120, gt=0, le=600)
     max_output_tokens: int = Field(default=900, ge=100, le=3000)
+    # Chunks the host reads before the first model turn (they count as reads), so the model
+    # does not spend one turn per read of the best-ranked leads.
+    host_reads: int = Field(default=0, ge=0, le=30)
+    # Finishes that may be sent back because unread chunks remain in sources already used.
+    coverage_checks: int = Field(default=2, ge=0, le=2)
 
     @classmethod
     def broad(cls) -> AnswerLimits:

@@ -76,10 +76,11 @@ Reading a passage re-checks document, run, hash and chunk identity and returns a
 
 `app/agent/harness.py` runs strictly parsed JSON actions (`search`, `find`, `read`, `finish`) through `ModelClient`. Each call has its own budgets for model calls, searches, finds, reads, bytes and time. Source text cannot change those limits.
 
-- The host runs one hybrid search before the first model turn. Candidates show source title, people, rank and a short preview, and are listed unread-first.
+- In the web app, count and list questions about the sources ("how many articles by X", "which notes are tagged Y") skip the loop. A small router model (`gpt-6-luna`, prompt `property_router_v1`) turns the question into a filter on authors, guests, people, tags, type, date or title, and the host answers it from the stored properties loaded with one SQL query (`app/storage/search.py` `load_sources`, matched in `app/agent/properties.py`), citing each listed source's opening passage. Any other question, a filter value the router invents, or any failure goes to the loop. Only first questions are routed; the command-line tool has no router.
+- The host runs one hybrid search before the first model turn. Candidates show source title, people, rank and a short preview, and are listed unread-first. The web app then reads the six best chunks itself (`host_reads`), so the first model turn already has passages to work with.
 - A `read` returns every passage of a chunk. Each passage has its own citation ID (`E3.1`).
 - The agent tracks the material parts of the question as needs, and marks each one resolved with inspected passage IDs, or excluded with a reason.
-- A finish with an open need gets one correction. A finish is also checked against unread chunks of sources already used.
+- A finish with an open need gets one correction. A finish can also be sent back for unread chunks of sources already used (`coverage_checks`, up to two). The web app turns this off: in the speed trials it cost 40% of answer time for about one point of graded accuracy.
 - Complete answers need inline citations that point at passages actually read. This proves provenance, not that a claim is semantically supported; that is checked by people (see [evaluation.md](evaluation.md)).
 - One malformed or cut-off reply gets one retry. A second one is an explicit failure.
 - The result carries the cited passages, the full ledger of what was inspected, retrieval ranks, the gaps, the stop reason and the cost.
@@ -105,8 +106,8 @@ Hosting is described in [deploy.md](deploy.md).
 | Area | State |
 | --- | --- |
 | Ingestion and chunking | Working for transcripts, notes, articles, highlights and book exports. |
-| Storage and search | Working locally and on the hosted database (22 notes in the `Knowledge` folder, 227 chunks). |
-| Answer agent | Prompt v13 is the accepted baseline (78.8% of scored checks on the frozen checklist). |
+| Storage and search | Working locally and on the hosted database (33 notes in the `Knowledge` folder, 257 chunks). |
+| Answer agent | Prompt v13 is the accepted baseline (78.8% of scored checks on the frozen checklist). Answers take about 37 s at the median and 92 s at p95; count and list questions about 8 s. |
 | Web app and capture | Live, with follow-up memory and capture from the phone. |
 | Vault sync | Live; the server's sync is two-way so captured notes reach the owner's devices. |
 | Later ideas | Cross-source connections and questions about the whole vault; neither has been built. See [decisions.md](decisions.md). |

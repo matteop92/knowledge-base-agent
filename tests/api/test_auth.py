@@ -256,5 +256,88 @@ class RateLimiterTests(unittest.TestCase):
             limiter.check("a")
 
 
+
+class PropertyRouteTests(unittest.TestCase):
+    def test_speed_settings_reach_the_answer_limits(self) -> None:
+        from app.api.answers import OpenRouterAnswerEngine
+
+        base = settings()
+        engine = OpenRouterAnswerEngine(replace(base, answer=replace(base.answer, host_reads=6, coverage_checks=0,
+                                                                     max_model_calls=8)), connect=lambda: None)
+        self.assertEqual((engine.limits.host_reads, engine.limits.coverage_checks, engine.limits.max_model_calls),
+                         (6, 0, 8))
+
+    def test_the_router_call_is_in_the_worst_case_only_when_it_is_on(self) -> None:
+        from app.api.answers import OpenRouterAnswerEngine
+
+        base = settings()
+        off = OpenRouterAnswerEngine(replace(base, answer=replace(base.answer, property_router=False)), connect=lambda: None)
+        on = OpenRouterAnswerEngine(replace(base, answer=replace(base.answer, property_router=True)), connect=lambda: None)
+        self.assertGreater(on.worst_case_usd(), off.worst_case_usd())
+        self.assertLessEqual(on.worst_case_usd(), base.answer.max_usd_per_answer)
+
+    def test_a_failed_router_route_check_sends_the_question_to_the_loop(self) -> None:
+        from unittest import mock
+        from app.api import answers
+        from app.models.client import ModelClientError
+
+        class RefusingClient:
+            def require_zdr_route(self, *args, **kwargs):
+                raise ModelClientError("endpoint is not zero-retention")
+
+            def generate_json(self, **kwargs):
+                raise AssertionError("no router call expected")
+
+        prices: dict = {}
+        with mock.patch("app.storage.search.load_sources", return_value=[]):
+            self.assertIsNone(answers.route_properties(RefusingClient(), None, "How many?", None, prices))
+        self.assertEqual(prices, {})
+
+    def test_a_property_question_is_answered_from_the_matches(self) -> None:
+        from unittest import mock
+        from app.agent.properties import PropertyQuery
+        from app.api import answers
+        from tests.agent.test_properties import SOURCES
+
+        class Client:
+            def require_zdr_route(self, model_id, tag, structured=False):
+                return {"tag": tag, "pricing": {"prompt": "0.0000001", "completion": "0.0000005"}}
+
+        retriever = mock.MagicMock()
+        retriever.read.side_effect = lambda hit, span: mock.MagicMock()
+        prices: dict = {}
+        with mock.patch("app.storage.search.load_sources", return_value=[]), \
+                mock.patch("app.agent.properties.to_sources", return_value=SOURCES), \
+                mock.patch("app.agent.properties.route_model", return_value=PropertyQuery(count=True, authors=["Ada Stone"])), \
+                mock.patch("app.agent.properties.answer_properties", wraps=None) as answer:
+            answer.return_value = "answered"
+            self.assertEqual(answers.route_properties(Client(), None, "How many by Ada?", retriever, prices), "answered")
+        self.assertEqual(answer.call_args.args[0].authors, ["Ada Stone"])
+        self.assertEqual(answer.call_args.kwargs["model_calls"], 1)
+        self.assertIn("openai/gpt-6-luna", prices)
+        with mock.patch("app.storage.search.load_sources", return_value=[]), \
+                mock.patch("app.agent.properties.to_sources", return_value=SOURCES), \
+                mock.patch("app.agent.properties.route_model", return_value=None):
+            self.assertIsNone(answers.route_properties(Client(), None, "What does Ada say?", retriever, {}))
+
+    def test_a_failed_passage_read_after_routing_sends_the_question_to_the_loop(self) -> None:
+        from unittest import mock
+        from app.agent.properties import PropertyQuery
+        from app.api import answers
+        from app.storage import StorageError
+        from tests.agent.test_properties import SOURCES
+
+        class Client:
+            def require_zdr_route(self, model_id, tag, structured=False):
+                return {"tag": tag, "pricing": {"prompt": "0.0000001", "completion": "0.0000005"}}
+
+        retriever = mock.MagicMock()
+        retriever.read.side_effect = StorageError("passage crosses an excluded span")
+        with mock.patch("app.storage.search.load_sources", return_value=[]), \
+                mock.patch("app.agent.properties.to_sources", return_value=SOURCES), \
+                mock.patch("app.agent.properties.route_model", return_value=PropertyQuery(count=True, authors=["Ada Stone"])):
+            self.assertIsNone(answers.route_properties(Client(), None, "How many by Ada?", retriever, {}))
+
+
 if __name__ == "__main__":
     unittest.main()
