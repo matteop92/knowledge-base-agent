@@ -167,3 +167,27 @@ def search_vector(conn: psycopg.Connection, vector: list[float], *, spec_id: str
         cur.execute(sql, {"vector": value, "profile": profile[0], "history": historical_run_id,
                           "k": k, "document_id": document_id})
         return _hits(cur.fetchall())
+
+
+def load_sources(conn: psycopg.Connection) -> list[dict]:
+    """Every active source in the selected profile with its metadata, chunk count and first chunk, in one query."""
+    with conn.cursor() as cur:
+        profile = _profile(cur, None, None)
+        cur.execute(f"""select r.document_id, r.run_id, r.source_sha256, d.root_alias, d.relative_path,
+                {LABEL_METADATA},
+                (select count(*) from knowledge.chunks c where c.run_id=r.run_id
+                   and c.variant=p.variant and c.chunking_version=p.chunking_version),
+                (select jsonb_build_object('chunk_id', c.chunk_id, 'source_spans', c.source_spans)
+                   from knowledge.chunks c where c.run_id=r.run_id
+                   and c.variant=p.variant and c.chunking_version=p.chunking_version
+                   order by (c.source_spans->0->>'start_char')::int, c.chunk_id limit 1)
+            from knowledge.active_runs ar
+            join knowledge.runs r on r.run_id=ar.run_id and r.document_id=ar.document_id
+            join knowledge.documents d on d.document_id=r.document_id
+            join knowledge.profiles p on p.profile_id=ar.profile_id
+            join knowledge.corpus_state state on state.profile_id=ar.profile_id
+            where ar.profile_id=%s order by d.relative_path""", (profile[0],))
+        rows = cur.fetchall()
+    keys = ("document_id", "run_id", "source_sha256", "root_alias", "relative_path")
+    return [{**dict(zip(keys, row[:5])), "metadata": row[5] if isinstance(row[5], dict) else {},
+             "chunks": int(row[6]), "first_chunk": row[7]} for row in rows]

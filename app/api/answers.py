@@ -192,12 +192,13 @@ def route_properties(client, conn, question: str, retriever,
     The router model (gpt-6-luna) is optional like the follow-up rewrite: if its route fails
     the privacy or price check, or the call fails, the question goes to the loop.
     """
-    from app.agent.properties import ROUTER_MODEL, answer_properties, load_sources, route_model
+    from app.agent.properties import ROUTER_MODEL, answer_properties, route_model, to_sources
     from app.models.client import ModelSpec
     from app.models.routes import verify_routes
+    from app.storage.search import load_sources
 
     started = time.monotonic()
-    sources = load_sources(conn)
+    sources = to_sources(load_sources(conn))
     try:
         checked = verify_routes(client, [ROUTER_MODEL], structured_ids={ROUTER_MODEL})[ROUTER_MODEL]
         prices[ROUTER_MODEL] = (Decimal(str(checked["input_usd_per_million"])) / Decimal(1_000_000),

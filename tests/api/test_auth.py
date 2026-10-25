@@ -289,7 +289,7 @@ class PropertyRouteTests(unittest.TestCase):
                 raise AssertionError("no router call expected")
 
         prices: dict = {}
-        with mock.patch("app.agent.properties.load_sources", return_value=[]):
+        with mock.patch("app.storage.search.load_sources", return_value=[]):
             self.assertIsNone(answers.route_properties(RefusingClient(), None, "How many?", None, prices))
         self.assertEqual(prices, {})
 
@@ -306,7 +306,8 @@ class PropertyRouteTests(unittest.TestCase):
         retriever = mock.MagicMock()
         retriever.read.side_effect = lambda hit, span: mock.MagicMock()
         prices: dict = {}
-        with mock.patch("app.agent.properties.load_sources", return_value=SOURCES), \
+        with mock.patch("app.storage.search.load_sources", return_value=[]), \
+                mock.patch("app.agent.properties.to_sources", return_value=SOURCES), \
                 mock.patch("app.agent.properties.route_model", return_value=PropertyQuery(count=True, authors=["Ada Stone"])), \
                 mock.patch("app.agent.properties.answer_properties", wraps=None) as answer:
             answer.return_value = "answered"
@@ -314,7 +315,8 @@ class PropertyRouteTests(unittest.TestCase):
         self.assertEqual(answer.call_args.args[0].authors, ["Ada Stone"])
         self.assertEqual(answer.call_args.kwargs["model_calls"], 1)
         self.assertIn("openai/gpt-6-luna", prices)
-        with mock.patch("app.agent.properties.load_sources", return_value=SOURCES), \
+        with mock.patch("app.storage.search.load_sources", return_value=[]), \
+                mock.patch("app.agent.properties.to_sources", return_value=SOURCES), \
                 mock.patch("app.agent.properties.route_model", return_value=None):
             self.assertIsNone(answers.route_properties(Client(), None, "What does Ada say?", retriever, {}))
 
@@ -331,7 +333,9 @@ class PropertyRouteTests(unittest.TestCase):
 
         retriever = mock.MagicMock()
         retriever.read.side_effect = StorageError("passage crosses an excluded span")
-        with mock.patch("app.agent.properties.load_sources", return_value=SOURCES),                 mock.patch("app.agent.properties.route_model", return_value=PropertyQuery(count=True, authors=["Ada Stone"])):
+        with mock.patch("app.storage.search.load_sources", return_value=[]), \
+                mock.patch("app.agent.properties.to_sources", return_value=SOURCES), \
+                mock.patch("app.agent.properties.route_model", return_value=PropertyQuery(count=True, authors=["Ada Stone"])):
             self.assertIsNone(answers.route_properties(Client(), None, "How many by Ada?", retriever, {}))
 
 

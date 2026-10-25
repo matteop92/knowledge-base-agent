@@ -30,8 +30,7 @@ class RetrievalTest(unittest.TestCase):
     def test_read_rejects_range_outside_chunk_even_if_historical_card_used_it(self):
         conn = MagicMock()
         cur = conn.cursor.return_value.__enter__.return_value
-        cur.fetchone.return_value = (30, "xxx", "root", "note.md",
-                                     [{"start_char": 0, "end_char": 8}], [])
+        cur.fetchone.return_value = (30, "root", "note.md", [{"start_char": 0, "end_char": 8}], ["x" * 8], [])
         with patch("app.storage.retrieval._profile", return_value=("profile",)), self.assertRaises(StorageError):
             read_passage(conn, document_id="doc", run_id="run", source_sha256="a" * 64,
                          chunk_id="chunk", start_char=10, end_char=13)
@@ -40,8 +39,7 @@ class RetrievalTest(unittest.TestCase):
     def test_read_cannot_cross_excluded_source_gap(self):
         conn = MagicMock()
         cur = conn.cursor.return_value.__enter__.return_value
-        cur.fetchone.return_value = (30, "x" * 20, "root", "note.md",
-            [{"start_char": 0, "end_char": 8}, {"start_char": 10, "end_char": 20}],
+        cur.fetchone.return_value = (30, "root", "note.md", [{"start_char": 0, "end_char": 20}], ["x" * 20],
             [{"reason": "unclassified", "span": {"start_char": 8, "end_char": 10}}])
         with patch("app.storage.retrieval._profile", return_value=("profile",)), self.assertRaises(StorageError):
             read_passage(conn, document_id="doc", run_id="run", source_sha256="a" * 64,

@@ -243,50 +243,19 @@ def find_in_document(conn: psycopg.Connection, reference: FusedHit,
 def read_passage(conn: psycopg.Connection, *, document_id: str, run_id: str,
                  source_sha256: str, chunk_id: str, start_char: int,
                  end_char: int) -> SourcePassage:
+    """One passage of a published chunk; reads the chunk with `read_chunk` and cuts it with `passage_from_chunk`."""
     if not 0 <= start_char < end_char or end_char - start_char > MAX_PASSAGE_CHARS:
         raise StorageError("passage span is invalid or too large")
-    with conn.cursor() as cur:
-        profile = _profile(cur, None, None)
-        # The database cuts the passage out and keeps only the excluded gaps that touch it, so a
-        # long document and its thousands of whitespace gaps are not sent whole for each read.
-        cur.execute("""select length(r.source_text),substr(r.source_text,%s,%s),d.root_alias,d.relative_path,
-            c.source_spans,(select coalesce(jsonb_agg(gap), '[]'::jsonb)
-                from jsonb_array_elements(coalesce(r.parsed->'excluded_spans', '[]'::jsonb)) gap
-                where gap->>'reason' is distinct from 'whitespace'
-                  and (gap->'span'->>'start_char')::int < %s and %s < (gap->'span'->>'end_char')::int)
-            from knowledge.runs r join knowledge.documents d on d.document_id=r.document_id
-            join knowledge.active_runs ar on ar.run_id=r.run_id and ar.document_id=r.document_id
-            join knowledge.chunks c on c.run_id=r.run_id
-            join knowledge.profiles p on p.profile_id=ar.profile_id
-            cross join knowledge.corpus_state state
-            where r.document_id=%s and r.run_id=%s and r.source_sha256=%s
-              and c.chunk_id=%s and ar.profile_id=%s and state.profile_id=p.profile_id
-              and c.variant=p.variant and c.chunking_version=p.chunking_version""",
-                    (start_char + 1, end_char - start_char, end_char, start_char,
-                     document_id, run_id, source_sha256, chunk_id, profile[0]))
-        row = cur.fetchone()
-    if row is None:
-        raise StorageError("source passage is not in the active published run")
-    source_length, text, root_alias, relative_path, spans, excluded = row
-    if end_char > source_length or not any(
-        span["start_char"] <= start_char < end_char <= span["end_char"] for span in spans
-    ):
-        raise StorageError("passage is outside the selected chunk source spans")
-    if any(item.get("reason") != "whitespace" and
-           item["span"]["start_char"] < end_char and start_char < item["span"]["end_char"]
-           for item in (excluded or [])):
-        raise StorageError("passage crosses an excluded source gap")
-    return SourcePassage(document_id=document_id, run_id=run_id,
-                         source_sha256=source_sha256, root_alias=root_alias,
-                         relative_path=relative_path, chunk_id=chunk_id,
-                         start_char=start_char, end_char=end_char, text=text)
+    chunk = read_chunk(conn, document_id=document_id, run_id=run_id, source_sha256=source_sha256,
+                       chunk_id=chunk_id)
+    return passage_from_chunk(chunk, start_char, end_char)
 
 
 def read_chunk(conn: psycopg.Connection, *, document_id: str, run_id: str, source_sha256: str,
                chunk_id: str) -> dict:
     """The text of every source span of one published chunk, in one query.
 
-    Holds what `read_passage` checks against: the source length, the chunk's stored spans
+    Holds what `passage_from_chunk` checks against: the source length, the chunk's stored spans
     and the non-whitespace excluded gaps that touch them.
     """
     with conn.cursor() as cur:
@@ -320,7 +289,7 @@ def read_chunk(conn: psycopg.Connection, *, document_id: str, run_id: str, sourc
 
 
 def passage_from_chunk(chunk: dict, start_char: int, end_char: int) -> SourcePassage:
-    """One passage out of a `read_chunk` result, with the same checks as `read_passage`."""
+    """One passage out of a `read_chunk` result: inside one stored span and crossing no excluded gap."""
     if not 0 <= start_char < end_char or end_char - start_char > MAX_PASSAGE_CHARS:
         raise StorageError("passage span is invalid or too large")
     if end_char > chunk["source_length"]:

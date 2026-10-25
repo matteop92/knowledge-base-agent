@@ -24,7 +24,7 @@ from typing import Any
 from app.agent.records import AnswerResult
 from app.models.client import ModelClient, ModelSpec
 from app.storage.records import FusedHit, SearchHit, SourcePassage
-from app.storage.search import LABEL_METADATA, _profile, source_label
+from app.storage.search import source_label
 
 ROUTER_MODEL = "openai/gpt-6-luna"
 ROUTER_PROMPT_VERSION = "property_router_v1"
@@ -113,26 +113,10 @@ def to_source(document_id: str, run_id: str, sha: str, root_alias: str, relative
                   chunks=chunks, first_chunk=first_chunk)
 
 
-def load_sources(conn) -> list[Source]:
-    """Every active source in the selected profile, with its properties, in one query."""
-    with conn.cursor() as cur:
-        profile = _profile(cur, None, None)
-        cur.execute(f"""select r.document_id, r.run_id, r.source_sha256, d.root_alias, d.relative_path,
-                {LABEL_METADATA},
-                (select count(*) from knowledge.chunks c where c.run_id=r.run_id
-                   and c.variant=p.variant and c.chunking_version=p.chunking_version),
-                (select jsonb_build_object('chunk_id', c.chunk_id, 'source_spans', c.source_spans)
-                   from knowledge.chunks c where c.run_id=r.run_id
-                   and c.variant=p.variant and c.chunking_version=p.chunking_version
-                   order by (c.source_spans->0->>'start_char')::int, c.chunk_id limit 1)
-            from knowledge.active_runs ar
-            join knowledge.runs r on r.run_id=ar.run_id and r.document_id=ar.document_id
-            join knowledge.documents d on d.document_id=r.document_id
-            join knowledge.profiles p on p.profile_id=ar.profile_id
-            join knowledge.corpus_state state on state.profile_id=ar.profile_id
-            where ar.profile_id=%s order by d.relative_path""", (profile[0],))
-        rows = cur.fetchall()
-    return [to_source(*row[:5], row[5] if isinstance(row[5], dict) else {}, int(row[6]), row[7]) for row in rows]
+def to_sources(rows: list[dict]) -> list[Source]:
+    """Sources from `app.storage.search.load_sources` rows."""
+    return [to_source(row["document_id"], row["run_id"], row["source_sha256"], row["root_alias"],
+                      row["relative_path"], row["metadata"], row["chunks"], row["first_chunk"]) for row in rows]
 
 
 def _fold(value: str) -> str:
