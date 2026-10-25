@@ -55,7 +55,15 @@ Where the time went before, on the eight checklist questions: finishes sent back
 - Tighter limits: the faster loop averages 1.7 model calls, well under the cap of 12, so a lower cap would only cut off the rare long answer.
 - Running the first search alongside the first model call: the first call needs the search results, and the host's search and reads take about 2% of the time. Streaming does not shorten a JSON action.
 
-Alternatives measured on the eight checklist questions: keeping one finish sent back scored 90.2% but its model time was about twice as long; reading ten chunks up front scored 87.7% and was slower than six; `gpt-6-luna` as the answer model had a worse p95. The grader scores differ by less than its own noise, so the faster configuration was chosen.
+Alternatives:
+
+| Option | Elapsed p50 / p95 | Cost per answer | Graded score |
+| --- | --- | --- | --- |
+| Chosen: no finish sent back | 37 s / 92 s | $0.008 | 88.9% |
+| One finish sent back (`coverage_checks = 1`), the fallback if answers feel incomplete | 48 s / 106 s | $0.013 | 90.2% (19 answers) |
+| Ten chunks read up front | slower than six on the checklist questions | $0.015 | 87.7% |
+
+`gpt-6-luna` as the answer model had a worse p95 and was dropped. The scores differ by less than the grader's own noise, so the faster option was chosen.
 
 ## What the tests cover
 
