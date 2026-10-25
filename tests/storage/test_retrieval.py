@@ -77,7 +77,7 @@ class RetrievalTest(unittest.TestCase):
                              {"start_char": 100, "end_char": 5100}]}))
         retriever = DatabaseRetriever(MagicMock(), MagicMock(), provider_tag="pinned",
                                       max_embedding_usd_per_million=Decimal("1"))
-        with patch("app.storage.retrieval.read_chunk") as read,                 patch("app.storage.retrieval.passage_from_chunk") as cut:
+        with patch("app.storage.retrieval.read_chunk") as read,                 patch("app.storage.retrieval.chunk_is_active", return_value=True),                 patch("app.storage.retrieval.passage_from_chunk") as cut:
             retriever.read(sample, 0, offset=2400)
             self.assertEqual(cut.call_args.args[1:], (2500, 4900))
             for offset in (-1, 5000, 5001):
@@ -87,6 +87,9 @@ class RetrievalTest(unittest.TestCase):
             # Every passage of a chunk comes from one database read.
             self.assertEqual(read.call_count, 1)
             self.assertEqual(cut.call_count, 2)
+            # A cached chunk whose revision is no longer active is refused.
+            with patch("app.storage.retrieval.chunk_is_active", return_value=False), self.assertRaises(StorageError):
+                retriever.read(sample, 0)
 
     def test_chunk_passages_keep_the_single_read_checks(self):
         from app.storage.retrieval import passage_from_chunk

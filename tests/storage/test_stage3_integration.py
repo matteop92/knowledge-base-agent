@@ -142,8 +142,11 @@ class Stage3IntegrationTest(unittest.TestCase):
             # A whole-chunk read holds the span's exact source text.
             chunk = read_chunk(self.conn, **{key: args[key] for key in
                                              ("document_id", "run_id", "source_sha256", "chunk_id")})
+            index = next(i for i, stored in enumerate(chunk["spans"])
+                         if stored["start_char"] <= span["start_char"] and span["end_char"] <= stored["end_char"])
+            offset = span["start_char"] - chunk["spans"][index]["start_char"]
             self.assertEqual(passage_from_chunk(chunk, span["start_char"], span["end_char"]).text,
-                             chunk["texts"][0][:span["end_char"] - span["start_char"]])
+                             chunk["texts"][index][offset:offset + span["end_char"] - span["start_char"]])
             # The properties of every active source load in one query.
             from app.storage.search import load_sources
             sources = load_sources(self.conn)

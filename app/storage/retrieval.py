@@ -288,6 +288,23 @@ def read_chunk(conn: psycopg.Connection, *, document_id: str, run_id: str, sourc
             "spans": spans, "texts": texts, "gaps": gaps}
 
 
+def chunk_is_active(conn: psycopg.Connection, *, document_id: str, run_id: str, source_sha256: str,
+                    chunk_id: str) -> bool:
+    """Whether a chunk still belongs to the active published run, without fetching any text."""
+    with conn.cursor() as cur:
+        profile = _profile(cur, None, None)
+        cur.execute("""select 1 from knowledge.runs r
+            join knowledge.active_runs ar on ar.run_id=r.run_id and ar.document_id=r.document_id
+            join knowledge.chunks c on c.run_id=r.run_id
+            join knowledge.profiles p on p.profile_id=ar.profile_id
+            cross join knowledge.corpus_state state
+            where r.document_id=%s and r.run_id=%s and r.source_sha256=%s
+              and c.chunk_id=%s and ar.profile_id=%s and state.profile_id=p.profile_id
+              and c.variant=p.variant and c.chunking_version=p.chunking_version""",
+                    (document_id, run_id, source_sha256, chunk_id, profile[0]))
+        return cur.fetchone() is not None
+
+
 def passage_from_chunk(chunk: dict, start_char: int, end_char: int) -> SourcePassage:
     """One passage out of a `read_chunk` result: inside one stored span and crossing no excluded gap."""
     if not 0 <= start_char < end_char or end_char - start_char > MAX_PASSAGE_CHARS:
@@ -338,9 +355,12 @@ class DatabaseRetriever:
             raise ValueError("read offset is outside the selected span")
         start = span["start_char"] + offset
         end = min(span["end_char"], start + MAX_PASSAGE_CHARS)
+        keys = dict(zip(("document_id", "run_id", "source_sha256", "chunk_id"), fields))
         if fields not in self._chunks:
-            self._chunks[fields] = read_chunk(self.conn, document_id=fields[0], run_id=fields[1],
-                                              source_sha256=fields[2], chunk_id=fields[3])
+            self._chunks[fields] = read_chunk(self.conn, **keys)
+        elif not chunk_is_active(self.conn, **keys):
+            # The text is cached, but a revision published since must not be read across.
+            raise StorageError("source passage is not in the active published run")
         passage = passage_from_chunk(self._chunks[fields], start, end)
         next_offset = offset + len(passage.text)
         return passage.model_copy(update={"span_end_char": span["end_char"],
