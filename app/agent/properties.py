@@ -89,10 +89,11 @@ def _names(value: object) -> list[str]:
             if isinstance(item, str) and item.strip()]
 
 
-def source_type(generated: dict, relative_path: str) -> str | None:
-    value = generated.get("source_type")
-    if isinstance(value, str) and value.strip():
-        return value.strip().lower()
+def source_type(generated: dict, relative_path: str, frontmatter: dict | None = None) -> str | None:
+    frontmatter = frontmatter or {}
+    for value in (frontmatter.get("type"), frontmatter.get("source_type"), generated.get("source_type")):
+        if isinstance(value, str) and value.strip():
+            return value.strip().lower()
     folder = PurePosixPath(relative_path).parent.name.lower()
     return FOLDER_TYPES.get(folder)
 
@@ -102,11 +103,13 @@ def to_source(document_id: str, run_id: str, sha: str, root_alias: str, relative
     title, people, tags = source_label(metadata, relative_path)
     frontmatter = metadata.get("frontmatter") if isinstance(metadata.get("frontmatter"), dict) else {}
     generated = metadata.get("generated") if isinstance(metadata.get("generated"), dict) else {}
-    date = next((str(metadata[key])[:10] for key in ("date", "published", "created") if metadata.get(key)), None)
+    # Same order as the tag classifier; the generated date exists only when the frontmatter has none.
+    date = next((str(value)[:10] for value in (metadata.get("published"), metadata.get("date"),
+                                               metadata.get("created"), generated.get("date")) if value), None)
     return Source(document_id=document_id, run_id=run_id, source_sha256=sha, root_alias=root_alias,
                   relative_path=relative_path, title=title, authors=_names(metadata.get("authors")),
                   guests=list(dict.fromkeys(_names(metadata.get("guests")) + _names(frontmatter.get("guest")))),
-                  people=people, tags=tags, type=source_type(generated, relative_path), date=date,
+                  people=people, tags=tags, type=source_type(generated, relative_path, frontmatter), date=date,
                   chunks=chunks, first_chunk=first_chunk)
 
 
@@ -199,8 +202,11 @@ def route_model(question: str, sources: list[Source], *, client: ModelClient, mo
     query = PropertyQuery(count=bool(data.get("count")))
     for name in FILTER_FIELDS:
         known = {_fold(value): value for value in allowed[name]}
-        setattr(query, name, [known[_fold(value)] for value in data.get(name) or []
-                              if isinstance(value, str) and _fold(value) in known])
+        given = [value for value in data.get(name) or [] if isinstance(value, str) and value.strip()]
+        # A value outside the vocabulary would be dropped and silently widen the count to every source.
+        if any(_fold(value) not in known for value in given):
+            return None
+        setattr(query, name, [known[_fold(value)] for value in given])
     date = data.get("date")
     query.date = date if isinstance(date, str) and re.fullmatch(r"\d{4}(-\d{2})?", date) else None
     title = data.get("title")
@@ -238,7 +244,7 @@ def _line(source: Source, citation: str | None) -> str:
     return f"- *{source.title}*" + (f" — {shown}" if shown else "") + (f" [{citation}]" if citation else "")
 
 
-def answer_properties(question: str, query: PropertyQuery, sources: list[Source], *, retriever,
+def answer_properties(query: PropertyQuery, sources: list[Source], *, retriever,
                       started: float, model_calls: int, route: dict[str, Any]) -> AnswerResult:
     """Write the count or list from the matches and cite each listed source by its first passage."""
     found = matches(sources, query)

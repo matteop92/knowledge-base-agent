@@ -170,9 +170,10 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
     for ref in unread()[:min(limits.host_reads, limits.max_reads)]:
         try:
             passages = read_chunk(ref)
-        except (StorageError, ModelClientError, psycopg.Error):
+        except (ModelClientError, psycopg.Error):
             return stopped("Original source read failed.", "tool_failed")
-        except (IndexError, ValueError):
+        except (StorageError, IndexError, ValueError):
+            # The model can still read or search for this; one bad chunk must not fail every answer it ranks for.
             continue
         reads += 1
         inspected.update(passages)

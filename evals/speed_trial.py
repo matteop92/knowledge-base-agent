@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
+import os
 import statistics
 import threading
 import time
@@ -68,7 +69,8 @@ class Ledger:
         self.path, self.label, self.lock = path, label, threading.Lock()
 
     def total(self) -> Decimal:
-        data = json.loads(self.path.read_text(encoding="utf-8"))
+        with self.lock:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
         return Decimal(str(data["spent_usd"]))
 
     def add(self, usd: float, note: str) -> None:
@@ -77,7 +79,9 @@ class Ledger:
             data["spent_usd"] = round(float(Decimal(str(data["spent_usd"])) + Decimal(str(usd))), 6)
             data["entries"].append({"run": self.label, "note": note, "usd": round(usd, 6),
                                     "total_usd": data["spent_usd"]})
-            self.path.write_text(json.dumps(data, indent=1), encoding="utf-8")
+            temporary = self.path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(data, indent=1), encoding="utf-8")
+            os.replace(temporary, self.path)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -114,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     target = private_output(args.output)
     target.mkdir()
     ledger = Ledger(args.ledger, target.name)
-    spent = Decimal(0)
+    spent = reserved = Decimal(0)
     spend_lock = threading.Lock()
     stopped: list[str] = []
     receipts: list[dict[str, Any]] = []
@@ -132,13 +136,16 @@ def main(argv: list[str] | None = None) -> int:
     ordered = sorted(questions, key=lambda item: bool(item.get("prior_id")))
 
     def run_repeat(repeat: int) -> None:
-        nonlocal spent
+        nonlocal spent, reserved
         answers: dict[str, dict] = {}
         for item in ordered:
             with spend_lock:
-                if spent + args.reserve_usd > args.max_usd or ledger.total() + args.reserve_usd > Decimal("8"):
+                # Parallel repeats each hold a reserve, so together they stay under the ceiling.
+                held = reserved + args.reserve_usd
+                if spent + held > args.max_usd or ledger.total() + held > Decimal("8"):
                     stopped.append(f"{item['id']} r{repeat}")
                     continue
+                reserved += args.reserve_usd
             prior = None
             if item.get("prior_turn_id"):
                 prior = [stored[item["id"]]]
@@ -160,6 +167,7 @@ def main(argv: list[str] | None = None) -> int:
             wall = time.monotonic() - started
             with spend_lock:
                 spent += Decimal(str(cost))
+                reserved -= args.reserve_usd
             ledger.add(cost, f"{item['id']} r{repeat}")
             receipt = build_receipt(result, {}, "vault") if result is not None else {}
             record = {"id": item["id"], "type": item["type"], "repeat": repeat, "question": item["question"],

@@ -46,31 +46,47 @@ class PropertyTests(unittest.TestCase):
         self.assertEqual([s.title for s in matches(SOURCES, PropertyQuery(title="never ship"))],
                          ["Plans that never ship"])
 
-    def test_model_route_keeps_only_known_values(self):
+    def test_model_route_folds_known_values_and_drops_a_bad_date(self):
         client = MagicMock()
         client.generate_json.return_value = GenerationResult(
             model=ModelSpec(provider="openrouter", model_id="m", model_version="1"),
-            data={"route": "properties", "count": True, "authors": ["ADA STONE", "Nobody"], "guests": [],
-                  "people": [], "tags": ["made-up"], "types": [], "date": "October", "title": None})
+            data={"route": "properties", "count": True, "authors": ["ADA STONE"], "guests": [],
+                  "people": [], "tags": [], "types": [], "date": "October", "title": None})
         query = route_model("how many by ada?", SOURCES, client=client, model=MagicMock())
         self.assertEqual((query.authors, query.tags, query.date), (["Ada Stone"], [], None))
         client.generate_json.return_value = client.generate_json.return_value.model_copy(
             update={"data": {**client.generate_json.return_value.data, "route": "search"}})
         self.assertIsNone(route_model("what does ada say?", SOURCES, client=client, model=MagicMock()))
 
+    def test_an_unknown_filter_value_goes_to_the_loop_instead_of_counting_everything(self):
+        client = MagicMock()
+        client.generate_json.return_value = GenerationResult(
+            model=ModelSpec(provider="openrouter", model_id="m", model_version="1"),
+            data={"route": "properties", "count": True, "authors": ["Nobody"], "guests": [], "people": [],
+                  "tags": [], "types": [], "date": None, "title": None})
+        self.assertIsNone(route_model("how many by nobody?", SOURCES, client=client, model=MagicMock()))
+
+    def test_frontmatter_type_wins_and_a_generated_date_fills_a_missing_one(self):
+        typed = source("Knowledge/Notes/typed.md", title="Typed", frontmatter={"type": "Article"},
+                       generated={"source_type": "note", "date": "2024-03-01"})
+        self.assertEqual((typed.type, typed.date), ("article", "2024-03-01"))
+        dated = source("Knowledge/Notes/dated.md", title="Dated", published="2023-01-02",
+                       generated={"date": "2024-03-01"})
+        self.assertEqual(dated.date, "2023-01-02")
+
     def test_answer_counts_matches_and_cites_each_first_passage(self):
         retriever = MagicMock()
         retriever.read.side_effect = lambda hit, span: SourcePassage(
             document_id=hit.hit.document_id, run_id="run", source_sha256="a" * 64, root_alias="root",
             relative_path=hit.hit.relative_path, chunk_id="c1", start_char=0, end_char=5, text="intro")
-        result = answer_properties("how many?", PropertyQuery(count=True, authors=["Ada Stone"]), SOURCES,
-                                   retriever=retriever, started=0.0, model_calls=0, route={"mode": "rules"})
+        result = answer_properties(PropertyQuery(count=True, authors=["Ada Stone"]), SOURCES,
+                                   retriever=retriever, started=0.0, model_calls=1, route={"model": "m"})
         self.assertTrue(result.answer.startswith("You have 2 sources with author Ada Stone"))
         self.assertEqual(set(result.citations), {"E1.0", "E2.0"})
         self.assertIn("[E1.0]", result.answer)
         self.assertEqual(result.actions[0]["matched"], ["doc-Knowledge/Transcripts/pricing.md",
                                                         "doc-Knowledge/Notes/idea.md"])
-        empty = answer_properties("?", PropertyQuery(tags=["none"]), SOURCES, retriever=retriever, started=0.0,
+        empty = answer_properties(PropertyQuery(tags=["none"]), SOURCES, retriever=retriever, started=0.0,
                                   model_calls=0, route={})
         self.assertTrue(empty.answer.startswith("None of your 5 sources is tagged none."))
 

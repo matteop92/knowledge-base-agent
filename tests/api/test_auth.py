@@ -256,9 +256,6 @@ class RateLimiterTests(unittest.TestCase):
             limiter.check("a")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class PropertyRouteTests(unittest.TestCase):
     def test_speed_settings_reach_the_answer_limits(self) -> None:
@@ -313,10 +310,30 @@ class PropertyRouteTests(unittest.TestCase):
                 mock.patch("app.agent.properties.route_model", return_value=PropertyQuery(count=True, authors=["Ada Stone"])), \
                 mock.patch("app.agent.properties.answer_properties", wraps=None) as answer:
             answer.return_value = "answered"
-            self.assertEqual(answers.route_properties(Client(), None, "How many by Tim?", retriever, prices), "answered")
-        self.assertEqual(answer.call_args.args[1].authors, ["Ada Stone"])
+            self.assertEqual(answers.route_properties(Client(), None, "How many by Ada?", retriever, prices), "answered")
+        self.assertEqual(answer.call_args.args[0].authors, ["Ada Stone"])
         self.assertEqual(answer.call_args.kwargs["model_calls"], 1)
         self.assertIn("openai/gpt-6-luna", prices)
         with mock.patch("app.agent.properties.load_sources", return_value=SOURCES), \
                 mock.patch("app.agent.properties.route_model", return_value=None):
-            self.assertIsNone(answers.route_properties(Client(), None, "What does Tim say?", retriever, {}))
+            self.assertIsNone(answers.route_properties(Client(), None, "What does Ada say?", retriever, {}))
+
+    def test_a_failed_passage_read_after_routing_sends_the_question_to_the_loop(self) -> None:
+        from unittest import mock
+        from app.agent.properties import PropertyQuery
+        from app.api import answers
+        from app.storage import StorageError
+        from tests.agent.test_properties import SOURCES
+
+        class Client:
+            def require_zdr_route(self, model_id, tag, structured=False):
+                return {"tag": tag, "pricing": {"prompt": "0.0000001", "completion": "0.0000005"}}
+
+        retriever = mock.MagicMock()
+        retriever.read.side_effect = StorageError("passage crosses an excluded span")
+        with mock.patch("app.agent.properties.load_sources", return_value=SOURCES),                 mock.patch("app.agent.properties.route_model", return_value=PropertyQuery(count=True, authors=["Ada Stone"])):
+            self.assertIsNone(answers.route_properties(Client(), None, "How many by Ada?", retriever, {}))
+
+
+if __name__ == "__main__":
+    unittest.main()

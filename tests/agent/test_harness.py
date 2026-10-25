@@ -327,6 +327,23 @@ class HarnessTest(unittest.TestCase):
         self.assertEqual((result.termination, result.model_calls, set(result.citations)),
                          ("completed", 1, {"E1.0", "E2.0"}))
 
+        # A host read that fails its source checks is skipped; the chunk stays a candidate.
+        class BadFirst(TwoChunks):
+            def read(self, reference, span_index):
+                if reference.hit.chunk_id == "chunk":
+                    raise StorageError("passage crosses an excluded source gap")
+                return super().read(reference, span_index)
+
+        only_second = [{**resolved[0], "evidence_ids": ["E2.0"]}]
+        client = CapturingClient([action_v3("finish", answer="Grounded [E2.0]", citation_ids=["E2.0"],
+                                            completeness="complete", sufficient=True, need_updates=only_second)])
+        result = answer_question("Explain", retriever=BadFirst(), client=client, model=MODEL,
+                                 limits=AnswerLimits(host_reads=2, coverage_checks=0, max_reads=8))
+        first = json.loads(client.inputs[0])
+        self.assertEqual([item["chunk"] for item in first["inspected"]], ["E2"])
+        self.assertIn("E1", [item["id"] for item in first["candidates"]])
+        self.assertEqual(result.termination, "completed")
+
     def test_repeated_query_is_rejected_and_low_ranked_sources_stay_visible(self):
         class TwoSources(FakeRetriever):
             def search(self, query):

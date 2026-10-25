@@ -101,6 +101,12 @@ class RetrievalTest(unittest.TestCase):
         for start, end in ((0, 20), (5, 9), (12, 41), (3, 3)):
             with self.subTest(start=start, end=end), self.assertRaises(StorageError):
                 passage_from_chunk(chunk, start, end)
+        # A gap inside one span: only a non-whitespace gap that the passage crosses is refused.
+        inside = {**chunk, "spans": [{"start_char": 0, "end_char": 20}], "texts": ["abcdefghijklmnopqrst"],
+                  "gaps": [{"reason": "unclassified", "span": {"start_char": 8, "end_char": 10}}]}
+        with self.assertRaises(StorageError):
+            passage_from_chunk(inside, 5, 12)
+        self.assertEqual(passage_from_chunk(inside, 10, 13).text, "klm")
 
     def test_rrf_uses_rank_not_raw_score(self):
         fused = fuse_hits([hit("A", 0, score=999), hit("B", 20, score=-10)],

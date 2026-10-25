@@ -20,13 +20,13 @@ from app.storage.search import LABEL_METADATA, source_label
 from app.models.client import ModelClientError
 from app.models.openrouter import completion_limit
 from app.models.routes import PRICE_CEILINGS, TAGS, price_usd
+from app.storage import StorageError
 from app.storage.spend import SpendCapError, check_daily_cap, record_spend
 
 log = logging.getLogger("knowledge.api.answers")
 WEB_MAX_OUTPUT_TOKENS = 2500
 # At about 110 output tokens a second a full 10,000-token reply takes about 90 s, so one request
 # gets 120 s and the whole answer 300 s (the broad CLI profile, with the same limit, has 420 s).
-WEB_MAX_SECONDS = 300
 WEB_REQUEST_TIMEOUT_SECONDS = 120
 
 
@@ -204,13 +204,17 @@ def route_properties(client, conn, question: str, retriever,
                                 Decimal(str(checked["output_usd_per_million"])) / Decimal(1_000_000))
         query = route_model(question, sources, client=client,
                             model=ModelSpec(provider="openrouter", model_id=ROUTER_MODEL, model_version="current"))
-    except (ModelClientError, ValueError, KeyError) as exc:
+    except (ModelClientError, ValueError, KeyError, TypeError, AttributeError) as exc:
         log.warning("property router skipped error=%s", type(exc).__name__)
         return None
     if query is None:
         return None
-    return answer_properties(question, query, sources, retriever=retriever, started=started,
-                             model_calls=1, route={"model": ROUTER_MODEL})
+    try:
+        return answer_properties(query, sources, retriever=retriever, started=started,
+                                 model_calls=1, route={"model": ROUTER_MODEL})
+    except (StorageError, IndexError, ValueError) as exc:
+        log.warning("property answer skipped error=%s", type(exc).__name__)
+        return None
 
 
 def active_revisions(conn, prior: list[PriorTurn]) -> set[tuple[str, str]]:
