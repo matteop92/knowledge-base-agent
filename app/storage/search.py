@@ -64,6 +64,13 @@ def _hits(rows) -> list[SearchHit]:
     return result
 
 
+def _names(value: object) -> list[str]:
+    """Names from a property that holds one value or a list, with any [[wikilink]] brackets removed."""
+    values = value if isinstance(value, list) else [value]
+    return [item.removeprefix("[[").removesuffix("]]").strip()
+            for item in values if isinstance(item, str) and item.strip()]
+
+
 def source_label(metadata: object, relative_path: str) -> tuple[str, list[str], list[str]]:
     """Use published run metadata, including older runs with guest only in frontmatter."""
     data = metadata if isinstance(metadata, dict) else {}
@@ -72,28 +79,20 @@ def source_label(metadata: object, relative_path: str) -> tuple[str, list[str], 
     if not isinstance(frontmatter, dict):
         frontmatter = {}
 
-    def names(value: object) -> list[str]:
-        values = value if isinstance(value, list) else [value]
-        return [item.removeprefix("[[").removesuffix("]]").strip()
-                for item in values if isinstance(item, str) and item.strip()]
-
-    people = list(dict.fromkeys(names(data.get("authors")) + names(data.get("guests"))
-                                + names(frontmatter.get("guest")) + names(frontmatter.get("people"))))
-    tags = names(data.get("tags"))
+    people = list(dict.fromkeys(_names(data.get("authors")) + _names(data.get("guests"))
+                                + _names(frontmatter.get("guest")) + _names(frontmatter.get("people"))))
+    tags = _names(data.get("tags"))
     generated = data.get("generated") if isinstance(data.get("generated"), dict) else {}
     # Generated properties fill only what the file does not set itself.
     # List tags sit next to the file's own tags; other generated fields only fill gaps.
-    return (str(title), people or names(generated.get("people")),
-            list(dict.fromkeys(tags + names(generated.get("tags")))))
+    return (str(title), people or _names(generated.get("people")),
+            list(dict.fromkeys(tags + _names(generated.get("tags")))))
 
 
 def source_author(metadata: object, relative_path: str) -> str:
     """The note's authors, or its other named people when it lists no author."""
     data = metadata if isinstance(metadata, dict) else {}
-    raw = data.get("authors")
-    authors = [item.removeprefix("[[").removesuffix("]]").strip()
-               for item in (raw if isinstance(raw, list) else [raw]) if isinstance(item, str) and item.strip()]
-    return ", ".join(authors or source_label(metadata, relative_path)[1])
+    return ", ".join(_names(data.get("authors")) or source_label(metadata, relative_path)[1])
 
 
 def search_text(conn: psycopg.Connection, query: str, *, k: int = 10,

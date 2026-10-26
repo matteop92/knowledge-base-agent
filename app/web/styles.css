@@ -170,11 +170,9 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 .answer p { margin: 0 0 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .answer p:last-child { margin-bottom: 0; }
 .answer ul, .answer ol { margin: 0 0 16px; padding: 0; list-style: none; }
-.answer ol { counter-reset: item; }
 .answer li { margin: 0; padding: 10px 0; border-top: 1px solid var(--hairline-row); overflow-wrap: anywhere; }
 .answer li:last-child { border-bottom: 1px solid var(--hairline-row); }
-.answer ol li { counter-increment: item; }
-.answer ol li::before { content: counter(item) "."; margin-right: 8px; color: var(--muted); }
+.answer ol li::before { content: attr(data-n) "."; margin-right: 8px; color: var(--muted); }
 .answer p + ul, .answer p + ol { margin-top: -4px; }
 .answer strong { font-weight: 580; }
 .answer .detail { display: block; margin-top: 2px; font-family: var(--sans); font-size: 14px; line-height: 1.5; color: var(--muted); }
@@ -442,10 +440,8 @@ span.pick-tag { background: var(--paper); box-shadow: 0 0 0 1px rgba(29, 28, 26,
 .passage p:last-child, .passage ul:last-child, .passage ol:last-child { margin-bottom: 0; }
 .passage ul, .passage ol { margin: 0 0 10px; padding: 0; list-style: none; }
 .passage ul li { position: relative; padding-left: 16px; }
-.passage ul li::before { content: "3"; position: absolute; left: 0; color: var(--muted); }
-.passage ol { counter-reset: item; }
-.passage ol li { counter-increment: item; }
-.passage ol li::before { content: counter(item) "."; margin-right: 8px; color: var(--muted); }
+.passage ul li::before { content: "\2013"; position: absolute; left: 0; color: var(--muted); }
+.passage ol li::before { content: attr(data-n) "."; margin-right: 8px; color: var(--muted); }
 .passage[data-label]::after { content: attr(data-label); position: absolute; top: 12px; right: 18px; font-family: var(--sans); font-size: 12px; color: var(--muted); }
 .passage::before { content: "\201C"; position: absolute; top: 8px; left: 16px; font-size: 40px; line-height: 1; color: var(--accent); opacity: 0.55; }
 .sheet-label { margin: 0 0 12px; }

@@ -242,7 +242,7 @@ const make = (tag) => ({ tag, children: [], attrs: {}, className: "", textConten
 const document = { createElement: make, createTextNode: (text) => ({ text }) };
 """ + function + """
 const container = make("div");
-const element ={ querySelector: () => container };
+const element = { querySelector: () => container };
 const receipt = {
   answer: ["A [E1.1] and B [E2.1] again A [E1.2].", "Unknown [E9.9] stays text. A twice [E1.1]."].join(String.fromCharCode(10, 10)),
   citations: {
@@ -277,7 +277,7 @@ const make = (tag) => ({ tag, children: [], attrs: {}, className: "", textConten
 const document = { createElement: make, createTextNode: (text) => ({ text }) };
 """ + function + """
 const container = make("div");
-const nl =String.fromCharCode(10);
+const nl = String.fromCharCode(10);
 const receipt = { answer: ["You have 2 sources:", "- *Title A*", "  Ada; note [E1.0]", "- **Title B**", "", "Closing *line*. [E1.0][E1.0] [E1.0]", "", "1. First", "", "2. Second"].join(nl),
   citations: { "E1.0": { relative_path: "K/a.md", title: "A", text: "t" } } };
 renderAnswer({ querySelector: () => container }, receipt, "t1");
@@ -298,20 +298,26 @@ console.log(JSON.stringify(container.children.map(shape)));"""
         function = "".join(re.search(rf"function {name}.*?\n}}\n", script, re.S).group(0)
                            for name in ("appendEmphasis", "appendBlocks"))
         probe = """
-const make = (tag) => ({ tag, children: [], className: "", textContent: "", append(...n) { this.children.push(...n); } });
+const make = (tag) => ({ tag, children: [], attrs: {}, className: "", textContent: "", append(...n) { this.children.push(...n); },
+  setAttribute(k, v) { this.attrs[k] = v; } });
 const document = { createElement: make, createTextNode: (text) => ({ text }) };
 """ + function + """
 const box = make("blockquote");
 const nl = String.fromCharCode(10);
-appendBlocks(box, ["- Is it true?", "- *Am I willing to learn", "    about this?*", "", "**Tim:** done"].join(nl), appendEmphasis, false);
+appendBlocks(box, ["- Is it true?", "- *Am I willing to learn", "    about this?*", "", "**Tim:** done", "", "Math 2 * 3 * 4", "", "3. Third", "", "4. Fourth"].join(nl), appendEmphasis, false);
 const shape = (n) => n.text !== undefined ? n.text : n.textContent ? [n.tag, n.textContent] : [n.tag, ...n.children.map(shape)];
-console.log(JSON.stringify(box.children.map(shape)));"""
+console.log(JSON.stringify({ shape: box.children.map(shape), numbers: box.children[3].children.map((li) => li.attrs["data-n"]) }));"""
         out = subprocess.run(["node", "-e", probe], capture_output=True, text=True, check=True).stdout
         import json
-        self.assertEqual(json.loads(out), [
+        result = json.loads(out)
+        self.assertEqual(result["shape"], [
             ["ul", ["li", "Is it true?"], ["li", ["em", "Am I willing to learn about this?"]]],
             ["p", ["strong", "Tim:"], " done"],
+            ["p", "Math 2 * 3 * 4"],
+            ["ol", ["li", "Third"], ["li", "Fourth"]],
         ])
+        # A numbered list keeps the numbers its text gave it, and lone asterisks stay as written.
+        self.assertEqual(result["numbers"], ["3", "4"])
 
     @unittest.skipUnless(shutil.which("node"), "needs node")
     def test_add_box_classification_runs_as_written(self) -> None:

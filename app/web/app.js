@@ -494,7 +494,8 @@ function renderRow(element, turnId) {
 
 // Text with *italic* and **bold** runs appended to a parent element, as elements and never as HTML.
 function appendEmphasis(parent, text) {
-  for (const run of text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/)) {
+  // A run opens and closes against a non-space, so "2 * 3 * 4" in a quoted passage keeps its asterisks.
+  for (const run of text.split(/(\*\*(?=\S)[^*]+?(?<=\S)\*\*|\*(?=\S)[^*]+?(?<=\S)\*)/)) {
     if (!run) continue;
     const emphasis = /^(\*\*?)([^*]+)\1$/.exec(run);
     if (!emphasis) { parent.append(document.createTextNode(run)); continue; }
@@ -533,6 +534,9 @@ function appendBlocks(container, text, inline, details) {
         container.append(list);
       }
       const element = document.createElement("li");
+      // An ordered item keeps the number the text gave it, so a list that starts at 3 reads 3, 4, 5.
+      const number = /^ {0,3}(\d+)/.exec(line);
+      if (number) element.setAttribute("data-n", number[1]);
       list.append(element);
       block = { element, lines: [bullet[1]], details: [], item: true };
     } else if (!line.trim()) {
