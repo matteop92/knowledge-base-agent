@@ -84,6 +84,8 @@ class PropertyTests(unittest.TestCase):
         self.assertTrue(result.answer.startswith("You have 2 sources with author Ada Stone"))
         self.assertEqual(set(result.citations), {"E1.0", "E2.0"})
         self.assertIn("[E1.0]", result.answer)
+        # Each source is a bold title with its details on an indented line beneath.
+        self.assertRegex(result.answer, r"- \*\*[^*\n]+\*\*\n  .+ \[E1\.0\]")
         self.assertEqual(result.actions[0]["matched"], ["doc-Knowledge/Transcripts/pricing.md",
                                                         "doc-Knowledge/Notes/idea.md"])
         empty = answer_properties(PropertyQuery(tags=["none"]), SOURCES, retriever=retriever, started=0.0,

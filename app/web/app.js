@@ -492,15 +492,76 @@ function renderRow(element, turnId) {
   element.querySelector(".answer-row").hidden = false;
 }
 
+// Text with *italic* and **bold** runs appended to a parent element, as elements and never as HTML.
+function appendEmphasis(parent, text) {
+  for (const run of text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/)) {
+    if (!run) continue;
+    const emphasis = /^(\*\*?)([^*]+)\1$/.exec(run);
+    if (!emphasis) { parent.append(document.createTextNode(run)); continue; }
+    const tag = document.createElement(emphasis[1] === "**" ? "strong" : "em");
+    tag.textContent = emphasis[2];
+    parent.append(tag);
+  }
+}
+
+// Paragraphs and lists drawn from plain text. A "- " or "1. " line starts a list item; a blank line ends a paragraph but not a
+// list. An indented line after an item is its detail line when `details` is set, otherwise it continues the item.
+// `inline(parent, text)` draws the text of one block, so a *wrapped* italic run still reads as one.
+function appendBlocks(container, text, inline, details) {
+  let block = null;  // the open paragraph or list item: its element, text lines and detail lines
+  let list = null;
+  let listKind = "";
+  const close = () => {
+    if (!block) return;
+    inline(block.element, block.lines.join(block.item ? " " : "\n"));
+    for (const line of block.details) {
+      const detail = document.createElement("span");
+      detail.className = "detail";
+      inline(detail, line);
+      block.element.append(detail);
+    }
+    block = null;
+  };
+  for (const line of String(text || "").split("\n")) {
+    const bullet = /^ {0,3}(?:[-•]|\d+[.)])\s+(.*)$/.exec(line);
+    if (bullet) {
+      close();
+      const kind = /^ {0,3}\d/.test(line) ? "ol" : "ul";
+      if (!list || listKind !== kind) {
+        list = document.createElement(kind);
+        listKind = kind;
+        container.append(list);
+      }
+      const element = document.createElement("li");
+      list.append(element);
+      block = { element, lines: [bullet[1]], details: [], item: true };
+    } else if (!line.trim()) {
+      close();
+    } else if (block && block.item && /^\s+\S/.test(line)) {
+      (details ? block.details : block.lines).push(line.trim());
+    } else if (block && !block.item) {
+      block.lines.push(line);
+    } else {
+      close();
+      list = null;
+      const element = document.createElement("p");
+      container.append(element);
+      block = { element, lines: [line], details: [], item: false };
+    }
+  }
+  close();
+}
+
 // Draws the answer and returns its sources in numbering order: passages from one file share one number.
 function renderAnswer(element, receipt, turnId) {
   const container = element.querySelector(".answer");
   container.replaceChildren();
   const citations = receipt.citations || {};
   const found = new Map();
-  const paragraphs = String(receipt.answer || "").split(/\n{2,}/);
-  for (const text of paragraphs) {
-    const p = document.createElement("p");
+  const markers = [];
+  // Text with [E1.0] citation markers and *italic* or **bold** runs, appended to a parent element.
+  const addInline = (parent, text) => {
+    let last = null;  // the marker just added, while nothing but markers has followed it
     for (const part of text.split(/(\[E\d+\.\d+(?:@\d+)?\])/)) {
       const match = /^\[(E\d+\.\d+(?:@\d+)?)\]$/.exec(part);
       if (match && citations[match[1]]) {
@@ -511,26 +572,38 @@ function renderAnswer(element, receipt, turnId) {
           const path = String(citation.relative_path || "");
           source = {
             number: found.size + 1, title: citation.title || path || match[1],
-            folder: path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "",
+            folder: path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "", author: String(citation.author || ""),
             url: String(citation.obsidian_url || ""), passages: [],
           };
           found.set(key, source);
         }
         if (citation.text && !source.passages.includes(citation.text)) source.passages.push(citation.text);
+        const passage = Math.max(0, source.passages.indexOf(citation.text));
+        // The same passage cited twice in a row shows one number.
+        if (last && last.source === source && last.passage === passage) continue;
+        last = { source, passage };
         const marker = document.createElement("button");
         marker.type = "button";
         marker.className = "marker";
         marker.textContent = String(source.number);
         marker.setAttribute("aria-label", `Source ${source.number}`);
         marker.setAttribute("aria-haspopup", "dialog");
+        marker.setAttribute("data-source", String(source.number));
         const index = source.number - 1;
         marker.addEventListener("click", (event) => openSource(turnId, index, event.currentTarget));
-        p.append(marker);
+        markers.push({ marker, source, passage });
+        parent.append(marker);
       } else {
-        p.append(document.createTextNode(part));
+        if (part) { appendEmphasis(parent, part); last = null; }
       }
     }
-    container.append(p);
+  };
+  appendBlocks(container, receipt.answer, addInline, true);
+  // A source quoted from several passages numbers them 1.1, 1.2 and so on; one passage keeps the plain number.
+  for (const { marker, source, passage } of markers) {
+    if (source.passages.length < 2) continue;
+    marker.textContent = `${source.number}.${passage + 1}`;
+    marker.setAttribute("aria-label", `Source ${source.number}, passage ${passage + 1}`);
   }
   return [...found.values()];
 }
@@ -553,10 +626,14 @@ function fillSource(section, data, index) {
   // The folder path, then a plain underlined link to the note in Obsidian beside it.
   const where = document.createElement("p");
   where.className = "sheet-sub";
-  if (source.folder) where.append(textElement("span", "", source.folder));
+  if (source.author) where.append(textElement("span", "", source.author));
+  if (source.folder) {
+    if (source.author) where.append(textElement("span", "dot", ""));
+    where.append(textElement("span", "", source.folder));
+  }
   const url = source.url;
   if (url.startsWith("obsidian://")) {
-    if (source.folder) where.append(textElement("span", "dot", ""));
+    if (source.author || source.folder) where.append(textElement("span", "dot", ""));
     const link = textElement("a", "open-obsidian", "See in Obsidian");
     link.href = url;
     where.append(link);
@@ -567,7 +644,13 @@ function fillSource(section, data, index) {
       textElement("span", "section-title sheet-label", "Cited passage"));
     const passages = document.createElement("div");
     passages.className = "passages";
-    for (const passage of source.passages) passages.append(textElement("blockquote", "passage", passage));
+    for (const [at, passage] of source.passages.entries()) {
+      const quote = document.createElement("blockquote");
+      quote.className = "passage";
+      appendBlocks(quote, passage, appendEmphasis, false);
+      if (source.passages.length > 1) quote.dataset.label = `${source.number}.${at + 1}`;
+      passages.append(quote);
+    }
     scroll.append(passages);
   }
   const parts = [scroll];
@@ -854,7 +937,8 @@ function syncActive() {
   if (!turn) return;
   if (mark.kind === "gaps") { on(turn.querySelector(".gap-chip")); return; }
   const number = String(mark.index + 1);
-  for (const element of turn.querySelectorAll(".marker, .source-number")) if (element.textContent === number) on(element);
+  for (const element of turn.querySelectorAll(".marker")) if (element.getAttribute("data-source") === number) on(element);
+  for (const element of turn.querySelectorAll(".source-number")) if (element.textContent === number) on(element);
 }
 
 // On desktop the Source and Gaps panel sits beside the page: keyboard users can leave it with Tab.

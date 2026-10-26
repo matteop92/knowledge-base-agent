@@ -224,8 +224,10 @@ def _line(source: Source, citation: str | None) -> str:
     if source.guests:
         details.append("guest " + ", ".join(source.guests))
     details += [source.type or "", source.date or ""]
-    shown = "; ".join(item for item in details if item)
-    return f"- *{source.title}*" + (f" — {shown}" if shown else "") + (f" [{citation}]" if citation else "")
+    shown = " · ".join(item for item in details if item)
+    cite = f" [{citation}]" if citation else ""
+    # The title leads in bold; the detail line under it carries the people, type and date.
+    return f"- **{source.title}**" + (f"\n  {shown}{cite}" if shown else cite)
 
 
 def answer_properties(query: PropertyQuery, sources: list[Source], *, retriever,

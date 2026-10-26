@@ -16,7 +16,7 @@ from app.agent.memory import (PRIOR_TURNS, REWRITE_INPUT_CHARS, REWRITE_MAX_OUTP
 from app.agent.records import AnswerLimits, AnswerResult
 from app.api.conversations import ConversationStore
 from app.api.settings import Settings
-from app.storage.search import LABEL_METADATA, source_label
+from app.storage.search import LABEL_METADATA, source_author, source_label
 from app.models.client import ModelClientError
 from app.models.openrouter import completion_limit
 from app.models.routes import PRICE_CEILINGS, TAGS, price_usd
@@ -234,10 +234,11 @@ def obsidian_link(vault_name: str, relative_path: str) -> str:
     return f"obsidian://open?vault={quote(vault_name, safe='')}&file={quote(relative_path, safe='')}"
 
 
-def build_receipt(result: AnswerResult, labels: dict[str, str], vault_name: str) -> dict[str, Any]:
+def build_receipt(result: AnswerResult, labels: dict[str, tuple[str, str]], vault_name: str) -> dict[str, Any]:
     def passage(item) -> dict[str, Any]:
         # Revision ids let a follow-up carry this passage while its document is unchanged.
-        return {"document_id": item.document_id, "title": labels.get(item.document_id) or item.relative_path,
+        return {"document_id": item.document_id, "title": labels.get(item.document_id, ("",))[0] or item.relative_path,
+                "author": labels.get(item.document_id, ("", ""))[1],
                 "run_id": item.run_id, "chunk_id": item.chunk_id, "source_sha256": item.source_sha256,
                 "root_alias": item.root_alias, "relative_path": item.relative_path, "obsidian_url": obsidian_link(vault_name, item.relative_path),
                 "start_char": item.start_char, "end_char": item.end_char, "text": item.text}
@@ -296,7 +297,7 @@ class AnswerJobs:
         for thread in list(self._threads):
             thread.join(max(0, deadline - time.monotonic()))
 
-    def _labels(self, result: AnswerResult) -> dict[str, str]:
+    def _labels(self, result: AnswerResult) -> dict[str, tuple[str, str]]:
         documents = {item.document_id: item.relative_path
                      for item in [*result.citations.values(), *result.inspected.values()]}
         if not documents:
@@ -307,7 +308,7 @@ class AnswerJobs:
                 join knowledge.documents d on d.document_id=r.document_id
                 join knowledge.corpus_state s on s.profile_id=a.profile_id
                 where r.document_id = any(%s)""", (list(documents),)).fetchall()
-        return {row[0]: source_label(row[2], row[1])[0] for row in rows}
+        return {row[0]: (source_label(row[2], row[1])[0], source_author(row[2], row[1])) for row in rows}
 
     def _record_spend(self, turn_id: str, cost: float) -> None:
         if not cost:

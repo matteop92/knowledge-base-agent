@@ -87,6 +87,15 @@ def source_label(metadata: object, relative_path: str) -> tuple[str, list[str], 
             list(dict.fromkeys(tags + names(generated.get("tags")))))
 
 
+def source_author(metadata: object, relative_path: str) -> str:
+    """The note's authors, or its other named people when it lists no author."""
+    data = metadata if isinstance(metadata, dict) else {}
+    raw = data.get("authors")
+    authors = [item.removeprefix("[[").removesuffix("]]").strip()
+               for item in (raw if isinstance(raw, list) else [raw]) if isinstance(item, str) and item.strip()]
+    return ", ".join(authors or source_label(metadata, relative_path)[1])
+
+
 def search_text(conn: psycopg.Connection, query: str, *, k: int = 10,
                 profile_id: str | None = None, historical_run_id: str | None = None,
                 document_id: str | None = None) -> list[SearchHit]:
