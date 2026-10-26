@@ -94,7 +94,7 @@ Follow-ups (`app/agent/memory.py`) rewrite the question into a stand-alone searc
 `app/api/` is a FastAPI server and `app/web/` a plain JavaScript installable web app (no build step).
 
 - **Sign-in**: an email code for one allowed user.
-- **Answers**: run as background jobs the page polls, with cited excerpts that link back to the original note, a thumbs-down note and a daily spend cap.
+- **Answers**: run as background jobs the page polls, with cited excerpts that link back to the original note (with its author), a thumbs-down note and a daily spend cap. The page draws lists, bold and italic from the answer text as elements, never as HTML; a source cited from several passages numbers them 1.1, 1.2 and so on.
 - **Capture**: pasted text, `.md` files, screenshots and YouTube links become new notes in the `Knowledge` folders (`app/capture/`). New files only; nothing is ever edited or overwritten.
 - **Sync**: the server keeps a copy of the `Knowledge` folder through Obsidian Sync and indexes new, edited and deleted notes every five minutes (`app/api/scheduler.py`, `deploy/`).
 - **Settings**: approve or block the tags the classifier proposes.

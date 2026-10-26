@@ -169,11 +169,18 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 .answer { font-family: var(--serif); font-size: 18.5px; line-height: 1.66; letter-spacing: -0.002em; text-wrap: pretty; }
 .answer p { margin: 0 0 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .answer p:last-child { margin-bottom: 0; }
+.answer ul, .answer ol { margin: 0 0 16px; padding: 0; list-style: none; }
+.answer li { margin: 0; padding: 10px 0; border-top: 1px solid var(--hairline-row); overflow-wrap: anywhere; }
+.answer li:last-child { border-bottom: 1px solid var(--hairline-row); }
+.answer ol li::before { content: attr(data-n) "."; margin-right: 8px; color: var(--muted); }
+.answer p + ul, .answer p + ol { margin-top: -4px; }
+.answer strong { font-weight: 580; }
+.answer .detail { display: block; margin-top: 2px; font-family: var(--sans); font-size: 14px; line-height: 1.5; color: var(--muted); }
 /* Footnote-sized number in the text: no box, the hit area is widened with ::after. The open source's marker fills. */
 .marker { min-height: 0; min-width: 0; height: auto; padding: 0; margin: 0 0 0 2px; border: 0; border-radius: 0; background: none; color: var(--accent); font-family: var(--sans); font-size: 11px; font-weight: 500; line-height: 0; vertical-align: super; position: relative; }
 .marker:hover:not(:disabled) { background: none; text-decoration: underline; }
 .marker::after { content: ""; position: absolute; inset: -10px -6px; }
-.marker.is-active { margin-left: 3px; padding: 2px 5px; border-radius: 5px; background: var(--accent); color: var(--accent-ink); font-size: 10.5px; text-decoration: none; }
+.marker.is-active { margin: -4px 0 -4px 3px; padding: 0 5px; line-height: 1.35; border-radius: 5px; background: var(--accent); color: var(--accent-ink); font-size: 10.5px; text-decoration: none; }
 .run-note { margin: 12px 0 0; font-size: 14px; color: var(--muted); }
 /* Still answering: three dots, the timer and three skeleton lines. */
 .turn-state { margin: 0; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
@@ -429,6 +436,13 @@ span.pick-tag { background: var(--paper); box-shadow: 0 0 0 1px rgba(29, 28, 26,
 .rule { height: 1px; background: var(--hairline); margin: 24px 0 20px; }
 .passages { margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }
 .passage { position: relative; margin: 0; padding: 28px 20px 20px; border-radius: 14px; background: var(--ground); font-family: var(--serif); font-size: 17px; line-height: 1.6; text-wrap: pretty; white-space: pre-wrap; overflow-wrap: anywhere; }
+.passage p { margin: 0 0 10px; }
+.passage p:last-child, .passage ul:last-child, .passage ol:last-child { margin-bottom: 0; }
+.passage ul, .passage ol { margin: 0 0 10px; padding: 0; list-style: none; }
+.passage ul li { position: relative; padding-left: 16px; }
+.passage ul li::before { content: "\2013"; position: absolute; left: 0; color: var(--muted); }
+.passage ol li::before { content: attr(data-n) "."; margin-right: 8px; color: var(--muted); }
+.passage[data-label]::after { content: attr(data-label); position: absolute; top: 12px; right: 18px; font-family: var(--sans); font-size: 12px; color: var(--muted); }
 .passage::before { content: "\201C"; position: absolute; top: 8px; left: 16px; font-size: 40px; line-height: 1; color: var(--accent); opacity: 0.55; }
 .sheet-label { margin: 0 0 12px; }
 .source-foot { margin-top: 18px; padding: 0 24px; display: flex; align-items: center; gap: 8px; }

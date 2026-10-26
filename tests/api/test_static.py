@@ -233,7 +233,8 @@ class ReleaseCTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node"), "needs node")
     def test_source_numbering_runs_as_written(self) -> None:
         script = (WEB / "app.js").read_text(encoding="utf-8").replace("\r", "")
-        function = re.search(r"function renderAnswer.*?\n}\n", script, re.S).group(0)
+        function = "".join(re.search(rf"function {name}.*?\n}}\n", script, re.S).group(0)
+                           for name in ("appendEmphasis", "appendBlocks", "renderAnswer"))
         probe = """
 const make = (tag) => ({ tag, children: [], attrs: {}, className: "", textContent: "",
   append(...n) { this.children.push(...n); }, replaceChildren(...n) { this.children = n; },
@@ -261,8 +262,62 @@ console.log(JSON.stringify({ sources, markers, texts }));"""
         self.assertEqual([(s["number"], s["title"], s["folder"]) for s in result["sources"]],
                          [(1, "Note A", "Knowledge"), (2, "Other/b.md", "Other")])
         self.assertEqual(result["sources"][0]["passages"], ["first", "second"])
-        self.assertEqual(result["markers"], [["1", "2", "1"], ["1"]])
+        self.assertEqual(result["markers"], [["1.1", "2", "1.2"], ["1.1"]])
         self.assertIn("Unknown [E9.9] stays text.", result["texts"][1])
+
+    @unittest.skipUnless(shutil.which("node"), "needs node")
+    def test_answer_lists_and_emphasis_are_drawn_as_elements(self) -> None:
+        script = (WEB / "app.js").read_text(encoding="utf-8").replace("\r", "")
+        function = "".join(re.search(rf"function {name}.*?\n}}\n", script, re.S).group(0)
+                           for name in ("appendEmphasis", "appendBlocks", "renderAnswer"))
+        probe = """
+const make = (tag) => ({ tag, children: [], attrs: {}, className: "", textContent: "",
+  append(...n) { this.children.push(...n); }, replaceChildren(...n) { this.children = n; },
+  setAttribute(k, v) { this.attrs[k] = v; }, addEventListener() {} });
+const document = { createElement: make, createTextNode: (text) => ({ text }) };
+""" + function + """
+const container = make("div");
+const nl = String.fromCharCode(10);
+const receipt = { answer: ["You have 2 sources:", "- *Title A*", "  Ada; note [E1.0]", "- **Title B**", "", "Closing *line*. [E1.0][E1.0] [E1.0]", "", "1. First", "", "2. Second"].join(nl),
+  citations: { "E1.0": { relative_path: "K/a.md", title: "A", text: "t" } } };
+renderAnswer({ querySelector: () => container }, receipt, "t1");
+const shape = (n) => n.text !== undefined ? n.text : n.textContent ? [n.tag, n.textContent] : [n.tag, ...n.children.map(shape)];
+console.log(JSON.stringify(container.children.map(shape)));"""
+        out = subprocess.run(["node", "-e", probe], capture_output=True, text=True, check=True).stdout
+        import json
+        self.assertEqual(json.loads(out), [
+            ["p", "You have 2 sources:"],
+            ["ul", ["li", ["em", "Title A"], ["span", "Ada; note ", ["button", "1"]]], ["li", ["strong", "Title B"]]],
+            ["p", "Closing ", ["em", "line"], ". ", ["button", "1"], " ", ["button", "1"]],
+            ["ol", ["li", "First"], ["li", "Second"]],
+        ])
+
+    @unittest.skipUnless(shutil.which("node"), "needs node")
+    def test_cited_passage_keeps_dash_lists_and_wrapped_italics(self) -> None:
+        script = (WEB / "app.js").read_text(encoding="utf-8").replace("\r", "")
+        function = "".join(re.search(rf"function {name}.*?\n}}\n", script, re.S).group(0)
+                           for name in ("appendEmphasis", "appendBlocks"))
+        probe = """
+const make = (tag) => ({ tag, children: [], attrs: {}, className: "", textContent: "", append(...n) { this.children.push(...n); },
+  setAttribute(k, v) { this.attrs[k] = v; } });
+const document = { createElement: make, createTextNode: (text) => ({ text }) };
+""" + function + """
+const box = make("blockquote");
+const nl = String.fromCharCode(10);
+appendBlocks(box, ["- Is it true?", "- *Am I willing to learn", "    about this?*", "", "**Tim:** done", "", "Math 2 * 3 * 4", "", "3. Third", "", "4. Fourth"].join(nl), appendEmphasis, false);
+const shape = (n) => n.text !== undefined ? n.text : n.textContent ? [n.tag, n.textContent] : [n.tag, ...n.children.map(shape)];
+console.log(JSON.stringify({ shape: box.children.map(shape), numbers: box.children[3].children.map((li) => li.attrs["data-n"]) }));"""
+        out = subprocess.run(["node", "-e", probe], capture_output=True, text=True, check=True).stdout
+        import json
+        result = json.loads(out)
+        self.assertEqual(result["shape"], [
+            ["ul", ["li", "Is it true?"], ["li", ["em", "Am I willing to learn about this?"]]],
+            ["p", ["strong", "Tim:"], " done"],
+            ["p", "Math 2 * 3 * 4"],
+            ["ol", ["li", "Third"], ["li", "Fourth"]],
+        ])
+        # A numbered list keeps the numbers its text gave it, and lone asterisks stay as written.
+        self.assertEqual(result["numbers"], ["3", "4"])
 
     @unittest.skipUnless(shutil.which("node"), "needs node")
     def test_add_box_classification_runs_as_written(self) -> None:
@@ -406,9 +461,10 @@ class El {
   constructor(text) { this.on = new Set(); this.attrs = {}; this.textContent = text || ""; this.dataset = {}; }
   get classList() { return { add: (c) => this.on.add(c), remove: (c) => this.on.delete(c) }; }
   setAttribute(k, v) { this.attrs[k] = v; }
+  getAttribute(k) { return this.attrs[k] ?? null; }
   removeAttribute(k) { delete this.attrs[k]; }
 }
-const markers = ["1", "2", "1"].map((t) => new El(t));
+const markers = ["1", "2", "1.2"].map((t) => { const e = new El(t); e.attrs["data-source"] = t.split(".")[0]; return e; });
 const numbers = ["1", "2", "3"].map((t) => new El(t));
 const chip = new El("2");
 const rows = ["a", "b"].map((name) => Object.assign(new El(""), { dataset: { tag: name } }));
