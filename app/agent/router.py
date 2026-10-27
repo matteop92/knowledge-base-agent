@@ -139,6 +139,9 @@ def build_questions(vocab: dict[str, list[str]], question: str,
         "person_role": {"type": "choice", "instructions": catalog["person_role"], "criteria": dict(catalog["roles"])},
         "sort": {"type": "choice", "instructions": catalog["sort"], "criteria": dict(catalog["sorts"])},
         "single": {"type": "noul", "instructions": catalog["single"]},
+        "cat_by_type": {"type": "noul", "instructions": catalog["by_type"]},
+        "cat_by_date": {"type": "noul", "instructions": catalog["by_date"]},
+        "cat_by_folder": {"type": "noul", "instructions": catalog["by_folder"]},
         "by_person": {"type": "noul", "instructions": catalog["by_person"]},
         "by_tag": {"type": "noul", "instructions": catalog["by_tag"]},
         "by_title": {"type": "noul", "instructions": catalog["by_title"]},
@@ -187,13 +190,16 @@ def _narrowing(answers: dict[str, Any], question: str, today: date | None) -> Na
 
 def _plan(answers: dict[str, Any], question: str, vocab: dict[str, list[str]], today: date | None) -> CatalogPlan:
     raw: dict[str, Any] = {"op": _chosen(answers, "op") or "list", "sort": _chosen(answers, "sort") or "none"}
-    narrowing = _narrowing(answers, question, today)
-    if narrowing.types:
-        raw["types"] = narrowing.types
-    if narrowing.folders:
-        raw["folders"] = narrowing.folders
-    if narrowing.period:
-        raw["period"] = narrowing.period
+    # A catalog question asks about a kind of source ("how many articles"); it does not say "only".
+    kind = _flagged(answers, "cat_by_type", "type_value")
+    folder = _flagged(answers, "cat_by_folder", "folder_value")
+    period = read_period(question, today) if _yes(answers, "cat_by_date") else None
+    if kind:
+        raw["types"] = [kind]
+    if folder:
+        raw["folders"] = [folder]
+    if period:
+        raw["period"] = period
     for flag, value, key in (("by_person", "person_value", "person"), ("by_tag", "tag_value", "tag"),
                              ("by_title", "title_value", "title")):
         chosen = _flagged(answers, flag, value)

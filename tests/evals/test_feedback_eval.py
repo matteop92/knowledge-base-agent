@@ -49,6 +49,7 @@ class ResultSetCheckTests(unittest.TestCase):
         self.assertIn("missing ['b']", check_result_set(check, {"matched": ["a"]}).detail)
         self.assertIn("extra ['c']", check_result_set(check, {"matched": ["a", "b", "c"]}).detail)
         self.assertFalse(check_result_set(check, None).passed)
+        self.assertTrue(check_result_set({"kind": "result_set", "ids": []}, {"matched": []}).passed)
 
     def test_an_ordered_check_fails_when_the_same_ids_come_back_in_another_order(self):
         check = {"kind": "result_set", "ids": ["a", "b"], "ordered": True}
@@ -146,7 +147,8 @@ class SetTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             load_set(Path(".local/bad.yaml"))
         with self.assertRaises(ValueError):
-            validate_check({"kind": "result_set", "ids": []})
+            validate_check({"kind": "result_set"})
+        self.assertEqual(validate_check({"kind": "result_set", "ids": []})["ids"], [])  # "no match" is a valid answer
 
     def test_import_routes_makes_an_approved_route_set(self):
         questions = Path(".local/q.json")

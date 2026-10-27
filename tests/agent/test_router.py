@@ -33,6 +33,7 @@ def route(name, probability=0.95):
 
 def answers(route_name="plain", probability=0.95, **extra):
     base = {"route": route(route_name, probability), "by_type": 0.05, "by_date": 0.05, "by_folder": 0.05,
+            "cat_by_type": 0.05, "cat_by_date": 0.05, "cat_by_folder": 0.05,
             "by_person": 0.05, "by_tag": 0.05, "by_title": 0.05, "single": 0.05, "by_latest": 0.05,
             "op": Choice("list", {"list": 0.9, "count": 0.1}), "sort": Choice("none", {"none": 1.0}),
             "type_value": Choice("none", {"none": 1.0}), "folder_value": Choice("none", {"none": 1.0}),
@@ -51,7 +52,7 @@ def decide(question, **kwargs):
 
 class RouterTests(unittest.TestCase):
     def test_latest_note_uploaded_is_a_catalog_plan_sorted_by_added_date(self):
-        decision = decide("What's the latest note I've uploaded", route_name="catalog", by_type=0.9,
+        decision = decide("What's the latest note I've uploaded", route_name="catalog", cat_by_type=0.9,
                           type_value=choice("note"), sort=choice("added_newest"), single=0.9)
         self.assertEqual(decision.route, "catalog")
         self.assertEqual((decision.plan.types, decision.plan.sort, decision.plan.limit),
@@ -110,7 +111,7 @@ class RouterTests(unittest.TestCase):
 
     def test_which_note_did_i_add_last_is_catalog_but_a_topic_latest_is_plain(self):
         decision = decide("Which note did I add last?", route_name="catalog", sort=choice("added_newest"),
-                          single=0.9, by_type=0.9, type_value=choice("note"))
+                          single=0.9, cat_by_type=0.9, type_value=choice("note"))
         self.assertEqual((decision.route, decision.plan.limit), ("catalog", 1))
         self.assertEqual(decide("my latest thinking on AI agents", by_latest=0.2).route, "plain")
         self.assertEqual(decide("q", route_name="narrowed", by_latest=0.2).route, "plain")
@@ -118,6 +119,17 @@ class RouterTests(unittest.TestCase):
     def test_a_plan_that_fails_validation_is_plain(self):
         decision = decide("q", route_name="catalog", by_tag=0.9, tag_value=choice("not-a-tag"))
         self.assertEqual(decision.route, "plain")
+
+    def test_a_catalog_question_filters_by_kind_folder_and_period_without_saying_only(self):
+        decision = decide("How many articles from 2025 are in my Notes folder?", route_name="catalog", op=choice("count"),
+                          cat_by_type=0.8, type_value=choice("article"), cat_by_folder=0.7,
+                          folder_value=choice("Knowledge/Notes"), cat_by_date=0.9)
+        self.assertEqual((decision.plan.types, decision.plan.folders, decision.plan.period.start),
+                         (["article"], ["Knowledge/Notes"], "2025-01-01"))
+        # The narrowing questions do not feed a catalog plan.
+        decision = decide("How many articles are there?", route_name="catalog", op=choice("count"), by_type=0.9,
+                          type_value=choice("article"))
+        self.assertEqual(decision.plan.types, [])
 
     def test_limits_are_read_by_code(self):
         decision = decide("show the three most recent notes", route_name="catalog", sort=choice("added_newest"))

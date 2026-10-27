@@ -42,7 +42,7 @@
     "by_tag": "Does the question ask for sources with a particular tag or about a tagged theme?",
     "tag_value": "Which tag does the question name?",
     "by_title": "Does the question name one particular source by its title or topic?",
-    "title_value": "Which source does the question name?",
+    "title_value": "Which source does the question name by its title or topic? Choose the source whose title is closest to what the question describes.",
     "sort": "In what order does the question want the sources?",
     "sorts": {
       "none": "The question asks for no ordering",
@@ -51,7 +51,10 @@
       "dated_newest": "Most recent publication or note date first",
       "dated_oldest": "Earliest publication or note date first"
     },
-    "single": "Does the question ask for exactly one source (the latest note, the newest source, which one)?"
+    "single": "Does the question ask for exactly one source (the latest note, the newest source, which one)?",
+    "by_type": "Does the question ask about sources of a particular kind, such as articles, book highlights, books, transcripts, notes or social posts?",
+    "by_date": "Does the question ask for sources dated or added in a specific period, such as 2025, October or last week?",
+    "by_folder": "Does the question name a folder of the vault?"
   },
   "none": "The question names no such thing",
   "thresholds": {
