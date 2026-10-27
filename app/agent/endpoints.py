@@ -77,10 +77,12 @@ def measured_usd(client, routes: AnswerRoutes, *, model: str, embedding_model: s
     """
     prices = {model: (routes.prompt_price, routes.completion_price),
               embedding_model: (routes.embedding_price, Decimal(0)), **(extra_prices or {})}
-    known = len(client.request_timings) == len(client.billable_requests) and all(
+    decisions = getattr(client, "decision_costs", [])
+    known = len(client.request_timings) - len(decisions) == len(client.billable_requests) and all(
         usage.input_tokens is not None and (model_id == embedding_model or usage.output_tokens is not None)
         for model_id, usage in client.billable_requests)
     measured = sum((Decimal(usage.input_tokens or 0) * prices[model_id][0]
                     + Decimal(usage.output_tokens or 0) * prices[model_id][1]
                     for model_id, usage in client.billable_requests), Decimal(0))
-    return measured, known
+    # Decision-model calls report dollars, not tokens.
+    return measured + sum((Decimal(str(cost)) for cost in decisions), Decimal(0)), known

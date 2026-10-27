@@ -27,6 +27,7 @@ TAGS = {
     "deepseek/deepseek-v4.1-flash": "deepinfra/fp8",
     "z-ai/glm-5.3-flash": "deepinfra/fp4",
     "perplexity/pplx-embed-v1-0.6b": "perplexity/int8",
+    "typesafe/jev-1.14": "typesafe",
 }
 
 PRICE_CEILINGS = {
@@ -41,7 +42,13 @@ PRICE_CEILINGS = {
     "deepseek/deepseek-v4.1-flash": (0.14, 0.42),
     "z-ai/glm-5.3-flash": (0.075, 0.25),
     "perplexity/pplx-embed-v1-0.6b": (0.004, 0.0),
+    "typesafe/jev-1.14": (0.05, 0.0),
 }
+
+# TypeSafe's decision model reports its own dollar cost per call. A call whose response omits
+# it, or that fails after sending, is booked at this bound instead (a call costs about $0.00004).
+DECISION_MODEL = "typesafe/jev-1.14"
+DECISION_CALL_WORST_USD = 0.002
 
 
 def provider_routes(model_ids: list[str]) -> dict[str, dict]:
