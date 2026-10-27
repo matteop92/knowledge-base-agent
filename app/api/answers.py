@@ -145,7 +145,7 @@ class OpenRouterAnswerEngine:
                                          model=ModelSpec(provider="openrouter", model_id=answer.model,
                                                          model_version="current"),
                                          limits=self.limits, reasoning_effort=answer.reasoning_effort,
-                                         memory=memory, search_query=query)
+                                         memory=memory, search_query=query, prompt_version=answer.prompt_version)
                 if answer.question_router:
                     # Time spent deciding the route is part of the answer's wait.
                     update = {"elapsed_seconds": time.monotonic() - routing_started, "routing": decision.record()}
@@ -257,7 +257,8 @@ def build_receipt(result: AnswerResult, labels: dict[str, tuple[str, str]], vaul
             "inspected": {ref: passage(item) for ref, item in result.inspected.items()},
             "termination": result.termination, "finalization_reason": result.finalization_reason,
             "needs": result.needs, "model_calls": result.model_calls, "memory": result.memory,
-            "routing": result.routing, "speakers": speakers,
+            "routing": result.routing, "speakers": speakers, "prompt_version": result.prompt_version,
+            "attribution": result.attribution,
             "elapsed_seconds": result.elapsed_seconds}
 
 

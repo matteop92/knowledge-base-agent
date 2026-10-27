@@ -11,6 +11,7 @@ from typing import Protocol
 import psycopg
 
 from app.agent.actions import ACTION_SCHEMA_V3, AgentAction
+from app.agent.attribution import check_attribution
 from app.agent.memory import Memory
 from app.agent.records import AnswerLimits, AnswerResult
 from app.models.client import ModelClient, ModelClientError, ModelSpec
@@ -19,11 +20,16 @@ from app.storage.records import FusedHit, SourcePassage
 
 PROMPT_VERSION = "answer_agent_v13"
 PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / f"{PROMPT_VERSION}.md"
-PROMPT = PROMPT_PATH.read_text(encoding="utf-8")
-# Follow-ups use v14, which adds the conversation and carried evidence; v13 stays the baseline.
-FOLLOWUP_PROMPT_VERSION = "answer_agent_v14"
-FOLLOWUP_PROMPT = (PROMPT_PATH.parent / f"{FOLLOWUP_PROMPT_VERSION}.md").read_text(encoding="utf-8")
 CITATION = re.compile(r"\[(E\d+\.\d+(?:@\d+)?)\]")
+# Prompt families: (new question, follow-up). v15 and v16 add the speaker rule to v13 and v14 and change
+# nothing else; v13 and v14 stay the defaults until the speaker rule has passed its trials.
+PROMPT_FAMILIES = {"answer_agent_v13": ("answer_agent_v13", "answer_agent_v14"),
+                   "answer_agent_v15": ("answer_agent_v15", "answer_agent_v16")}
+PROMPT_FAMILIES |= {followup: family for family in list(PROMPT_FAMILIES.values()) for followup in family[1:]}
+
+
+def load_prompt(version: str) -> str:
+    return (PROMPT_PATH.parent / f"{version}.md").read_text(encoding="utf-8")
 
 
 MAX_CANDIDATES_SHOWN = 20
@@ -49,11 +55,13 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                     model: ModelSpec, limits: AnswerLimits | None = None,
                     reasoning_effort: str | None = None,
                     allow_legacy_actions: bool = False, memory: Memory | None = None,
-                    search_query: str | None = None) -> AnswerResult:
+                    search_query: str | None = None, prompt_version: str | None = None) -> AnswerResult:
     """All mutable budgets, references, and evidence belong to this invocation.
 
     `memory` carries earlier turns of the conversation; `search_query` replaces the question
-    for the host's first search (a follow-up rewritten to stand on its own).
+    for the host's first search (a follow-up rewritten to stand on its own). `prompt_version` names
+    a prompt family (`PROMPT_FAMILIES`); a follow-up uses the family's follow-up prompt. No value
+    keeps v13 for new questions and v14 for follow-ups.
     """
     if not question.strip():
         raise ValueError("question must not be empty")
@@ -66,13 +74,17 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
     best_rank: dict[str, int] = {}
     read_refs: set[str] = set()
     host_search: dict | None = None
-    prompt = FOLLOWUP_PROMPT if memory is not None else PROMPT
+    if prompt_version is not None and prompt_version not in PROMPT_FAMILIES:
+        raise ValueError(f"unknown prompt version: {prompt_version}")
+    family = PROMPT_FAMILIES[prompt_version or PROMPT_VERSION]
+    used_version = family[1] if memory is not None else family[0]
+    prompt = load_prompt(used_version)
     host_query = search_query or question
     # Carried passages count as inspected; new candidates are numbered after their chunks.
     inspected: dict[str, SourcePassage] = dict(memory.carried) if memory else {}
     carried_ids = set(inspected)
     next_ref = memory.chunk_count if memory else 0
-    memory_record = ({**memory.record(), "search_query": host_query, "prompt_version": FOLLOWUP_PROMPT_VERSION}
+    memory_record = ({**memory.record(), "search_query": host_query, "prompt_version": used_version}
                      if memory else None)
     carried_chunks = memory.carried_chunks if memory else set()
     needs: dict[str, dict] = {"N1": {"description": question, "status": "open", "evidence_ids": [], "rationale": None}}
@@ -476,9 +488,12 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
             completeness = action.completeness or "partial"
             if action.version == 3 and unresolved:
                 private_gaps.extend(f"Unresolved need {key}: {needs[key]['description']}" for key in unresolved)
+            flags = check_attribution(action.answer or "", {ref: inspected[ref] for ref in action.citation_ids})
+            private_gaps.extend(flag.gap() for flag in flags)
             if completeness == "complete" and private_gaps:
                 completeness = "partial"
-            return AnswerResult(answer=action.answer or "", completeness=completeness,
+            return AnswerResult(answer=action.answer or "", completeness=completeness, prompt_version=used_version,
+                                attribution=[flag.record() for flag in flags],
                                 citations={ref: inspected[ref] for ref in action.citation_ids},
                                 gaps=private_gaps, actions=actions, model_calls=calls,
                                 inspected=inspected, needs=needs, finalization_reason=finalization_reason,

@@ -249,8 +249,8 @@ class FollowUpHarnessTests(unittest.TestCase):
                                             sufficient=False, gaps=["none"])])
         result = answer_question("Explain", retriever=EmptyRetriever(), client=client, model=MODEL,
                                  limits=AnswerLimits(max_model_calls=1))
-        from app.agent.harness import PROMPT
-        self.assertEqual(client.prompts[0], PROMPT)
+        from app.agent.harness import load_prompt
+        self.assertEqual(client.prompts[0], load_prompt("answer_agent_v13"))
         self.assertNotIn("conversation", client.inputs[0])
         self.assertNotIn("earlier_evidence", client.inputs[0])
         self.assertIsNone(result.memory)
