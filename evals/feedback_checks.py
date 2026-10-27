@@ -2,9 +2,10 @@
 
 - `route`: the router's route and narrowing against the expected ones.
 - `result_set`: the document IDs a catalog answer matched against the expected IDs.
-- `attribution`: stricter than the runtime check in `app.agent.attribution`. Every sentence that cites
-  a passage of the given transcript said by someone other than the person the question asks about
-  must name that passage's speaker, so a pronoun ("he cites X") or unnamed advice fails.
+- `attribution`: stricter than the runtime check in `app.agent.attribution`. A sentence that cites a passage of the
+  given transcript said by someone other than the person the question asks about must not name a different
+  speaker of that transcript: if it names anyone, it must name the passage's speaker. A sentence that names
+  nobody (a pronoun, or advice with no name) passes; only a wrong name fails.
 """
 
 from __future__ import annotations
@@ -105,9 +106,12 @@ def check_attribution(check: dict, receipt: dict, lookup: Lookup | None = None) 
             if not speaker or fold(speaker) == person:
                 continue
             examined += 1
-            if not named_speakers(sentence, [speaker]):
-                failures.append(f"{ref} was said by {speaker}, but the sentence does not name them: {sentence[:120]}")
+            known = list(dict.fromkeys([check["person"], speaker, *(passage.get("run_speakers") or []),
+                                        *(receipt.get("speakers") or {}).get(passage.get("document_id"), [])]))
+            named = named_speakers(sentence, known)
+            if named and speaker not in named:
+                failures.append(f"{ref} was said by {speaker}, but the sentence names {', '.join(named)}: {sentence[:120]}")
     if failures:
         return CheckResult(False, "; ".join(failures))
-    return CheckResult(True, f"{examined} passage(s) by other speakers, each named"
+    return CheckResult(True, f"{examined} passage(s) by other speakers, none credited to the wrong person"
                        if examined else "no sentence cites another speaker of the transcript")

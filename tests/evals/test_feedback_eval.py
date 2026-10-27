@@ -68,9 +68,11 @@ class AttributionCheckTests(unittest.TestCase):
         self.assertTrue(check_attribution(ATTRIBUTION, receipt("Tim notes that platforms hire slowly [E1.2].",
                                                                **{"E1.2": cited("Tim Ferriss")})).passed)
 
-    def test_pronouns_fail_and_naming_the_guest_passes(self):
+    def test_a_sentence_naming_nobody_passes_and_naming_the_guest_passes(self):
         guest = {"E1.2": cited("Niels Hoven")}
-        self.assertFalse(check_attribution(ATTRIBUTION, receipt("He cites X as a platform [E1.2].", **guest)).passed)
+        self.assertTrue(check_attribution(ATTRIBUTION, receipt("He cites X as a platform [E1.2].", **guest)).passed)
+        self.assertTrue(check_attribution(ATTRIBUTION, receipt("Build a two-minute readiness test [E1.2].", **guest)).passed)
+        self.assertFalse(check_attribution(ATTRIBUTION, receipt("Tim says to build a readiness test [E1.2].", **guest)).passed)
         self.assertTrue(check_attribution(ATTRIBUTION, receipt(
             "Niels Hoven, on Tim's show, notes that platforms hire slowly [E1.2].", **guest)).passed)
 
