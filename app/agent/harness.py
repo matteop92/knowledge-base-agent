@@ -45,9 +45,15 @@ class AnswerRetriever(Protocol):
 
 
 def passage_entry(key: str, passage: SourcePassage) -> list[str] | dict[str, str]:
-    """A passage as the model sees it: `[id, text]`, or labelled fields when a speaker said it."""
+    """A passage as the model sees it: `[id, text]`, or labelled fields when a speaker said it.
+
+    The speaker is also written at the start of the text, as in the transcript, unless the passage
+    already starts with it: models follow a name in the text they read better than a separate field.
+    """
     if passage.speaker:
-        return {"id": key, "speaker": passage.speaker, "text": passage.text}
+        labelled = re.match(rf"\W*{re.escape(passage.speaker)}\W*:", passage.text, re.IGNORECASE)
+        text = passage.text if labelled else f"{passage.speaker}: {passage.text}"
+        return {"id": key, "speaker": passage.speaker, "text": text}
     return [key, passage.text]
 
 

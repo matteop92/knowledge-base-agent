@@ -676,7 +676,15 @@ class SpeakerInputTests(unittest.TestCase):
 
     def test_a_spoken_passage_is_a_labelled_object(self):
         self.assertEqual(self.inspected_input("Niels Hoven"),
-                         {"id": "E1.0", "speaker": "Niels Hoven", "text": "actual source"})
+                         {"id": "E1.0", "speaker": "Niels Hoven", "text": "Niels Hoven: actual source"})
+
+    def test_a_passage_that_already_starts_with_its_speaker_is_not_labelled_twice(self):
+        from app.agent.harness import passage_entry
+
+        spoken = SourcePassage(document_id="d", run_id="r", source_sha256="a" * 64, root_alias="root", relative_path="n.md",
+                               chunk_id="c", start_char=0, end_char=20, text="**Niels Hoven:** Hello there.",
+                               speaker="Niels Hoven")
+        self.assertEqual(passage_entry("E1.0", spoken)["text"], "**Niels Hoven:** Hello there.")
 
     def test_a_passage_with_no_speaker_keeps_the_id_and_text_pair(self):
         self.assertEqual(self.inspected_input(None), ["E1.0", "actual source"])
