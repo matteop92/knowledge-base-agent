@@ -76,7 +76,10 @@ Reading a passage re-checks document, run, hash and chunk identity and returns a
 
 `app/agent/harness.py` runs strictly parsed JSON actions (`search`, `find`, `read`, `finish`) through `ModelClient`. Each call has its own budgets for model calls, searches, finds, reads, bytes and time. Source text cannot change those limits.
 
-- In the web app, count and list questions about the sources ("how many articles by X", "which notes are tagged Y") skip the loop. A small router model (`gpt-6-luna`, prompt `property_router_v1`) turns the question into a filter on authors, guests, people, tags, type, date or title, and the host answers it from the stored properties loaded with one SQL query (`app/storage/search.py` `load_sources`, matched in `app/agent/properties.py`), citing each listed source's opening passage. Any other question, a filter value the router invents, or any failure goes to the loop. Only first questions are routed; the command-line tool has no router.
+- In the web app every question, first or follow-up (a follow-up is routed on its rewritten query; with no rewrite it goes plain without a call), gets one TypeSafe Jev call through OpenRouter's zero-retention `/api/v1/systemone` endpoint (about 0.3 s; wording in `prompts/question_router_v1.json`, code in `app/agent/router.py`). It picks one of three routes. "Plain" is listed first because Jev favours the first option, and an unsure or failed call goes plain:
+  - **Catalog**: a count or list about the collection itself ("how many articles", "the latest note I uploaded"). Jev fills a typed query plan that code validates against the vault's real values and applies in Python to the list from `load_sources` (`app/agent/catalog.py`); no model writes SQL. The answer opens with how the question was read ("Sorted by when it was added, newest first; showing 1.") and cites each listed source's opening passage. Code reads dates and counts (`app/agent/periods.py`). A source's added date is the earliest time it entered the index (or its capture job); notes from the first bulk load take their own date.
+  - **Narrowed**: a question about what the sources say that explicitly limits them by type, folder, period or "my latest note". The same search and answer loop runs over only those sources (a document filter inside the search SQL) and the answer opens with the scope ("Searched 12 notes from September 2026."). If nothing matches, it says so and searches everything. A person or a tag never narrows.
+  - **Plain**: today's path, unchanged.
 - The host runs one hybrid search before the first model turn. Candidates show source title, people, rank and a short preview, and are listed unread-first. The web app then reads the six best chunks itself (`host_reads`), so the first model turn already has passages to work with.
 - A `read` returns every passage of a chunk. Each passage has its own citation ID (`E3.1`).
 - The agent tracks the material parts of the question as needs, and marks each one resolved with inspected passage IDs, or excluded with a reason.
@@ -85,7 +88,9 @@ Reading a passage re-checks document, run, hash and chunk identity and returns a
 - One malformed or cut-off reply gets one retry. A second one is an explicit failure.
 - The result carries the cited passages, the full ledger of what was inspected, retrieval ranks, the gaps, the stop reason and the cost.
 
-Follow-ups (`app/agent/memory.py`) rewrite the question into a stand-alone search query, resend the last three turns, and carry forward up to 24 passages from the last six turns (24 KB), dropping any whose source has changed. They use prompt `answer_agent_v14`; first questions use v13. See [prompts/README.md](../prompts/README.md).
+Follow-ups (`app/agent/memory.py`) rewrite the question into a stand-alone search query, resend the last three turns, and carry forward up to 24 passages from the last six turns (24 KB), dropping any whose source has changed. They use prompt `answer_agent_v14`; first questions use v13. Prompts v15 and v16 add a speaker rule and can be selected with `prompt_version`, but are not the default yet. See [prompts/README.md](../prompts/README.md).
+
+Every transcript passage carries its speaker, read from the run's parsed blocks at read time (a passage that continues a turn, or an `@offset` read, keeps the speaker), and the model sees it as a labelled field. After each answer `app/agent/attribution.py` flags a sentence that names a speaker of a cited transcript when none of the named speakers spoke a passage it cites. The flag is shown as a gap and stored in the receipt; the answer is not rewritten.
 
 `python -m app.agent.cli` runs the same core from the command line inside a read-only transaction and writes private reports only to new files under `.local/`.
 
@@ -107,7 +112,9 @@ Hosting is described in [deploy.md](deploy.md).
 | --- | --- |
 | Ingestion and chunking | Working for transcripts, notes, articles, highlights and book exports. |
 | Storage and search | Working locally and on the hosted database (33 notes in the `Knowledge` folder, 257 chunks). |
-| Answer agent | Prompt v13 is the accepted baseline (78.8% of scored checks on the frozen checklist). Answers take about 37 s at the median and 92 s at p95; count and list questions about 8 s. |
+| Answer agent | Prompt v13 is the accepted baseline (78.8% of scored checks on the frozen checklist). Answers take about 37 s at the median and 92 s at p95; catalog questions about 8 s. Prompts v15 and v16 (speaker rule) are built but not yet measured on the checklist, so v13 and v14 stay the defaults. |
+| Question routing | Live: every question is routed catalog, narrowed or plain. The router set scores 66 of 67 with no plain question sent elsewhere. |
+| Feedback evals | `evals/export_feedback.py` and `evals/feedback_eval.py` turn thumbs-down turns into checked evals. The two seed evals fail on the saved answers; live trial runs are not done yet. |
 | Web app and capture | Live, with follow-up memory and capture from the phone. |
 | Vault sync | Live; the server's sync is two-way so captured notes reach the owner's devices. |
 | Later ideas | Cross-source connections and questions about the whole vault; neither has been built. See [decisions.md](decisions.md). |

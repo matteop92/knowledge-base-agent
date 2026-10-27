@@ -33,6 +33,26 @@ A model grader (`evals/answer_grader.py`, `gpt-5-mini` at medium reasoning, prom
 
 Reasoning effort: `gpt-5-mini` at medium beat low and minimal on answer quality in an earlier test, so it is fixed and was not rerun.
 
+## Routing, catalog answers and speaker attribution
+
+The eval sets about the vault (questions, expected results, the exported feedback) live under the ignored `.local/` folder because they name real notes. This section records numbers only.
+
+**Router (TypeSafe Jev 1.14, `prompts/question_router_v1.json`).** The 67 labelled questions from the 2026-10-26 experiment, run again on the final spec as one combined call per question, in three option orders. A route counts as right when it matches the label; narrowing properties are the accepted type or folder, a period when the label has one, and "newest" when it has one.
+
+| Option order | Right at 0.6 | Plain sent to another route | Narrowing properties |
+| --- | --- | --- | --- |
+| plain, narrowed, catalog (used) | 66 of 67 | 0 | 16 of 16 |
+| catalog, narrowed, plain | 63 of 67 | 3 | 16 of 16 |
+| narrowed, catalog, plain | 66 of 67 | 0 | 16 of 16 |
+
+The one miss in the used order is a catalog question that went plain (route probability 0.45), which is the safe side. The thresholds stay at 0.6 for narrowed and catalog: 0.5 sent one plain question elsewhere in the used order, 0.7 matched 0.6 in the used order but lost a narrowing property in another, and 0.8 lost routes. Listing "plain" first matters: with catalog first, three plain questions were sent elsewhere. A wording that asked one set of yes/no questions for both narrowing ("use only…") and catalog filters ("how many articles") dropped the type and period from catalog plans, so the two now have separate questions.
+
+A second set of 30 questions (held-out phrasings, "latest" as a narrowing, as a catalog sort and as a topic word, and rewritten follow-ups) scored 26 correct at 0.6 in the used order with 8 of 8 narrowing properties right. Four routes were wrong and one sort was: three plain questions that mention a kind of source ("the saved podcast episodes", "in the transcripts") and so were narrowed (the labels are debatable; a wrong narrowing still widens to the whole vault when it finds nothing), one "newest article" read as sorted by its own date rather than the date added (the answer states the reading), and one follow-up count that went plain. The first set was used to tune the wording and the second was written afterwards, so the second is the fairer estimate.
+
+**Catalog answers.** 26 questions with expected results taken from the database's own listing (counts, authors, guests, tags, dates, newest and oldest), not from the catalog code. Through the real router and catalog code over a source list rebuilt from that listing, 25 of 26 match. The miss was routed narrowed ("which book highlights did I add first"). These are drafts until each is approved.
+
+**Seed evals.** Both evals made from the two flagged turns fail on the saved answers: the catalog answer listed seven notes with no result set, and the attribution check finds the sentence crediting Tim Ferriss with a passage spoken by Niels Hoven (the speaker is found from the stored run). A corrected sentence that names Niels Hoven passes. Runs of the new routing and prompts against the live database, the v13 run-to-run spread, v15 against v13 on the 85-check list, and the v16 follow-up read have not been done yet, so v13 and v14 stay the answer prompts.
+
 ## Cost and speed
 
 A speed set of 25 questions (6 count or list questions about the sources, 8 single-source, 8 multi-source and 3 follow-ups; 5 are real questions asked in the app and 8 are the checklist questions), each run 3 times through the web app's answer engine against the hosted database. Times are the answer's elapsed time; model time is the sum of model request times.

@@ -32,9 +32,9 @@ def validate_check(check: Any) -> dict:
     kind = check["kind"]
     if kind == "route" and check.get("route") not in ROUTES:
         raise ValueError("a route check needs route: plain, narrowed or catalog")
-    if kind == "result_set" and not (isinstance(check.get("ids"), list) and check["ids"]
+    if kind == "result_set" and not (isinstance(check.get("ids"), list)
                                      and all(isinstance(item, str) for item in check["ids"])):
-        raise ValueError("a result_set check needs a list of document ids")
+        raise ValueError("a result_set check needs a list of document ids (empty when nothing should match)")
     if kind == "attribution" and not (check.get("document") and check.get("person")):
         raise ValueError("an attribution check needs the transcript document and the person")
     return check
