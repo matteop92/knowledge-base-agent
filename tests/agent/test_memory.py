@@ -135,6 +135,17 @@ class ReceiptTests(unittest.TestCase):
         self.assertEqual(prior.passages["E1.0"].run_id, "run-1")
         self.assertEqual(prior.titles, {"doc-1": "Pear tree"})
 
+    def test_receipt_speakers_are_carried_and_an_older_receipt_has_none(self):
+        item = {"document_id": "doc-1", "title": "Interview", "relative_path": "Knowledge/doc-1.md", "run_id": "run-1",
+                "chunk_id": "c1", "source_sha256": "a" * 64, "root_alias": "primary", "start_char": 0, "end_char": 5,
+                "text": "Ripe."}
+        receipt = {"answer": "Ripe [E1.0].", "inspected": {"E1.0": {**item, "speaker": "Niels Hoven"}},
+                   "speakers": {"doc-1": ["Tim Ferriss", "Niels Hoven"]}}
+        passage = prior_turn_from_receipt("Is it ripe?", receipt).passages["E1.0"]
+        self.assertEqual((passage.speaker, passage.run_speakers), ("Niels Hoven", ["Tim Ferriss", "Niels Hoven"]))
+        old = prior_turn_from_receipt("Is it ripe?", {"answer": "Ripe.", "inspected": {"E1.0": item}}).passages["E1.0"]
+        self.assertEqual((old.speaker, old.run_speakers), (None, None))
+
     def test_receipt_without_revision_ids_carries_text_only(self):
         receipt = {"answer": "Ripe.", "inspected": {"E1.0": {"document_id": "doc-1", "relative_path": "x.md",
                                                               "start_char": 0, "end_char": 5, "text": "Ripe."}}}

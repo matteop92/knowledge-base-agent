@@ -184,6 +184,52 @@ class Stage3IntegrationTest(unittest.TestCase):
                 self.assertTrue(empty.widened)
                 self.assertEqual({item.hit.document_id for item in empty.search("ripe")}, everything)
 
+    def test_a_transcript_passage_carries_the_speaker_of_its_turn(self):
+        def cleanup():
+            self.conn.execute("reset role")
+            self.conn.execute("update knowledge.corpus_state set profile_id=null where singleton=true")
+            self.conn.execute("truncate knowledge.documents cascade")
+            self.conn.execute("delete from knowledge.profiles where profile_id=%s", ("speaker-proof",))
+            self.conn.execute("set role knowledge_runtime")
+        self.addCleanup(cleanup)
+        text = ("---\ntitle: Interview\n---\n**Tim Ferriss:** Welcome to the show.\n\n"
+                "**Niels Hoven:** Thanks for having me. The coral pear is ripe.\n\n"
+                "**Tim Ferriss:** Tell me more.\n")
+        article = "# Orchard\n\nThe coral pear is ripe.\n"
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder)
+            runs = [fixture_run(base, text, relative_path="Transcripts/interview.md"),
+                    fixture_run(base, article, relative_path="Articles/orchard.md")]
+            for run_dir, _, _ in runs:
+                load_run(self.conn, run_dir)
+            spec = runs[0][1]
+            create_profile(self.conn, SearchProfile(profile_id="speaker-proof", variant="fixed_raw",
+                chunking_version=spec.chunking_version, embedding_spec_id=spec_id(spec)))
+            for run_dir, _, _ in runs:
+                publish_run(self.conn, PublicationSelection(run_id=run_dir.name, profile_id="speaker-proof"))
+            select_profile(self.conn, "speaker-proof")
+            hits = {hit.relative_path: hit for hit in search_text(self.conn, "pear")}
+            transcript, orchard = hits["Transcripts/interview.md"], hits["Articles/orchard.md"]
+
+            def keys(hit):
+                return dict(document_id=hit.document_id, run_id=hit.run_id, source_sha256=hit.source_sha256,
+                            chunk_id=hit.chunk_id)
+
+            chunk = read_chunk(self.conn, **keys(transcript))
+            self.assertEqual(chunk["speakers"], ["Tim Ferriss", "Niels Hoven"])
+            niels = text.index("Thanks")
+            self.assertEqual(passage_from_chunk(chunk, niels, niels + 20).speaker, "Niels Hoven")
+            # A passage that starts mid-turn, as an @offset continuation does, still has the turn's speaker.
+            mid = text.index("coral")
+            self.assertEqual(passage_from_chunk(chunk, mid, mid + 5).speaker, "Niels Hoven")
+            self.assertEqual(passage_from_chunk(chunk, mid, mid + 5).run_speakers, ["Tim Ferriss", "Niels Hoven"])
+            tim = text.index("Tell me")
+            self.assertEqual(passage_from_chunk(chunk, tim, tim + 7).speaker, "Tim Ferriss")
+            article_chunk = read_chunk(self.conn, **keys(orchard))
+            start = article_chunk["spans"][0]["start_char"]
+            passage = passage_from_chunk(article_chunk, start, start + 5)
+            self.assertEqual((passage.speaker, passage.run_speakers), (None, None))
+
     def test_passage_read_is_scoped_to_selected_revision_and_chunk(self):
         with tempfile.TemporaryDirectory() as folder:
             base = Path(folder)

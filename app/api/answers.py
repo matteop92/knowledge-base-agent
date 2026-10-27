@@ -246,14 +246,18 @@ def build_receipt(result: AnswerResult, labels: dict[str, tuple[str, str]], vaul
                 "author": labels.get(item.document_id, ("", ""))[1],
                 "run_id": item.run_id, "chunk_id": item.chunk_id, "source_sha256": item.source_sha256,
                 "root_alias": item.root_alias, "relative_path": item.relative_path, "obsidian_url": obsidian_link(vault_name, item.relative_path),
-                "start_char": item.start_char, "end_char": item.end_char, "text": item.text}
+                "start_char": item.start_char, "end_char": item.end_char, "text": item.text,
+                "speaker": item.speaker}
+
+    speakers = {item.document_id: item.run_speakers
+                for item in [*result.citations.values(), *result.inspected.values()] if item.run_speakers}
 
     return {"answer": result.answer, "completeness": result.completeness, "gaps": result.gaps,
             "citations": {ref: passage(item) for ref, item in result.citations.items()},
             "inspected": {ref: passage(item) for ref, item in result.inspected.items()},
             "termination": result.termination, "finalization_reason": result.finalization_reason,
             "needs": result.needs, "model_calls": result.model_calls, "memory": result.memory,
-            "routing": result.routing,
+            "routing": result.routing, "speakers": speakers,
             "elapsed_seconds": result.elapsed_seconds}
 
 

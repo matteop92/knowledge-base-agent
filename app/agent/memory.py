@@ -70,7 +70,8 @@ def prior_turn_from_receipt(question: str, receipt: dict[str, Any]) -> PriorTurn
     for ref, item in (receipt.get("inspected") or {}).items():
         if not all(item.get(name) is not None for name in REVISION_FIELDS):
             continue
-        passages[ref] = SourcePassage(**{name: item[name] for name in REVISION_FIELDS})
+        passages[ref] = SourcePassage(**{name: item[name] for name in REVISION_FIELDS}, speaker=item.get("speaker"),
+                                      run_speakers=(receipt.get("speakers") or {}).get(item["document_id"]))
         titles[item["document_id"]] = item.get("title") or item["relative_path"]
     return PriorTurn(question=question, answer=receipt.get("answer") or "", passages=passages, titles=titles)
 

@@ -648,3 +648,35 @@ class HarnessTest(unittest.TestCase):
         self.assertEqual(result.actions[0]["results"][0]["rank"], 1)
         self.assertTrue(result.actions[-1]["sufficient"])
         self.assertEqual(result.inspected, result.citations)
+
+
+class SpeakerInputTests(unittest.TestCase):
+    def inspected_input(self, speaker):
+        import json
+
+        class SpeakerRetriever(FakeRetriever):
+            def read(self, reference, span_index):
+                return super().read(reference, span_index).model_copy(update={"speaker": speaker})
+
+        class CapturingClient(FakeClient):
+            def __init__(self, actions):
+                super().__init__(actions)
+                self.inputs = []
+
+            def generate_json(self, **kwargs):
+                self.inputs.append(json.loads(kwargs["input_text"]))
+                return super().generate_json(**kwargs)
+
+        client = CapturingClient([action_v3("read", reference_id="E1"),
+                                  action_v3("finish", answer="No verified source.", completeness="unsupported",
+                                            sufficient=False, gaps=["none"])])
+        answer_question("Explain", retriever=SpeakerRetriever(), client=client, model=MODEL,
+                        limits=AnswerLimits(max_model_calls=2))
+        return client.inputs[-1]["inspected"][0]["passages"][0]
+
+    def test_a_spoken_passage_is_a_labelled_object(self):
+        self.assertEqual(self.inspected_input("Niels Hoven"),
+                         {"id": "E1.0", "speaker": "Niels Hoven", "text": "actual source"})
+
+    def test_a_passage_with_no_speaker_keeps_the_id_and_text_pair(self):
+        self.assertEqual(self.inspected_input(None), ["E1.0", "actual source"])

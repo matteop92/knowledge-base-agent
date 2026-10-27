@@ -79,3 +79,6 @@ class SourcePassage(StrictRecord):
     span_end_char: int | None = None
     next_offset: int | None = None
     truncated: bool = False
+    # Transcripts only: who spoke this passage, and everyone who speaks anywhere in its run.
+    speaker: str | None = None
+    run_speakers: list[str] | None = None

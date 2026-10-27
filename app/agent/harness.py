@@ -38,6 +38,13 @@ class AnswerRetriever(Protocol):
     def read(self, reference: FusedHit, span_index: int, *, offset: int = 0) -> SourcePassage: ...
 
 
+def passage_entry(key: str, passage: SourcePassage) -> list[str] | dict[str, str]:
+    """A passage as the model sees it: `[id, text]`, or labelled fields when a speaker said it."""
+    if passage.speaker:
+        return {"id": key, "speaker": passage.speaker, "text": passage.text}
+    return [key, passage.text]
+
+
 def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelClient,
                     model: ModelSpec, limits: AnswerLimits | None = None,
                     reasoning_effort: str | None = None,
@@ -191,7 +198,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                      for ref in shown()]
         read_evidence = [{"chunk": ref, "title": candidates[ref].hit.title or candidates[ref].hit.relative_path.rsplit("/", 1)[-1],
                           "people": candidates[ref].hit.people,
-                          "passages": [[key, item.text] for key, item in inspected.items()
+                          "passages": [passage_entry(key, item) for key, item in inspected.items()
                                        if key.startswith(ref + ".")]}
                          for ref in candidates if ref in read_refs]
         turn_input = {"question": question}
@@ -199,7 +206,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
             turn_input["conversation"] = memory.turns
             turn_input["earlier_evidence"] = [
                 {"chunk": ref, "title": title,
-                 "passages": [[key, item.text] for key, item in inspected.items()
+                 "passages": [passage_entry(key, item) for key, item in inspected.items()
                               if key in carried_ids and key.startswith(ref + ".")]}
                 for ref, title in memory.chunk_titles.items()]
             if memory.changed:

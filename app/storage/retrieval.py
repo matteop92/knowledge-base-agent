@@ -272,7 +272,20 @@ def read_chunk(conn: psycopg.Connection, *, document_id: str, run_id: str, sourc
                 where gap->>'reason' is distinct from 'whitespace' and exists (
                     select 1 from jsonb_array_elements(c.source_spans) span
                     where (gap->'span'->>'start_char')::int < (span->>'end_char')::int
-                      and (span->>'start_char')::int < (gap->'span'->>'end_char')::int))
+                      and (span->>'start_char')::int < (gap->'span'->>'end_char')::int)),
+            -- Speaker turns touching the chunk, so a passage takes the speaker of the turn it starts in.
+            (select coalesce(jsonb_agg(jsonb_build_object('start_char', (b->'span'->>'start_char')::int,
+                    'end_char', (b->'span'->>'end_char')::int, 'speaker', b->>'speaker')
+                    order by (b->'span'->>'start_char')::int), '[]'::jsonb)
+                from jsonb_array_elements(coalesce(r.parsed->'blocks', '[]'::jsonb)) b
+                where b->>'kind'='speaker_turn' and exists (
+                    select 1 from jsonb_array_elements(c.source_spans) span
+                    where (b->'span'->>'start_char')::int < (span->>'end_char')::int
+                      and (span->>'start_char')::int < (b->'span'->>'end_char')::int)),
+            (select coalesce(jsonb_agg(speaker order by first_at), '[]'::jsonb) from (
+                select b->>'speaker' as speaker, min((b->'span'->>'start_char')::int) as first_at
+                from jsonb_array_elements(coalesce(r.parsed->'blocks', '[]'::jsonb)) b
+                where b->>'kind'='speaker_turn' group by 1) speakers)
             from knowledge.runs r join knowledge.documents d on d.document_id=r.document_id
             join knowledge.active_runs ar on ar.run_id=r.run_id and ar.document_id=r.document_id
             join knowledge.chunks c on c.run_id=r.run_id
@@ -285,10 +298,10 @@ def read_chunk(conn: psycopg.Connection, *, document_id: str, run_id: str, sourc
         row = cur.fetchone()
     if row is None:
         raise StorageError("source passage is not in the active published run")
-    source_length, root_alias, relative_path, spans, texts, gaps = row
+    source_length, root_alias, relative_path, spans, texts, gaps, turns, speakers = row
     return {"document_id": document_id, "run_id": run_id, "source_sha256": source_sha256, "chunk_id": chunk_id,
             "source_length": source_length, "root_alias": root_alias, "relative_path": relative_path,
-            "spans": spans, "texts": texts, "gaps": gaps}
+            "spans": spans, "texts": texts, "gaps": gaps, "turns": turns, "speakers": speakers}
 
 
 def chunk_is_active(conn: psycopg.Connection, *, document_id: str, run_id: str, source_sha256: str,
@@ -326,7 +339,18 @@ def passage_from_chunk(chunk: dict, start_char: int, end_char: int) -> SourcePas
     return SourcePassage(document_id=chunk["document_id"], run_id=chunk["run_id"],
                          source_sha256=chunk["source_sha256"], root_alias=chunk["root_alias"],
                          relative_path=chunk["relative_path"], chunk_id=chunk["chunk_id"],
-                         start_char=start_char, end_char=end_char, text=text)
+                         start_char=start_char, end_char=end_char, text=text,
+                         speaker=speaker_at(chunk, start_char), run_speakers=chunk.get("speakers") or None)
+
+
+def speaker_at(chunk: dict, position: int) -> str | None:
+    """The speaker of the turn that contains `position`, from a `read_chunk` result; None outside a transcript.
+
+    A continuation passage, or a chunk that starts partway through a turn, has no label in its own
+    text, so the speaker comes from the parsed blocks.
+    """
+    return next((turn["speaker"] for turn in chunk.get("turns") or []
+                 if turn["start_char"] <= position < turn["end_char"]), None)
 
 
 class DatabaseRetriever:
