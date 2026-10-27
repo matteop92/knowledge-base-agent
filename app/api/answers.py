@@ -10,11 +10,12 @@ from decimal import Decimal
 from typing import Any, Callable, Protocol
 from urllib.parse import quote
 
-from app.agent.router import RouteDecision
+from app.agent.catalog import resolve_scope
 from app.agent.endpoints import check_answer_routes, measured_usd, private_routes, worst_case_usd
 from app.agent.memory import (PRIOR_TURNS, REWRITE_INPUT_CHARS, REWRITE_MAX_OUTPUT_TOKENS, REWRITE_MODEL, PriorTurn,
                               prior_turn_from_receipt)
 from app.agent.records import AnswerLimits, AnswerResult
+from app.agent.router import RouteDecision
 from app.api.conversations import ConversationStore
 from app.api.settings import Settings
 from app.storage.search import LABEL_METADATA, source_author, source_label
@@ -131,10 +132,15 @@ class OpenRouterAnswerEngine:
                 routing_started = time.monotonic()
                 # A follow-up is routed on its rewritten query; with no rewrite it goes plain without a call.
                 if answer.question_router and (query or not prior):
-                    routed, decision, _ = route_question(client, conn, query or question, retriever)
+                    routed, decision, sources = route_question(client, conn, query or question, retriever)
                     if routed is not None:
                         return AnswerOutcome(routed, self._cost(client, routes, answer.model, embedding_model,
                                                                 rewrite_prices), list(client.usage_log))
+                    if decision.route == "narrowed":
+                        scope = resolve_scope(sources, types=decision.narrowing.types,
+                                              folders=decision.narrowing.folders, period=decision.narrowing.period,
+                                              latest=decision.narrowing.latest)
+                        retriever.narrow(scope.document_ids)
                 result = answer_question(question, retriever=retriever, client=client,
                                          model=ModelSpec(provider="openrouter", model_id=answer.model,
                                                          model_version="current"),
@@ -142,8 +148,13 @@ class OpenRouterAnswerEngine:
                                          memory=memory, search_query=query)
                 if answer.question_router:
                     # Time spent deciding the route is part of the answer's wait.
-                    result = result.model_copy(update={"elapsed_seconds": time.monotonic() - routing_started,
-                                                       "routing": decision.record()})
+                    update = {"elapsed_seconds": time.monotonic() - routing_started, "routing": decision.record()}
+                    if decision.route == "narrowed":
+                        line = (decision.narrowing.widened_line() if retriever.widened else
+                                decision.narrowing.scope_line(len(scope.document_ids), scope.added_from_date))
+                        update["answer"] = f"{line}\n\n{result.answer}"
+                        update["routing"] = decision.record(scope.document_ids) | {"widened": retriever.widened}
+                    result = result.model_copy(update=update)
         except Exception as exc:
             raise AnswerFailed(self._cost(client, routes, answer.model, embedding_model, rewrite_prices),
                                list(client.usage_log)) from exc

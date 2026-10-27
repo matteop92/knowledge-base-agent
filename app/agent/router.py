@@ -38,6 +38,9 @@ MAX_OPTIONS = 255  # a Choice takes at most this many options, "none" included
 QUESTION_CHARS = 1000
 
 
+TYPE_NOUNS = {"highlights": "book highlights", "book": "book notes", "social_post": "social posts"}
+
+
 @dataclass
 class Narrowing:
     types: list[str] = field(default_factory=list)
@@ -56,6 +59,35 @@ class Narrowing:
         if self.period:
             data["period"] = {"start": self.period.start, "end": self.period.end, "field": self.period.field}
         return data
+
+
+    def noun(self, count: int = 2) -> str:
+        """What the scope holds: "notes" for one type, else "sources"."""
+        if len(self.types) == 1:
+            plural = TYPE_NOUNS.get(self.types[0], self.types[0] + "s")
+            return plural if count != 1 else plural.removesuffix("s")
+        return "source" if count == 1 else "sources"
+
+    def _where(self) -> str:
+        where = " ".join(part for part in (" ".join("in " + folder for folder in self.folders),
+                                           self.period.label if self.period else "") if part)
+        return where
+
+    def scope_line(self, count: int, from_date: bool) -> str:
+        """The sentence the host puts first in a narrowed answer, e.g. "Searched 12 notes from September 2026."."""
+        if self.latest:
+            line = (f"Searched your newest {self.noun(1)} by date added." if count == 1
+                    else f"Searched your {count} newest {self.noun(count)} by date added.")
+        else:
+            line = f"Searched {count} {self.noun(count)}" + (f" {self._where()}" if self._where() else "") + "."
+        if from_date and (self.latest or (self.period and self.period.field == "added")):
+            line += " Notes from the first bulk load use their own date as the date added."
+        return line
+
+    def widened_line(self) -> str:
+        what = "newest " + self.noun() if self.latest else self.noun()
+        return (f"No {what}" + (f" {self._where()}" if self._where() else "") +
+                " matched; searched everything instead.")
 
 
 @dataclass

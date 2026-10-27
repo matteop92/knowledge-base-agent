@@ -122,6 +122,68 @@ class Stage3IntegrationTest(unittest.TestCase):
             self.assertTrue(any("Luca Ferrari" in item.hit.people for item in hits))
             self.assertTrue(all("Derek" not in item.hit.raw_text for item in hits))
 
+    def test_a_scope_limits_search_and_widens_when_it_matches_nothing(self):
+        def cleanup():
+            self.conn.execute("reset role")
+            self.conn.execute("update knowledge.corpus_state set profile_id=null where singleton=true")
+            self.conn.execute("truncate knowledge.documents cascade")
+            self.conn.execute("delete from knowledge.profiles where profile_id=%s", ("scope-proof",))
+            self.conn.execute("set role knowledge_runtime")
+        self.addCleanup(cleanup)
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder)
+            files = (("Notes/apple.md", "# Apple\n\nThe apple is ripe today.\n"),
+                     ("Articles/pear.md", "# Pear\n\nThe pear is ripe today.\n"))
+            runs = [fixture_run(base, body, relative_path=path) for path, body in files]
+            for run_dir, _, _ in runs:
+                load_run(self.conn, run_dir)
+            spec = runs[0][1]
+            create_profile(self.conn, SearchProfile(profile_id="scope-proof", variant="fixed_raw",
+                chunking_version=spec.chunking_version, embedding_spec_id=spec_id(spec)))
+            for run_dir, _, _ in runs:
+                publish_run(self.conn, PublicationSelection(run_id=run_dir.name, profile_id="scope-proof"))
+            select_profile(self.conn, "scope-proof")
+            everything = {hit.document_id for hit in search_text(self.conn, "ripe")}
+            self.assertEqual(len(everything), 2)
+            apple = next(hit.document_id for hit in search_text(self.conn, "apple"))
+            other = (everything - {apple}).pop()
+            self.assertEqual({hit.document_id for hit in search_text(self.conn, "ripe", document_ids=[apple])}, {apple})
+            vector = {hit.document_id for hit in search_vector(
+                self.conn, [1.0, 0.0, 0.0], spec_id=spec_id(spec), metric="cosine", document_ids=[other])}
+            self.assertEqual(vector, {other})
+            self.assertEqual(search_text(self.conn, "ripe", document_ids=[]), [])
+            embedded = EmbeddingResult(model=spec.model_spec(), vectors=[[1.0, 0.0, 0.0]])
+            with patch("app.storage.retrieval.embed_queries", return_value=(spec_id(spec), spec, embedded)):
+                retriever = DatabaseRetriever(self.conn, MagicMock(), provider_tag="unused",
+                                              max_embedding_usd_per_million=Decimal("0"))
+                self.assertEqual({item.hit.document_id for item in retriever.search("ripe")}, everything)
+                retriever = DatabaseRetriever(self.conn, MagicMock(), provider_tag="unused",
+                                              max_embedding_usd_per_million=Decimal("0"))
+                retriever.narrow([apple])
+                # Every search of a narrowed answer, not only the first, stays inside the scope.
+                for query in ("ripe", "today"):
+                    self.assertEqual({item.hit.document_id for item in retriever.search(query)}, {apple})
+                self.assertFalse(retriever.widened)
+                self.assertEqual(retriever.find(retriever.search("ripe")[0], "ripe")[0].hit.document_id, apple)
+                outside = DatabaseRetriever(self.conn, MagicMock(), provider_tag="unused",
+                                            max_embedding_usd_per_million=Decimal("0"))
+                outside.narrow([apple])
+                self.assertEqual(outside.find(next(item for item in DatabaseRetriever(
+                    self.conn, MagicMock(), provider_tag="unused", max_embedding_usd_per_million=Decimal("0")
+                ).search("pear") if item.hit.document_id == other), "pear"), [])
+                # A scope that matches nothing widens once and stays widened.
+                missing = DatabaseRetriever(self.conn, MagicMock(), provider_tag="unused",
+                                            max_embedding_usd_per_million=Decimal("0"))
+                missing.narrow(["no-such-document"])
+                self.assertEqual({item.hit.document_id for item in missing.search("ripe")}, everything)
+                self.assertTrue(missing.widened)
+                self.assertEqual({item.hit.document_id for item in missing.search("pear")}, everything)
+                empty = DatabaseRetriever(self.conn, MagicMock(), provider_tag="unused",
+                                          max_embedding_usd_per_million=Decimal("0"))
+                empty.narrow([])
+                self.assertTrue(empty.widened)
+                self.assertEqual({item.hit.document_id for item in empty.search("ripe")}, everything)
+
     def test_passage_read_is_scoped_to_selected_revision_and_chunk(self):
         with tempfile.TemporaryDirectory() as folder:
             base = Path(folder)

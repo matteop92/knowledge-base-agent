@@ -332,13 +332,14 @@ class QuestionRouteTests(unittest.TestCase):
         self.assertIsNone(result)
         self.assertEqual(decision.route, "plain")
 
-    def run_engine(self, prior, rewrite):
+    def run_engine(self, prior, rewrite, decision=None, sources=None, widened=False):
         """One engine call with the heavy collaborators faked; returns the router mock and the client budget."""
         from contextlib import ExitStack
         from unittest import mock
         from app.agent.router import RouteDecision
         from app.api.answers import OpenRouterAnswerEngine
 
+        decision = decision or RouteDecision(called=True)
         base = settings()
         engine = OpenRouterAnswerEngine(base, connect=mock.MagicMock())
         clients = []
@@ -348,16 +349,19 @@ class QuestionRouteTests(unittest.TestCase):
             stack.enter_context(mock.patch("app.storage.retrieval.selected_embedding_spec",
                                            return_value=(None, mock.MagicMock())))
             stack.enter_context(mock.patch("app.api.answers.check_answer_routes"))
-            stack.enter_context(mock.patch("app.storage.retrieval.DatabaseRetriever"))
+            retriever_class = stack.enter_context(mock.patch("app.storage.retrieval.DatabaseRetriever"))
+            retriever_class.return_value.widened = widened
             stack.enter_context(mock.patch("app.agent.memory.build_memory"))
             stack.enter_context(mock.patch("app.api.answers.active_revisions", return_value=set()))
             stack.enter_context(mock.patch("app.api.answers.rewrite_followup", return_value=rewrite))
             routed = stack.enter_context(mock.patch("app.api.answers.route_question",
-                                                    return_value=(None, RouteDecision(called=True), [])))
+                                                    return_value=(None, decision, sources or [])))
             stack.enter_context(mock.patch.object(engine, "_cost", return_value=0.0))
             asked = stack.enter_context(mock.patch("app.agent.harness.answer_question"))
             asked.return_value.model_copy.return_value = "result"
             engine.answer("and the second one?", prior)
+        self.retriever = retriever_class.return_value
+        self.asked = asked
         return routed, clients[0], asked
 
     def test_a_follow_up_is_routed_on_its_rewritten_query_and_without_one_makes_no_call(self) -> None:
@@ -367,6 +371,39 @@ class QuestionRouteTests(unittest.TestCase):
         routed, _, asked = self.run_engine(prior, None)
         routed.assert_not_called()
         asked.assert_called_once()
+
+    def narrowed(self, **kwargs):
+        from app.agent.router import Narrowing, RouteDecision
+        from tests.agent.test_router import SOURCES
+
+        decision = RouteDecision(route="narrowed", called=True, narrowing=Narrowing(**kwargs))
+        self.run_engine(None, None, decision=decision, sources=SOURCES, widened=kwargs.pop("widened", False))
+        return self.asked.return_value.model_copy.call_args.kwargs["update"]
+
+    def test_a_narrowed_answer_searches_only_the_scope_and_opens_with_the_scope_line(self) -> None:
+        update = self.narrowed(types=["article"])
+        self.retriever.narrow.assert_called_once_with(["doc-Knowledge/Articles/plans.md"])
+        self.assertTrue(update["answer"].startswith("Searched 1 article."))
+        self.assertEqual(update["routing"]["route"], "narrowed")
+        self.assertEqual(update["routing"]["matched"], ["doc-Knowledge/Articles/plans.md"])
+        self.assertFalse(update["routing"]["widened"])
+
+    def test_a_narrowed_answer_whose_scope_matched_nothing_says_it_searched_everything(self) -> None:
+        from app.agent.router import Narrowing, RouteDecision
+        from tests.agent.test_router import SOURCES
+
+        decision = RouteDecision(route="narrowed", called=True, narrowing=Narrowing(types=["social_post"]))
+        self.run_engine(None, None, decision=decision, sources=SOURCES, widened=True)
+        update = self.asked.return_value.model_copy.call_args.kwargs["update"]
+        self.assertTrue(update["answer"].startswith("No social posts matched; searched everything instead."))
+        self.assertTrue(update["routing"]["widened"])
+
+    def test_a_plain_answer_is_not_narrowed(self) -> None:
+        self.run_engine(None, None)
+        self.retriever.narrow.assert_not_called()
+        update = self.asked.return_value.model_copy.call_args.kwargs["update"]
+        self.assertNotIn("answer", update)
+        self.assertEqual(update["routing"]["route"], "plain")
 
     def test_the_request_budget_has_room_for_the_router_call_on_every_question(self) -> None:
         from app.api.settings import AnswerSettings

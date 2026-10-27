@@ -157,7 +157,8 @@ def embed_queries(conn: psycopg.Connection, client: OpenRouterClient, queries: l
 
 def hybrid_search(conn: psycopg.Connection, client: OpenRouterClient, query: str, *,
                   provider_tag: str, max_embedding_usd_per_million: Decimal,
-                  k: int = 20) -> list[FusedHit]:
+                  k: int = 20, document_ids: list[str] | None = None) -> list[FusedHit]:
+    """Fused hits over the whole vault, or over only `document_ids` (a narrowed question's scope)."""
     _check_k(k)
     if k > MAX_CHANNEL_K:
         raise StorageError("hybrid K must be at most 20")
@@ -165,10 +166,12 @@ def hybrid_search(conn: psycopg.Connection, client: OpenRouterClient, query: str
         conn, client, [query], provider_tag=provider_tag,
         max_embedding_usd_per_million=max_embedding_usd_per_million)
     vector = search_vector(conn, embedded.vectors[0], spec_id=spec_id,
-                           metric=spec.distance_metric, k=MAX_CHANNEL_K)
-    lexical = search_text(conn, query, k=MAX_CHANNEL_K)
+                           metric=spec.distance_metric, k=MAX_CHANNEL_K, document_ids=document_ids)
+    lexical = search_text(conn, query, k=MAX_CHANNEL_K, document_ids=document_ids)
     global_hits = fuse_hits(vector, lexical, k=k)
     sources = named_sources(conn, query)
+    if document_ids is not None:
+        sources = [document_id for document_id in sources if document_id in document_ids]
     if not sources:
         return global_hits
     reserved: list[FusedHit] = []
@@ -335,16 +338,36 @@ class DatabaseRetriever:
         self.client = client
         self.provider_tag = provider_tag
         self.max_embedding_usd_per_million = max_embedding_usd_per_million
+        # A narrowed question searches only these documents; None is the whole vault.
+        self.scope: list[str] | None = None
+        self.widened = False  # the scope matched nothing, so the whole vault was searched instead
+        self._searched = False
         # One query per chunk: every passage of a chunk comes from its first read. The caller's
         # repeatable-read transaction keeps the cached text identical to a fresh read.
         self._chunks: dict[tuple[str, str, str, str], dict] = {}
 
+    def narrow(self, document_ids: list[str]) -> None:
+        """Search only these documents. An empty scope widens at once."""
+        self.scope = list(document_ids)
+        if not self.scope:
+            self.scope, self.widened = None, True
+
     def search(self, query: str) -> list[FusedHit]:
-        return hybrid_search(self.conn, self.client, query,
-                             provider_tag=self.provider_tag,
-                             max_embedding_usd_per_million=self.max_embedding_usd_per_million)
+        def run() -> list[FusedHit]:
+            return hybrid_search(self.conn, self.client, query, provider_tag=self.provider_tag,
+                                 max_embedding_usd_per_million=self.max_embedding_usd_per_million,
+                                 document_ids=self.scope)
+
+        first, self._searched = not self._searched, True
+        found = run()
+        if first and self.scope is not None and not found:
+            self.scope, self.widened = None, True
+            found = run()
+        return found
 
     def find(self, reference: FusedHit, query: str) -> list[FusedHit]:
+        if self.scope is not None and reference.hit.document_id not in self.scope:
+            return []
         return find_in_document(self.conn, reference, query)
 
     def read(self, reference: FusedHit, span_index: int, *, offset: int = 0) -> SourcePassage:

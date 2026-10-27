@@ -141,6 +141,22 @@ class RouterTests(unittest.TestCase):
         self.assertIn("Title 599", shortlist(many["titles"], "Title 599 please"))
         self.assertEqual(SPEC["thresholds"]["narrowed"], 0.6)
 
+    def test_scope_lines_say_what_was_searched(self):
+        from app.agent.periods import Period
+        from app.agent.router import Narrowing
+
+        september = Period("2026-09-01", "2026-09-30", "date", "from September 2026")
+        self.assertEqual(Narrowing(types=["note"], period=september).scope_line(12, False),
+                         "Searched 12 notes from September 2026.")
+        self.assertEqual(Narrowing(types=["highlights"], folders=["Knowledge/Book Highlights"]).scope_line(3, False),
+                         "Searched 3 book highlights in Knowledge/Book Highlights.")
+        self.assertEqual(Narrowing(latest=1, types=["note"]).scope_line(1, False),
+                         "Searched your newest note by date added.")
+        self.assertIn("first bulk load", Narrowing(latest=1).scope_line(1, True))
+        self.assertNotIn("first bulk load", Narrowing(types=["note"], period=september).scope_line(2, True))
+        self.assertEqual(Narrowing(types=["article"], period=september).widened_line(),
+                         "No articles from September 2026 matched; searched everything instead.")
+
     def test_a_vault_with_no_tags_leaves_the_tag_question_out(self):
         questions = build_questions({**VOCAB, "tags": []}, "q")
         self.assertNotIn("tag_value", questions)

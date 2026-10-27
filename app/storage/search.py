@@ -97,7 +97,7 @@ def source_author(metadata: object, relative_path: str) -> str:
 
 def search_text(conn: psycopg.Connection, query: str, *, k: int = 10,
                 profile_id: str | None = None, historical_run_id: str | None = None,
-                document_id: str | None = None) -> list[SearchHit]:
+                document_id: str | None = None, document_ids: list[str] | None = None) -> list[SearchHit]:
     _check_k(k)
     if not isinstance(query, str):
         raise StorageError("text query must be a string")
@@ -121,10 +121,11 @@ def search_text(conn: psycopg.Connection, query: str, *, k: int = 10,
             where c.variant=p.variant and c.chunking_version=p.chunking_version
               and {_scope(historical_run_id)}
               and (%(document_id)s::text is null or r.document_id=%(document_id)s)
+              and (%(document_ids)s::text[] is null or r.document_id = any(%(document_ids)s))
               and to_tsvector('simple'::regconfig,c.raw_text) @@ websearch_to_tsquery('simple'::regconfig,%(query)s)
             order by score desc,c.chunk_id,c.run_id limit %(k)s"""
         params = {"query": query, "profile": profile[0], "history": historical_run_id, "k": k,
-                  "document_id": document_id}
+                  "document_id": document_id, "document_ids": document_ids}
         cur.execute(sql, params)
         rows = cur.fetchall()
         if not rows:
@@ -141,7 +142,7 @@ def search_text(conn: psycopg.Connection, query: str, *, k: int = 10,
 def search_vector(conn: psycopg.Connection, vector: list[float], *, spec_id: str,
                   metric: str, k: int = 10, profile_id: str | None = None,
                   historical_run_id: str | None = None,
-                  document_id: str | None = None) -> list[SearchHit]:
+                  document_id: str | None = None, document_ids: list[str] | None = None) -> list[SearchHit]:
     _check_k(k)
     if metric not in OPERATORS:
         raise StorageError("unsupported vector metric")
@@ -171,9 +172,10 @@ def search_vector(conn: psycopg.Connection, vector: list[float], *, spec_id: str
             where c.variant=p.variant and c.chunking_version=p.chunking_version
               and {_scope(historical_run_id)}
               and (%(document_id)s::text is null or r.document_id=%(document_id)s)
+              and (%(document_ids)s::text[] is null or r.document_id = any(%(document_ids)s))
             order by distance asc,c.chunk_id,c.run_id limit %(k)s"""
         cur.execute(sql, {"vector": value, "profile": profile[0], "history": historical_run_id,
-                          "k": k, "document_id": document_id})
+                          "k": k, "document_id": document_id, "document_ids": document_ids})
         return _hits(cur.fetchall())
 
 
