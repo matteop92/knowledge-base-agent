@@ -178,7 +178,8 @@ def search_vector(conn: psycopg.Connection, vector: list[float], *, spec_id: str
 
 
 def load_sources(conn: psycopg.Connection) -> list[dict]:
-    """Every active source in the selected profile with its metadata, chunk count and first chunk, in one query."""
+    """Every active source in the selected profile with its metadata, chunk count, first chunk and
+    added and updated times, in one query."""
     with conn.cursor() as cur:
         profile = _profile(cur, None, None)
         cur.execute(f"""select r.document_id, r.run_id, r.source_sha256, d.root_alias, d.relative_path,
@@ -188,7 +189,12 @@ def load_sources(conn: psycopg.Connection) -> list[dict]:
                 (select jsonb_build_object('chunk_id', c.chunk_id, 'source_spans', c.source_spans)
                    from knowledge.chunks c where c.run_id=r.run_id
                    and c.variant=p.variant and c.chunking_version=p.chunking_version
-                   order by (c.source_spans->0->>'start_char')::int, c.chunk_id limit 1)
+                   order by (c.source_spans->0->>'start_char')::int, c.chunk_id limit 1),
+                -- First time the document entered the index: its earliest run, or the capture that wrote it.
+                least((select min(r2.loaded_at) from knowledge.runs r2 where r2.document_id=r.document_id),
+                      (select min(cj.created_at) from knowledge.capture_jobs cj
+                         where cj.vault_path=d.relative_path and cj.status='done')),
+                r.loaded_at
             from knowledge.active_runs ar
             join knowledge.runs r on r.run_id=ar.run_id and r.document_id=ar.document_id
             join knowledge.documents d on d.document_id=r.document_id
@@ -198,4 +204,5 @@ def load_sources(conn: psycopg.Connection) -> list[dict]:
         rows = cur.fetchall()
     keys = ("document_id", "run_id", "source_sha256", "root_alias", "relative_path")
     return [{**dict(zip(keys, row[:5])), "metadata": row[5] if isinstance(row[5], dict) else {},
-             "chunks": int(row[6]), "first_chunk": row[7]} for row in rows]
+             "chunks": int(row[6]), "first_chunk": row[7], "added_at": row[8], "updated_at": row[9]}
+            for row in rows]

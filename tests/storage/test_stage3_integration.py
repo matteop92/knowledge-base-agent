@@ -7,6 +7,7 @@ import tempfile
 import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -152,6 +153,8 @@ class Stage3IntegrationTest(unittest.TestCase):
             sources = load_sources(self.conn)
             self.assertEqual([(item["document_id"], item["chunks"]) for item in sources], [(hit.document_id, 1)])
             self.assertEqual(sources[0]["first_chunk"]["chunk_id"], hit.chunk_id)
+            self.assertIsNotNone(sources[0]["added_at"])
+            self.assertLessEqual(sources[0]["added_at"], sources[0]["updated_at"])
             for changed in ({"source_sha256": "0" * 64}, {"document_id": "unknown"},
                             {"chunk_id": "unknown"}, {"start_char": -1},
                             {"end_char": span["end_char"] + 1}):
@@ -163,6 +166,14 @@ class Stage3IntegrationTest(unittest.TestCase):
             self.assertEqual({h.run_id for h in search_text(self.conn, "ripe")}, {second.name})
             with self.assertRaises(StorageError):
                 read_passage(self.conn, **args)
+            # An edit moves updated_at and keeps added_at; a capture job that wrote the file earlier wins.
+            edited = load_sources(self.conn)[0]
+            self.assertEqual(edited["added_at"], sources[0]["added_at"])
+            self.assertGreater(edited["updated_at"], sources[0]["updated_at"])
+            self.conn.execute("""insert into knowledge.capture_jobs (kind, status, vault_path, created_at)
+                values ('text', 'done', %s, %s)""", (edited["relative_path"], edited["added_at"] - timedelta(hours=1)))
+            self.assertEqual(load_sources(self.conn)[0]["added_at"], sources[0]["added_at"] - timedelta(hours=1))
+            self.conn.execute("delete from knowledge.capture_jobs where vault_path=%s", (edited["relative_path"],))
             with self.conn.transaction():
                 self.conn.execute("set transaction read only")
                 with self.assertRaises(psycopg.errors.ReadOnlySqlTransaction), self.conn.transaction():

@@ -18,6 +18,7 @@ import json
 import re
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -62,6 +63,10 @@ class Source:
     date: str | None
     chunks: int
     first_chunk: dict[str, Any] | None  # chunk_id and source_spans of the earliest chunk
+    folder: str = ""
+    added_at: datetime | None = None  # when the source first entered the index (see `added_date`)
+    updated_at: datetime | None = None  # when its active version was loaded
+    added_from_date: bool = False  # added_at was taken from the note's own date (first bulk load)
 
 
 @dataclass
@@ -98,25 +103,56 @@ def source_type(generated: dict, relative_path: str, frontmatter: dict | None = 
     return FOLDER_TYPES.get(folder)
 
 
+FILENAME_DATE = re.compile(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)")
+# Everything first loaded at or before this instant came in with the first bulk load of the vault,
+# so its load time says nothing about when the note was added (the loads settled by 2026-10-18 10:18 UTC).
+BULK_LOAD_CUTOFF = datetime(2026, 10, 18, 12, 0, tzinfo=timezone.utc)
+
+
+def _day(value: object) -> datetime | None:
+    match = re.match(r"\d{4}-\d{2}-\d{2}", str(value or ""))
+    try:
+        return datetime.strptime(match.group(), "%Y-%m-%d").replace(tzinfo=timezone.utc) if match else None
+    except ValueError:
+        return None
+
+
+def added_date(first_loaded: datetime | None, metadata: dict, relative_path: str) -> tuple[datetime | None, bool]:
+    """When a source was added, and whether the note's own date stood in for the load time.
+
+    A note first loaded in the bulk load takes its created date, else a date in its filename,
+    else its load time. Any later note keeps its load time.
+    """
+    if first_loaded is None or first_loaded > BULK_LOAD_CUTOFF:
+        return first_loaded, False
+    named = FILENAME_DATE.search(PurePosixPath(relative_path).name)
+    own = _day(metadata.get("created")) or (_day(named.group()) if named else None)
+    return (own, True) if own else (first_loaded, False)
+
+
 def to_source(document_id: str, run_id: str, sha: str, root_alias: str, relative_path: str,
-              metadata: dict, chunks: int, first_chunk: dict | None) -> Source:
+              metadata: dict, chunks: int, first_chunk: dict | None, *,
+              added_at: datetime | None = None, updated_at: datetime | None = None) -> Source:
     title, people, tags = source_label(metadata, relative_path)
     frontmatter = metadata.get("frontmatter") if isinstance(metadata.get("frontmatter"), dict) else {}
     generated = metadata.get("generated") if isinstance(metadata.get("generated"), dict) else {}
     # Same order as the tag classifier; the generated date exists only when the frontmatter has none.
     date = next((str(value)[:10] for value in (metadata.get("published"), metadata.get("date"),
                                                metadata.get("created"), generated.get("date")) if value), None)
+    added = added_date(added_at, metadata, relative_path)
     return Source(document_id=document_id, run_id=run_id, source_sha256=sha, root_alias=root_alias,
                   relative_path=relative_path, title=title, authors=_names(metadata.get("authors")),
                   guests=list(dict.fromkeys(_names(metadata.get("guests")) + _names(frontmatter.get("guest")))),
                   people=people, tags=tags, type=source_type(generated, relative_path, frontmatter), date=date,
-                  chunks=chunks, first_chunk=first_chunk)
+                  chunks=chunks, first_chunk=first_chunk, folder=PurePosixPath(relative_path).parent.as_posix(),
+                  added_at=added[0], updated_at=updated_at, added_from_date=added[1])
 
 
 def to_sources(rows: list[dict]) -> list[Source]:
     """Sources from `app.storage.search.load_sources` rows."""
     return [to_source(row["document_id"], row["run_id"], row["source_sha256"], row["root_alias"],
-                      row["relative_path"], row["metadata"], row["chunks"], row["first_chunk"]) for row in rows]
+                      row["relative_path"], row["metadata"], row["chunks"], row["first_chunk"],
+                      added_at=row.get("added_at"), updated_at=row.get("updated_at")) for row in rows]
 
 
 def _fold(value: str) -> str:
