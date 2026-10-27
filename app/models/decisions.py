@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.models.client import ModelClientError
-from app.models.routes import DECISION_CALL_WORST_USD, DECISION_MODEL, PRIVACY, verify_routes
+from app.models.routes import DECISION_CALL_WORST_USD, DECISION_MODEL, PRIVACY, TAGS, verify_routes
 
 log = logging.getLogger("knowledge.models.decisions")
 
@@ -52,7 +52,7 @@ def decide(client, state: dict[str, Any], questions: dict[str, dict[str, Any]]) 
     nothing is sent over a route that lost its privacy terms.
     """
     verify_routes(client, [DECISION_MODEL])
-    payload = {"model": DECISION_MODEL, "state": state, "questions": questions, "provider": dict(PRIVACY)}
+    payload = {"model": DECISION_MODEL, "state": state, "questions": questions, "provider": {**PRIVACY, "only": [TAGS[DECISION_MODEL]], "allow_fallbacks": False}}
     try:
         data = client.decide(payload, worst_case_usd=DECISION_CALL_WORST_USD)
         return parse_answers(data, questions)

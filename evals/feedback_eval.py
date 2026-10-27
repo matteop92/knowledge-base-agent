@@ -121,8 +121,10 @@ def run_evals(entries: list[dict], *, answer: Answer, route: Route, repeats: int
                     receipt, cost = answer(entry["question"])
                     routing = receipt.get("routing")
                 outcome = run_check(entry, receipt, routing, lookup)
-            except Exception as exc:  # noqa: BLE001 - a failed call is a failed run, and its cost is unknown
-                cost, outcome, routing = float(reserve_usd), CheckResult(False, f"error: {type(exc).__name__}"), None
+            except Exception as exc:  # noqa: BLE001 - a failed call is a failed run
+                # An answer that failed after billing carries its cost; otherwise count the reserve.
+                cost = float(getattr(exc, "cost_usd", reserve_usd))
+                outcome, routing = CheckResult(False, f"error: {type(exc).__name__}"), None
             spent += Decimal(str(cost))
             results[entry["id"]].append({"repeat": repeat, "passed": outcome.passed, "detail": outcome.detail,
                                          "cost_usd": cost})
@@ -213,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def run_command(args) -> int:
     from app.agent.router import route_question
-    from app.api.answers import OpenRouterAnswerEngine, build_receipt
+    from app.api.answers import AnswerFailed, OpenRouterAnswerEngine, build_receipt
     from app.api.settings import AnswerSettings
     from app.models.openrouter import OpenRouterClient
     from app.models.routes import PRIVACY
@@ -237,7 +239,11 @@ def run_command(args) -> int:
     sources = to_sources(load_sources(connect_runtime()))
 
     def answer(question: str) -> tuple[dict, float]:
-        outcome = engine.answer(question, None)
+        try:
+            outcome = engine.answer(question, None)
+        except AnswerFailed as exc:
+            ledger.add(exc.cost_usd, f"failed answer {question[:40]}")
+            raise
         ledger.add(outcome.cost_usd, f"answer {question[:40]}")
         return build_receipt(outcome.result, {}, "vault"), outcome.cost_usd
 

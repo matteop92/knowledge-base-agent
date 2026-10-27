@@ -403,8 +403,7 @@ class DatabaseRetriever:
         return found
 
     def find(self, reference: FusedHit, query: str) -> list[FusedHit]:
-        if self.scope is not None and reference.hit.document_id not in self.scope:
-            return []
+        # A find stays inside its lead's document, so carried evidence from outside the scope can still be searched.
         return find_in_document(self.conn, reference, query)
 
     def read(self, reference: FusedHit, span_index: int, *, offset: int = 0) -> SourcePassage:

@@ -54,6 +54,14 @@ class AttributionTests(unittest.TestCase):
         self.assertEqual(named_speakers("**Niels Hoven** and *Tim*", SPEAKERS), ["Tim Ferriss", "Niels Hoven"])
         self.assertEqual(named_speakers("Timothy says so", SPEAKERS), [])
 
+    def test_a_first_name_must_be_written_as_a_name_and_an_unlabelled_passage_is_not_checked(self):
+        will = ["Will Smith", "Ann Lee"]
+        self.assertEqual(named_speakers("This will work", will), [])
+        self.assertEqual(named_speakers("Will says so", will), ["Will Smith"])
+        self.assertEqual(named_speakers("will smith says so", will), ["Will Smith"])
+        unlabelled = passage(None, SPEAKERS)
+        self.assertEqual(self.flags("Tim says so [E1.0].", **{"E1.0": unlabelled}), [])
+
     def test_citations_after_the_full_stop_stay_with_their_sentence(self):
         sentences = split_sentences("Tim notes the first point. [E1.2] Niels adds a second one. [E1.3]")
         self.assertEqual(sentences, ["Tim notes the first point [E1.2].", "Niels adds a second one [E1.3]."])

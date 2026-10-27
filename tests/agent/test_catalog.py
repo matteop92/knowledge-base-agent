@@ -78,6 +78,12 @@ class CatalogTests(unittest.TestCase):
             with self.subTest(bad), self.assertRaises(PlanError):
                 build_plan(bad, VOCAB)
 
+    def test_an_exact_title_wins_over_longer_titles_that_contain_it(self):
+        sources = [source("Knowledge/Notes/a.md", title="Deep Work"), source("Knowledge/Notes/b.md", title="Deep Work Summary"),
+                   source("Knowledge/Notes/c.md", title="Deep Work Notes")]
+        self.assertEqual(titles(filter_sources(sources, CatalogPlan(title="deep work"))), ["Deep Work"])
+        self.assertEqual(len(filter_sources(sources, CatalogPlan(title="deep work summary"))), 1)
+
     def test_a_title_with_quotes_and_sql_matches_literally(self):
         plan = CatalogPlan(title="x'; drop table knowledge.runs; --")
         self.assertEqual(filter_sources(SOURCES, plan), [])

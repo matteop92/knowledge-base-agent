@@ -410,9 +410,9 @@ class QuestionRouteTests(unittest.TestCase):
 
         base = AnswerSettings().request_budget
         _, client, _ = self.run_engine([object()], "q")
-        self.assertEqual(client["request_budget"], base + 2)
+        self.assertEqual(client["request_budget"], base + 3)
         _, client, _ = self.run_engine(None, None)
-        self.assertEqual(client["request_budget"], base + 1)
+        self.assertEqual(client["request_budget"], base + 2)
 
 
 if __name__ == "__main__":

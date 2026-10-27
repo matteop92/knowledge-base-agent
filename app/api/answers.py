@@ -102,9 +102,10 @@ class OpenRouterAnswerEngine:
         if prior:
             model_providers[REWRITE_MODEL] = {**private_route, "only": [TAGS[REWRITE_MODEL]],
                                               "require_parameters": True}
-        # The rewrite and the router call each get their own request so the answer keeps its full allowance.
+        # The rewrite, the router call and a possible re-embed when a narrowed search widens each get their own
+        # request so the answer keeps its full allowance.
         client = OpenRouterClient(allow_live=True, request_budget=answer.request_budget + (1 if prior else 0)
-                                  + (1 if answer.question_router else 0),
+                                  + (2 if answer.question_router else 0),
                                   estimated_input_token_budget=answer.input_byte_budget
                                   + (DECISION_INPUT_BYTES if answer.question_router else 0),
                                   conservative_input_budget=True, provider=private_route,

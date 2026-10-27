@@ -169,9 +169,11 @@ class Stage3IntegrationTest(unittest.TestCase):
                 outside = DatabaseRetriever(self.conn, MagicMock(), provider_tag="unused",
                                             max_embedding_usd_per_million=Decimal("0"))
                 outside.narrow([apple])
-                self.assertEqual(outside.find(next(item for item in DatabaseRetriever(
+                # Carried evidence from outside the scope can still be searched inside its own document.
+                lead = next(item for item in DatabaseRetriever(
                     self.conn, MagicMock(), provider_tag="unused", max_embedding_usd_per_million=Decimal("0")
-                ).search("pear") if item.hit.document_id == other), "pear"), [])
+                ).search("pear") if item.hit.document_id == other)
+                self.assertEqual(outside.find(lead, "pear")[0].hit.document_id, other)
                 # A scope that matches nothing widens once and stays widened.
                 missing = DatabaseRetriever(self.conn, MagicMock(), provider_tag="unused",
                                             max_embedding_usd_per_million=Decimal("0"))

@@ -56,7 +56,9 @@ class DecisionTests(unittest.TestCase):
 
     def test_every_request_denies_collection_and_requires_zdr(self):
         _, sent, _ = self.run_decide(answer(cost=0.00001))
-        self.assertEqual(sent[0]["provider"], {"data_collection": "deny", "zdr": True})
+        # Pinned to the endpoint whose route was verified, with no fallback to another provider.
+        self.assertEqual(sent[0]["provider"], {"data_collection": "deny", "zdr": True, "only": ["typesafe"],
+                                               "allow_fallbacks": False})
         self.assertEqual(sent[0]["model"], DECISION_MODEL)
 
     def test_a_missing_zero_retention_route_raises_before_any_question_is_sent(self):

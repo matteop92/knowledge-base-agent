@@ -57,7 +57,9 @@ def named_speakers(sentence: str, speakers: list[str]) -> list[str]:
     found = []
     for speaker in speakers:
         first = speaker.split()[0] if speaker.split() else speaker
-        if _contains(text, speaker) or (len(first) >= MIN_FIRST_NAME and _contains(text, first)):
+        # A first name must be written as the name ("Will", not the word "will").
+        by_first = len(first) >= MIN_FIRST_NAME and re.search(rf"(?<!\w){re.escape(first)}(?!\w)", text) is not None
+        if _contains(text, speaker) or by_first:
             found.append(speaker)
     return found
 
@@ -75,6 +77,8 @@ def check_attribution(answer: str, citations: dict[str, SourcePassage]) -> list[
         if not named:
             continue
         who_spoke = list(dict.fromkeys(passage.speaker for passage in cited if passage.speaker))
+        if not who_spoke:
+            continue  # no cited passage says who spoke it, so there is nothing to compare
         if not set(named) & set(who_spoke):
             flags.append(Flag(sentence=sentence, named=named, cited_speakers=who_spoke, citation_ids=ids))
     return flags

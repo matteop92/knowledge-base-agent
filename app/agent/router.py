@@ -168,7 +168,16 @@ def _yes(answers: dict[str, Any], name: str) -> bool:
 
 
 def _flagged(answers: dict[str, Any], flag: str, value: str) -> str | None:
-    return _chosen(answers, value) if _yes(answers, flag) else None
+    """The value chosen for a filter the model said yes to. A yes with no usable value (or a value outside the
+    options offered) raises PlanError, so the question goes plain instead of silently dropping the filter."""
+    if not _yes(answers, flag):
+        return None
+    chosen = _chosen(answers, value)
+    # A confident yes with no value would silently widen a count or list to every source. A weak yes is
+    # ignored (the model says yes to filters it then cannot fill about as often as it is right).
+    if chosen is None and answers[flag] >= SPEC["thresholds"]["strong_flag"]:
+        raise PlanError(f"{flag} was yes but {value} named nothing")
+    return chosen
 
 
 def _narrowing(answers: dict[str, Any], question: str, today: date | None) -> Narrowing:

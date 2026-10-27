@@ -60,12 +60,12 @@ class RouterTests(unittest.TestCase):
 
     def test_a_count_by_author_is_a_count_plan(self):
         decision = decide("how many sources with author = Tim Ferriss", route_name="catalog", op=choice("count"),
-                          by_person=0.9, person_value=choice("Tim Ferriss"), person_role=choice("author"))
+                          by_person=0.95, person_value=choice("Tim Ferriss"), person_role=choice("author"))
         self.assertEqual((decision.plan.op, decision.plan.person, decision.plan.role),
                          ("count", "Tim Ferriss", "author"))
 
     def test_plain_stays_plain_and_carries_no_plan(self):
-        decision = decide("What would Tim Ferriss recommend", by_person=0.9, person_value=choice("Tim Ferriss"))
+        decision = decide("What would Tim Ferriss recommend", by_person=0.95, person_value=choice("Tim Ferriss"))
         self.assertEqual(decision.route, "plain")
         self.assertIsNone(decision.plan)
         self.assertIsNone(decision.narrowing)
@@ -105,7 +105,7 @@ class RouterTests(unittest.TestCase):
         self.assertIsNone(decision.narrowing.period)
 
     def test_person_and_tag_are_ignored_when_narrowed(self):
-        decision = decide("q", route_name="narrowed", by_person=0.9, person_value=choice("Tim Ferriss"), by_tag=0.9,
+        decision = decide("q", route_name="narrowed", by_person=0.95, person_value=choice("Tim Ferriss"), by_tag=0.9,
                           tag_value=choice("ai"), by_type=0.9, type_value=choice("transcript"))
         self.assertEqual(decision.narrowing.record(), {"types": ["transcript"]})
 
@@ -130,6 +130,17 @@ class RouterTests(unittest.TestCase):
         decision = decide("How many articles are there?", route_name="catalog", op=choice("count"), by_type=0.9,
                           type_value=choice("article"))
         self.assertEqual(decision.plan.types, [])
+
+    def test_a_yes_with_no_usable_value_goes_plain_instead_of_dropping_the_filter(self):
+        for flag, extra in (("cat_by_type", {}), ("by_person", {}), ("by_tag", {}), ("by_title", {})):
+            with self.subTest(flag):
+                decision = decide("how many by someone", route_name="catalog", op=choice("count"), **{flag: 0.95}, **extra)
+                self.assertEqual(decision.route, "plain")
+        decision = decide("q", route_name="narrowed", by_folder=0.95, by_type=0.9, type_value=choice("note"))
+        self.assertEqual(decision.route, "plain")
+        # A weak yes with no value is ignored rather than failing the whole plan.
+        decision = decide("q", route_name="catalog", op=choice("count"), by_tag=0.7)
+        self.assertEqual((decision.route, decision.plan.tag), ("catalog", None))
 
     def test_limits_are_read_by_code(self):
         decision = decide("show the three most recent notes", route_name="catalog", sort=choice("added_newest"))

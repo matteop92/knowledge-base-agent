@@ -120,6 +120,9 @@ def _in_period(source: Source, period: Period) -> bool:
 def _title_matches(sources: list[Source], phrase_text: str) -> list[Source]:
     """The sources whose titles share the most words with the phrase; none when no word is shared."""
     phrase = words(phrase_text)
+    exact = [source for source in sources if words(source.title) == phrase]
+    if exact:
+        return exact
 
     def score(source: Source) -> int:
         title = words(source.title)
