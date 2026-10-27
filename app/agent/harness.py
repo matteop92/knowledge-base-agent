@@ -55,13 +55,15 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                     model: ModelSpec, limits: AnswerLimits | None = None,
                     reasoning_effort: str | None = None,
                     allow_legacy_actions: bool = False, memory: Memory | None = None,
-                    search_query: str | None = None, prompt_version: str | None = None) -> AnswerResult:
+                    search_query: str | None = None, prompt_version: str | None = None,
+                    attribution_retry: bool = False) -> AnswerResult:
     """All mutable budgets, references, and evidence belong to this invocation.
 
     `memory` carries earlier turns of the conversation; `search_query` replaces the question
     for the host's first search (a follow-up rewritten to stand on its own). `prompt_version` names
     a prompt family (`PROMPT_FAMILIES`); a follow-up uses the family's follow-up prompt. No value
-    keeps v13 for new questions and v14 for follow-ups.
+    keeps v13 for new questions and v14 for follow-ups. `attribution_retry` sends a finish back once when the
+    attribution check flags a sentence, so the model can name the right speaker (one more model call).
     """
     if not question.strip():
         raise ValueError("question must not be empty")
@@ -94,6 +96,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
     finish_correction_used = False
     malformed_correction_used = False
     budget_correction_used = False
+    attribution_retry_used = False
     reads_at_coverage_check: int | None = None
     base_schema = ACTION_SCHEMA_V3
     coverage_checks = 0
@@ -489,6 +492,16 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
             if action.version == 3 and unresolved:
                 private_gaps.extend(f"Unresolved need {key}: {needs[key]['description']}" for key in unresolved)
             flags = check_attribution(action.answer or "", {ref: inspected[ref] for ref in action.citation_ids})
+            if (flags and attribution_retry and not attribution_retry_used and not force_finish
+                    and calls < limits.max_model_calls):
+                attribution_retry_used = True
+                actions[-1]["rejected"] = "A sentence credits words to the wrong speaker"
+                feedback = ("Before finishing, fix these sentences: " + "; ".join(
+                    f"“{flag.sentence[:200]}” cites a passage spoken by {', '.join(flag.cited_speakers)} "
+                    f"but names {', '.join(flag.named)}" for flag in flags)
+                    + ". Rewrite each so it names the speaker of the passage it cites (for example \"Niels Hoven, on "
+                    "Tim's show, ...\"), or cite a passage the named person said. Change nothing else, then finish again.")
+                continue
             private_gaps.extend(flag.gap() for flag in flags)
             if completeness == "complete" and private_gaps:
                 completeness = "partial"

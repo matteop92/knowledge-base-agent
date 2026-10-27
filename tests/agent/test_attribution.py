@@ -111,6 +111,28 @@ class HarnessCheckTests(unittest.TestCase):
         self.assertIn("Niels Hoven", result.gaps[0])
         self.assertEqual(result.attribution[0]["named"], ["Tim Ferriss"])
 
+    def test_a_flagged_finish_is_sent_back_once_when_the_retry_is_on(self):
+        actions = finish("Tim says so [E1.0].") + [
+            action_v3("finish", answer="Niels Hoven, on Tim's show, says so [E1.0].", citation_ids=["E1.0"],
+                      completeness="complete", sufficient=True)]
+        client = FakeClient(actions)
+        result = answer_question("Explain", retriever=FakeRetriever(), client=client, model=MODEL,
+                                 attribution_retry=True)
+        self.assertEqual((result.completeness, result.gaps, result.attribution), ("complete", [], []))
+        self.assertIn("Niels", result.answer)
+        self.assertEqual(result.model_calls, 3)
+        self.assertEqual(result.actions[1]["rejected"], "A sentence credits words to the wrong speaker")
+        # A second flagged finish is accepted with its gap: the retry happens once.
+        twice = FakeClient(finish("Tim says so [E1.0].") + [action_v3("finish", answer="Tim says so again [E1.0].",
+                           citation_ids=["E1.0"], completeness="complete", sufficient=True)])
+        result = answer_question("Explain", retriever=FakeRetriever(), client=twice, model=MODEL, attribution_retry=True)
+        self.assertEqual((result.completeness, len(result.gaps), result.model_calls), ("partial", 1, 3))
+
+    def test_the_retry_is_off_by_default(self):
+        result = answer_question("Explain", retriever=FakeRetriever(), client=FakeClient(finish("Tim says so [E1.0].")),
+                                 model=MODEL)
+        self.assertEqual((result.completeness, result.model_calls), ("partial", 2))
+
     def test_a_correct_attribution_leaves_the_answer_complete(self):
         result = answer_question("Explain", retriever=FakeRetriever(),
                                  client=FakeClient(finish("Niels says so [E1.0].")), model=MODEL)

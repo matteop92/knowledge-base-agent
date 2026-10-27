@@ -43,6 +43,7 @@ class AnswerSettings:
     max_model_calls: int = 12
     max_seconds: float = 300
     question_router: bool = True  # every question is routed: catalog, narrowed or plain
+    attribution_retry: bool = False  # send a finish back once when a sentence credits the wrong speaker
     prompt_version: str | None = None  # a prompt family such as "answer_agent_v15"; None keeps v13 and v14
 
 

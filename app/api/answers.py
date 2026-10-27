@@ -146,7 +146,8 @@ class OpenRouterAnswerEngine:
                                          model=ModelSpec(provider="openrouter", model_id=answer.model,
                                                          model_version="current"),
                                          limits=self.limits, reasoning_effort=answer.reasoning_effort,
-                                         memory=memory, search_query=query, prompt_version=answer.prompt_version)
+                                         memory=memory, search_query=query, prompt_version=answer.prompt_version,
+                                         attribution_retry=answer.attribution_retry)
                 if answer.question_router:
                     # Time spent deciding the route is part of the answer's wait.
                     update = {"elapsed_seconds": time.monotonic() - routing_started, "routing": decision.record()}
