@@ -257,7 +257,7 @@ class RateLimiterTests(unittest.TestCase):
 
 
 
-class PropertyRouteTests(unittest.TestCase):
+class QuestionRouteTests(unittest.TestCase):
     def test_speed_settings_reach_the_answer_limits(self) -> None:
         from app.api.answers import OpenRouterAnswerEngine
 
@@ -271,8 +271,8 @@ class PropertyRouteTests(unittest.TestCase):
         from app.api.answers import OpenRouterAnswerEngine
 
         base = settings()
-        off = OpenRouterAnswerEngine(replace(base, answer=replace(base.answer, property_router=False)), connect=lambda: None)
-        on = OpenRouterAnswerEngine(replace(base, answer=replace(base.answer, property_router=True)), connect=lambda: None)
+        off = OpenRouterAnswerEngine(replace(base, answer=replace(base.answer, question_router=False)), connect=lambda: None)
+        on = OpenRouterAnswerEngine(replace(base, answer=replace(base.answer, question_router=True)), connect=lambda: None)
         self.assertGreater(on.worst_case_usd(), off.worst_case_usd())
         self.assertLessEqual(on.worst_case_usd(), base.answer.max_usd_per_answer)
 
@@ -285,58 +285,97 @@ class PropertyRouteTests(unittest.TestCase):
             def require_zdr_route(self, *args, **kwargs):
                 raise ModelClientError("endpoint is not zero-retention")
 
-            def generate_json(self, **kwargs):
+            def decide(self, *args, **kwargs):
                 raise AssertionError("no router call expected")
 
-        prices: dict = {}
         with mock.patch("app.storage.search.load_sources", return_value=[]):
-            self.assertIsNone(answers.route_properties(RefusingClient(), None, "How many?", None, prices))
-        self.assertEqual(prices, {})
+            result, decision, _ = answers.route_question(RefusingClient(), None, "How many?", None)
+        self.assertIsNone(result)
+        self.assertEqual((decision.route, decision.called), ("plain", False))
 
-    def test_a_property_question_is_answered_from_the_matches(self) -> None:
+    def test_a_catalog_question_is_answered_from_the_plan_and_the_receipt_carries_the_routing(self) -> None:
         from unittest import mock
-        from app.agent.properties import PropertyQuery
         from app.api import answers
         from tests.agent.test_properties import SOURCES
+        from tests.agent.test_router import answers as jev_answers, choice
 
-        class Client:
-            def require_zdr_route(self, model_id, tag, structured=False):
-                return {"tag": tag, "pricing": {"prompt": "0.0000001", "completion": "0.0000005"}}
+        from app.storage.records import SourcePassage
 
         retriever = mock.MagicMock()
-        retriever.read.side_effect = lambda hit, span: mock.MagicMock()
-        prices: dict = {}
-        with mock.patch("app.storage.search.load_sources", return_value=[]), \
-                mock.patch("app.agent.properties.to_sources", return_value=SOURCES), \
-                mock.patch("app.agent.properties.route_model", return_value=PropertyQuery(count=True, authors=["Ada Stone"])), \
-                mock.patch("app.agent.properties.answer_properties", wraps=None) as answer:
-            answer.return_value = "answered"
-            self.assertEqual(answers.route_properties(Client(), None, "How many by Ada?", retriever, prices), "answered")
-        self.assertEqual(answer.call_args.args[0].authors, ["Ada Stone"])
-        self.assertEqual(answer.call_args.kwargs["model_calls"], 1)
-        self.assertIn("openai/gpt-6-luna", prices)
-        with mock.patch("app.storage.search.load_sources", return_value=[]), \
-                mock.patch("app.agent.properties.to_sources", return_value=SOURCES), \
-                mock.patch("app.agent.properties.route_model", return_value=None):
-            self.assertIsNone(answers.route_properties(Client(), None, "What does Ada say?", retriever, {}))
+        retriever.read.side_effect = lambda hit, span: SourcePassage(
+            document_id=hit.hit.document_id, run_id="run", source_sha256="a" * 64, root_alias="root",
+            relative_path=hit.hit.relative_path, chunk_id="c1", start_char=0, end_char=5, text="intro")
+        jev = jev_answers("catalog", op=choice("count"), by_person=0.9, person_value=choice("Ada Stone"),
+                          person_role=choice("author"))
+        with mock.patch("app.storage.search.load_sources", return_value=[]),                 mock.patch("app.agent.properties.to_sources", return_value=SOURCES),                 mock.patch("app.agent.router.decide", return_value=jev):
+            result, decision, sources = answers.route_question(object(), None, "How many by Ada?", retriever)
+        self.assertEqual(decision.route, "catalog")
+        self.assertEqual(sources, SOURCES)
+        self.assertIn("You have 2 sources with author Ada Stone", result.answer)
+        self.assertEqual(result.routing["route"], "catalog")
+        self.assertEqual(result.routing["plan"]["person"], "Ada Stone")
+        self.assertEqual(len(result.routing["matched"]), 2)
+        with mock.patch("app.storage.search.load_sources", return_value=[]),                 mock.patch("app.agent.properties.to_sources", return_value=SOURCES),                 mock.patch("app.agent.router.decide", return_value=jev_answers("plain")):
+            self.assertIsNone(answers.route_question(object(), None, "What does Ada say?", retriever)[0])
 
     def test_a_failed_passage_read_after_routing_sends_the_question_to_the_loop(self) -> None:
         from unittest import mock
-        from app.agent.properties import PropertyQuery
         from app.api import answers
         from app.storage import StorageError
         from tests.agent.test_properties import SOURCES
-
-        class Client:
-            def require_zdr_route(self, model_id, tag, structured=False):
-                return {"tag": tag, "pricing": {"prompt": "0.0000001", "completion": "0.0000005"}}
+        from tests.agent.test_router import answers as jev_answers, choice
 
         retriever = mock.MagicMock()
         retriever.read.side_effect = StorageError("passage crosses an excluded span")
-        with mock.patch("app.storage.search.load_sources", return_value=[]), \
-                mock.patch("app.agent.properties.to_sources", return_value=SOURCES), \
-                mock.patch("app.agent.properties.route_model", return_value=PropertyQuery(count=True, authors=["Ada Stone"])):
-            self.assertIsNone(answers.route_properties(Client(), None, "How many by Ada?", retriever, {}))
+        with mock.patch("app.storage.search.load_sources", return_value=[]),                 mock.patch("app.agent.properties.to_sources", return_value=SOURCES),                 mock.patch("app.agent.router.decide", return_value=jev_answers("catalog", op=choice("count"))):
+            result, decision, _ = answers.route_question(object(), None, "How many?", retriever)
+        self.assertIsNone(result)
+        self.assertEqual(decision.route, "plain")
+
+    def run_engine(self, prior, rewrite):
+        """One engine call with the heavy collaborators faked; returns the router mock and the client budget."""
+        from contextlib import ExitStack
+        from unittest import mock
+        from app.agent.router import RouteDecision
+        from app.api.answers import OpenRouterAnswerEngine
+
+        base = settings()
+        engine = OpenRouterAnswerEngine(base, connect=mock.MagicMock())
+        clients = []
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch("app.models.openrouter.OpenRouterClient",
+                                           side_effect=lambda **kwargs: clients.append(kwargs) or mock.MagicMock()))
+            stack.enter_context(mock.patch("app.storage.retrieval.selected_embedding_spec",
+                                           return_value=(None, mock.MagicMock())))
+            stack.enter_context(mock.patch("app.api.answers.check_answer_routes"))
+            stack.enter_context(mock.patch("app.storage.retrieval.DatabaseRetriever"))
+            stack.enter_context(mock.patch("app.agent.memory.build_memory"))
+            stack.enter_context(mock.patch("app.api.answers.active_revisions", return_value=set()))
+            stack.enter_context(mock.patch("app.api.answers.rewrite_followup", return_value=rewrite))
+            routed = stack.enter_context(mock.patch("app.api.answers.route_question",
+                                                    return_value=(None, RouteDecision(called=True), [])))
+            stack.enter_context(mock.patch.object(engine, "_cost", return_value=0.0))
+            asked = stack.enter_context(mock.patch("app.agent.harness.answer_question"))
+            asked.return_value.model_copy.return_value = "result"
+            engine.answer("and the second one?", prior)
+        return routed, clients[0], asked
+
+    def test_a_follow_up_is_routed_on_its_rewritten_query_and_without_one_makes_no_call(self) -> None:
+        prior = [object()]
+        routed, client, _ = self.run_engine(prior, "rewritten query")
+        self.assertEqual(routed.call_args.args[2], "rewritten query")
+        routed, _, asked = self.run_engine(prior, None)
+        routed.assert_not_called()
+        asked.assert_called_once()
+
+    def test_the_request_budget_has_room_for_the_router_call_on_every_question(self) -> None:
+        from app.api.settings import AnswerSettings
+
+        base = AnswerSettings().request_budget
+        _, client, _ = self.run_engine([object()], "q")
+        self.assertEqual(client["request_budget"], base + 2)
+        _, client, _ = self.run_engine(None, None)
+        self.assertEqual(client["request_budget"], base + 1)
 
 
 if __name__ == "__main__":

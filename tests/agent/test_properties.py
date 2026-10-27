@@ -1,15 +1,22 @@
 import unittest
 from unittest.mock import MagicMock
 
-from app.agent.properties import PropertyQuery, answer_properties, matches, route_model, source_type, to_source
-from app.models.client import GenerationResult, ModelSpec
+from datetime import datetime, timezone
+
+from app.agent.catalog import build_plan, vocabulary
+from app.agent.properties import answer_catalog, source_type, to_source
 from app.storage.records import SourcePassage
 
 CHUNK = {"chunk_id": "c1", "source_spans": [{"start_char": 0, "end_char": 40}]}
 
 
-def source(path, **metadata):
-    return to_source("doc-" + path, "run", "a" * 64, "root", path, metadata, 2, CHUNK)
+def at(day, hour=12):
+    return datetime(2026, 10, day, hour, tzinfo=timezone.utc)
+
+
+def source(path, added_at=None, **metadata):
+    return to_source("doc-" + path, "run", "a" * 64, "root", path, metadata, 2, CHUNK, added_at=added_at,
+                     updated_at=added_at)
 
 
 SOURCES = [
@@ -36,36 +43,6 @@ class PropertyTests(unittest.TestCase):
         self.assertEqual(source_type({}, "Knowledge/Articles/a.md"), "article")
         self.assertEqual(source_type({"source_type": "Book"}, "Knowledge/Notes/a.md"), "book")
 
-    def test_author_is_not_any_mention(self):
-        self.assertEqual(len(matches(SOURCES, PropertyQuery(authors=["ada stone"]))), 2)
-        self.assertEqual(len(matches(SOURCES, PropertyQuery(people=["Ada Stone"]))), 3)
-
-    def test_filters_combine_and_title_picks_the_best_match(self):
-        self.assertEqual([s.title for s in matches(SOURCES, PropertyQuery(types=["article"], date="2025"))],
-                         ["Plans that never ship"])
-        self.assertEqual([s.title for s in matches(SOURCES, PropertyQuery(title="never ship"))],
-                         ["Plans that never ship"])
-
-    def test_model_route_folds_known_values_and_drops_a_bad_date(self):
-        client = MagicMock()
-        client.generate_json.return_value = GenerationResult(
-            model=ModelSpec(provider="openrouter", model_id="m", model_version="1"),
-            data={"route": "properties", "count": True, "authors": ["ADA STONE"], "guests": [],
-                  "people": [], "tags": [], "types": [], "date": "October", "title": None})
-        query = route_model("how many by ada?", SOURCES, client=client, model=MagicMock())
-        self.assertEqual((query.authors, query.tags, query.date), (["Ada Stone"], [], None))
-        client.generate_json.return_value = client.generate_json.return_value.model_copy(
-            update={"data": {**client.generate_json.return_value.data, "route": "search"}})
-        self.assertIsNone(route_model("what does ada say?", SOURCES, client=client, model=MagicMock()))
-
-    def test_an_unknown_filter_value_goes_to_the_loop_instead_of_counting_everything(self):
-        client = MagicMock()
-        client.generate_json.return_value = GenerationResult(
-            model=ModelSpec(provider="openrouter", model_id="m", model_version="1"),
-            data={"route": "properties", "count": True, "authors": ["Nobody"], "guests": [], "people": [],
-                  "tags": [], "types": [], "date": None, "title": None})
-        self.assertIsNone(route_model("how many by nobody?", SOURCES, client=client, model=MagicMock()))
-
     def test_frontmatter_type_wins_and_a_generated_date_fills_a_missing_one(self):
         typed = source("Knowledge/Notes/typed.md", title="Typed", frontmatter={"type": "Article"},
                        generated={"source_type": "note", "date": "2024-03-01"})
@@ -74,23 +51,38 @@ class PropertyTests(unittest.TestCase):
                        generated={"date": "2024-03-01"})
         self.assertEqual(dated.date, "2023-01-02")
 
-    def test_answer_counts_matches_and_cites_each_first_passage(self):
+    def test_answer_counts_matches_leads_with_the_reading_and_cites_each_first_passage(self):
         retriever = MagicMock()
         retriever.read.side_effect = lambda hit, span: SourcePassage(
             document_id=hit.hit.document_id, run_id="run", source_sha256="a" * 64, root_alias="root",
             relative_path=hit.hit.relative_path, chunk_id="c1", start_char=0, end_char=5, text="intro")
-        result = answer_properties(PropertyQuery(count=True, authors=["Ada Stone"]), SOURCES,
-                                   retriever=retriever, started=0.0, model_calls=1, route={"model": "m"})
-        self.assertTrue(result.answer.startswith("You have 2 sources with author Ada Stone"))
+        vocab = vocabulary(SOURCES)
+        plan = build_plan({"op": "count", "person": "Ada Stone", "role": "author"}, vocab)
+        result = answer_catalog(plan, SOURCES, retriever=retriever, started=0.0, model_calls=1, route={"spec": "s"})
+        self.assertTrue(result.answer.startswith("Counted sources with author Ada Stone."))
+        self.assertIn("You have 2 sources with author Ada Stone", result.answer)
         self.assertEqual(set(result.citations), {"E1.0", "E2.0"})
         self.assertIn("[E1.0]", result.answer)
         # Each source is a bold title with its details on an indented line beneath.
         self.assertRegex(result.answer, r"- \*\*[^*\n]+\*\*\n  .+ \[E1\.0\]")
-        self.assertEqual(result.actions[0]["matched"], ["doc-Knowledge/Transcripts/pricing.md",
-                                                        "doc-Knowledge/Notes/idea.md"])
-        empty = answer_properties(PropertyQuery(tags=["none"]), SOURCES, retriever=retriever, started=0.0,
-                                  model_calls=0, route={})
-        self.assertTrue(empty.answer.startswith("None of your 5 sources is tagged none."))
+        self.assertEqual(result.actions[0]["matched"], ["doc-Knowledge/Notes/idea.md",
+                                                        "doc-Knowledge/Transcripts/pricing.md"])
+        empty = answer_catalog(build_plan({"tag": "marketing", "types": ["note"]}, vocab), SOURCES,
+                               retriever=retriever, started=0.0, model_calls=0, route={})
+        self.assertIn("None of your 5 sources is of type note and tagged marketing.", empty.answer)
+
+    def test_the_reading_sentence_says_how_a_latest_question_was_read(self):
+        retriever = MagicMock()
+        retriever.read.side_effect = lambda hit, span: SourcePassage(
+            document_id=hit.hit.document_id, run_id="run", source_sha256="a" * 64, root_alias="root",
+            relative_path=hit.hit.relative_path, chunk_id="c1", start_char=0, end_char=5, text="intro")
+        newest = source("Knowledge/Notes/new.md", title="Newest", added_at=at(26, 17))
+        older = source("Knowledge/Notes/old.md", title="Older", added_at=at(26, 9))
+        plan = build_plan({"types": ["note"], "sort": "added_newest", "limit": 1}, vocabulary([newest, older]))
+        result = answer_catalog(plan, [older, newest], retriever=retriever, started=0.0, model_calls=1, route={})
+        self.assertIn("Sorted by when it was added, newest first; showing 1.", result.answer)
+        self.assertIn("**Newest**", result.answer)
+        self.assertNotIn("**Older**", result.answer)
 
 
 if __name__ == "__main__":

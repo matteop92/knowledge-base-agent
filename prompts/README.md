@@ -13,7 +13,7 @@ This folder holds only the versions in use. Older versions were removed; the cha
 | `answer_agent_v13.md` | `app/agent/harness.py` | The answer loop for a new question. Tells the agent how to search, read whole chunks, track what the question needs, attribute statements to the right speaker, and stop without a closing offer. |
 | `answer_agent_v14.md` | `app/agent/harness.py` | The same loop for a follow-up question, with the earlier turns and the passages already read passed in as memory. |
 | `followup_rewrite_v1.md` | `app/agent/memory.py` | Rewrites a follow-up into a stand-alone search query for the first search. |
-| `property_router_v1.md` | `app/agent/properties.py` | Decides whether a first question counts or lists sources by their properties (author, guest, tag, type, date, title) and, if so, which filters it states; those questions skip the answer loop. |
+| `question_router_v1.json` | `app/agent/router.py` | The question wording sent to TypeSafe Jev in one call per question: route (catalog, narrowed or plain, with plain listed first), what the question narrows by (type, folder, period, newest source) and what a catalog question filters and sorts by. A versioned spec rather than a prompt, so it is JSON; receipts record its version and hash. |
 | `properties_v3.md` | `app/ingestion/properties.py` | Classifies a note: source type and one to three tags from the approved list. |
 | `screenshot_extract_v1.md` | `app/capture/screenshot.py` | Reads text and structure out of a screenshot. |
 | `youtube_transcript_v1.md` | `app/capture/youtube.py` | Turns a video transcript into a clean note. |
@@ -32,6 +32,9 @@ The notes below come from the commit that introduced each version.
 - v13: adds a relevance test in the question's own words in place of "cover every point in the passages read".
   On one run per question it cut points outside the question's scope from 9 to 3 against v12, with a similar overall checklist score. The accepted baseline.
 - v14: the follow-up variant of v13, with conversation memory.
+
+**Question router**
+- v1 (replaces `property_router_v1`, a gpt-6-luna prompt that only separated count and list questions from the rest): three routes in one Jev call. Thresholds 0.6 for narrowed and catalog; on the 67-question set it routes 66 correctly with no plain question sent elsewhere (see [docs/evaluation.md](../docs/evaluation.md)).
 
 **Grader**
 - v1: grades an answer against frozen question-specific checks.

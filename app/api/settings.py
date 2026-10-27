@@ -42,7 +42,7 @@ class AnswerSettings:
     coverage_checks: int = 0  # finishes that may be sent back for unread chunks of used sources
     max_model_calls: int = 12
     max_seconds: float = 300
-    property_router: bool = True  # count and list questions about the sources skip the loop
+    question_router: bool = True  # every question is routed: catalog, narrowed or plain
 
 
 @dataclass(frozen=True)

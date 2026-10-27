@@ -44,3 +44,5 @@ class AnswerResult(StrictRecord):
     elapsed_seconds: float = Field(default=0, ge=0)
     # Follow-ups only: the search query used and what earlier evidence was carried or dropped.
     memory: dict | None = None
+    # How the question was routed (catalog, narrowed or plain), set by the web app's engine.
+    routing: dict | None = None
