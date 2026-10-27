@@ -37,6 +37,7 @@ python -m evals.answer_review score <judgments.json> --output .local/score.json
 | `answer_grader.py`, `grade_answers.py`, `grader_agreement.py` | The model grader and how well it agrees with a person. |
 | `speed_trial.py` | Times answers from a private question set through the web app's answer engine, with a spend ceiling and a shared ledger. |
 | `export_feedback.py` | Writes every thumbs-down turn (question, note, receipt, warnings) to a new private file under `.local/feedback/`; read-only. |
+| `feedback_eval.py`, `feedback_checks.py` | Evals made from thumbs-down feedback: `promote` copies chosen exported turns into a new private set as drafts, `import-routes` loads the router question set, `run` repeats approved evals under a spend ceiling and checks each result by code (route, result set or attribution), and `compare` lines two runs up. A seed eval passes only when all its runs pass. Sets live under `.local/` because they name real notes. |
 | `retrieval_trial.py` | Recall@K for vector, full-text and merged search. |
 | `compare_chunking.py`, `compare_embeddings.py`, `summarize_context_trials.py` | Trials used to pick the chunking, embedding model and enrichment. |
 | `hosted_smoke.py` | A small check of a hosted database login. |

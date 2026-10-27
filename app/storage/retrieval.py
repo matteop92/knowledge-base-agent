@@ -353,6 +353,19 @@ def speaker_at(chunk: dict, position: int) -> str | None:
                  if turn["start_char"] <= position < turn["end_char"]), None)
 
 
+def run_turns(conn: psycopg.Connection, run_id: str) -> list[dict] | None:
+    """Every speaker turn of a stored run, as `speaker_at` reads them; None when the run is no longer stored.
+
+    Receipts saved before passages carried a speaker use this to find who spoke a cited passage.
+    """
+    row = conn.execute("""select coalesce(jsonb_agg(jsonb_build_object('start_char', (b->'span'->>'start_char')::int,
+            'end_char', (b->'span'->>'end_char')::int, 'speaker', b->>'speaker')
+            order by (b->'span'->>'start_char')::int) filter (where b->>'kind'='speaker_turn'), '[]'::jsonb)
+        from knowledge.runs r left join lateral jsonb_array_elements(coalesce(r.parsed->'blocks', '[]'::jsonb)) b on true
+        where r.run_id=%s group by r.run_id""", (run_id,)).fetchone()
+    return row[0] if row else None
+
+
 class DatabaseRetriever:
     """Connection-scoped adapter; caller owns a read-only repeatable-read transaction."""
 

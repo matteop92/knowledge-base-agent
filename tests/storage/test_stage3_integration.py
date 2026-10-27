@@ -27,6 +27,7 @@ from app.storage.records import PublicationSelection, SearchProfile, spec_id
 from app.storage.search import search_text, search_vector
 from tests.storage.database import apply_migrations
 from app.storage.retrieval import (DatabaseRetriever, find_in_document, hybrid_search, passage_from_chunk, read_chunk,
+                                   run_turns, speaker_at,
                                    read_passage, selected_embedding_spec)
 
 
@@ -225,6 +226,12 @@ class Stage3IntegrationTest(unittest.TestCase):
             self.assertEqual(passage_from_chunk(chunk, mid, mid + 5).run_speakers, ["Tim Ferriss", "Niels Hoven"])
             tim = text.index("Tell me")
             self.assertEqual(passage_from_chunk(chunk, tim, tim + 7).speaker, "Tim Ferriss")
+            # The same lookup for a receipt saved before passages carried a speaker.
+            turns = run_turns(self.conn, transcript.run_id)
+            self.assertEqual([turn["speaker"] for turn in turns], ["Tim Ferriss", "Niels Hoven", "Tim Ferriss"])
+            self.assertEqual(speaker_at({"turns": turns}, mid), "Niels Hoven")
+            self.assertIsNone(run_turns(self.conn, "no-such-run"))
+            self.assertEqual(run_turns(self.conn, orchard.run_id), [])
             article_chunk = read_chunk(self.conn, **keys(orchard))
             start = article_chunk["spans"][0]["start_char"]
             passage = passage_from_chunk(article_chunk, start, start + 5)
