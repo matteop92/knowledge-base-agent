@@ -639,7 +639,10 @@ span.pick-tag { background: var(--paper); box-shadow: 0 0 0 1px rgba(29, 28, 26,
 .smenu-range { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px 4px 4px; box-shadow: inset 0 1px 0 var(--hairline-row); margin-top: 4px; }
 .smenu-date, .f-date { display: grid; gap: 4px; font-size: 12.5px; color: var(--muted); }
 .smenu-date, .f-date { min-width: 0; }
-.smenu-date input, .f-date input { width: 100%; min-width: 0; height: 32px; min-height: 32px; padding: 0 8px; font-size: 16px; }
+.smenu-date input, .f-date input { width: 100%; min-width: 0; height: 30px; min-height: 30px; padding: 0 8px; border-radius: 8px; font-size: 13.5px; color: var(--ink-soft); background: var(--chip); }
+/* A finger-sized field needs 16 px text, or phones zoom the page on focus. */
+@media (pointer: coarse) { .smenu-date input { height: 44px; min-height: 44px; font-size: 16px; } }
+.smenu-date input::-webkit-calendar-picker-indicator, .f-date input::-webkit-calendar-picker-indicator { opacity: 0.55; cursor: pointer; }
 .schips { display: none; gap: 6px; margin: 8px 0 0; padding: 0; overflow-x: auto; list-style: none; }
 .schip { height: 32px; padding-left: 10px; flex: none; }
 .schip .stoken-remove { width: 32px; min-width: 32px; height: 32px; min-height: 32px; }
@@ -740,7 +743,7 @@ h3.r-heading { font-size: 18.5px; }
 .f-segment:hover:not(:disabled) { background: transparent; }
 .f-segment[aria-pressed="true"], .f-segment[aria-pressed="true"]:hover:not(:disabled) { background: var(--paper); box-shadow: 0 1px 2px rgba(29, 28, 26, 0.1); }
 .f-range { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
-.f-date input { height: 44px; min-height: 44px; }
+.f-date input { height: 44px; min-height: 44px; font-size: 16px; }
 .f-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .f-pill { height: 44px; padding: 0 14px; border-radius: 999px; background: var(--chip); font-size: 13.5px; display: inline-flex; align-items: center; gap: 8px; }
 .f-pill.is-selected, .f-pill.is-selected:hover:not(:disabled) { background: var(--gap-bg); }
