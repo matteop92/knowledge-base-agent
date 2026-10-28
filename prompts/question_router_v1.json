@@ -1,0 +1,67 @@
+{
+  "version": "question_router_v1",
+  "notes": "Wording for TypeSafe Jev. The route options are listed plain first because Jev favours the first option. Code reads dates and numbers; the model only answers these questions.",
+  "route": {
+    "instructions": "Which kind of question is this?",
+    "options": {
+      "plain": "Asks about ideas inside the sources and does not explicitly limit which kind of source, folder or period to use. Naming a person, a topic, a book title or 'my notes' in general does not limit the sources. Using 'latest' or 'recent' as a topic word (my latest thinking on a subject) does not limit the sources either.",
+      "narrowed": "Asks about ideas inside the sources AND explicitly says to use only sources of one kind (only book highlights, only transcripts, only articles, only books, only social posts), from one named folder, or saved or dated in a stated period. Also asks what the newest or latest source says (summarise my latest note). Mentioning a kind of source while asking about one topic or one particular source (is there an article that explains X) does not limit the sources.",
+      "catalog": "Asks about the collection itself: count, list or find sources, which source is the newest or oldest, or who wrote or appears in a source. The answer is a list or a number, not ideas from inside the sources."
+    }
+  },
+  "narrowing": {
+    "by_type": "Does the question explicitly say to use only sources of a particular kind, such as only book highlights, transcripts, articles, books or social posts? Mentioning a topic, a person or a book title is not enough.",
+    "by_date": "Does the question explicitly limit the sources to those saved, added or dated in a specific period, such as last week, October or 2025? A date that is only the topic of the question does not count.",
+    "by_folder": "Does the question name a folder of the vault to search in?",
+    "by_latest": "Does the question ask what the newest, latest, most recently added or last saved source says or contains? Using latest or recent only as a topic word (my latest thinking on a subject) does not count.",
+    "type_value": "Which kind of source does the question limit itself to?",
+    "folder_value": "Which vault folder does the question name?",
+    "types": {
+      "article": "Articles",
+      "highlights": "Book highlights",
+      "book": "Book notes",
+      "note": "Personal notes",
+      "social_post": "Social media posts",
+      "transcript": "Podcast or video transcripts"
+    }
+  },
+  "catalog": {
+    "op": "Does the question ask for a number of sources, or for the sources themselves?",
+    "ops": {
+      "list": "The sources themselves: a list, which one, who wrote it, whether any exist",
+      "count": "How many sources"
+    },
+    "by_person": "Does the question ask for sources connected to a named person, as author, guest or in any role?",
+    "person_value": "Which person does the question name?",
+    "person_role": "How is the named person connected to the sources?",
+    "roles": {
+      "any": "Connected in any way: mentions, features, appears",
+      "author": "Written or authored by the person",
+      "guest": "The person appears as a guest"
+    },
+    "by_tag": "Does the question ask for sources with a particular tag or about a tagged theme?",
+    "tag_value": "Which tag does the question name?",
+    "by_title": "Does the question name one particular source by its title or topic?",
+    "title_value": "Which source does the question name by its title or topic? Choose the source whose title is closest to what the question describes.",
+    "sort": "In what order does the question want the sources?",
+    "sorts": {
+      "none": "The question asks for no ordering",
+      "added_newest": "Most recently added, uploaded or saved first (latest, newest)",
+      "added_oldest": "First added, uploaded or saved first (oldest)",
+      "dated_newest": "Most recent publication or note date first",
+      "dated_oldest": "Earliest publication or note date first"
+    },
+    "which_added": "Does the question ask which source was added, uploaded or saved first or last (the earliest or the most recently added one), rather than what a source says?",
+  "single": "Does the question ask for exactly one source (the latest note, the newest source, which one)?",
+    "by_type": "Does the question ask about sources of a particular kind, such as articles, book highlights, books, transcripts, notes or social posts?",
+    "by_date": "Does the question ask for sources dated or added in a specific period, such as 2025, October or last week?",
+    "by_folder": "Does the question name a folder of the vault?"
+  },
+  "none": "The question names no such thing",
+  "thresholds": {
+    "narrowed": 0.6,
+    "catalog": 0.6,
+    "flag": 0.5,
+    "strong_flag": 0.9
+  }
+}

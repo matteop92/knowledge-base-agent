@@ -7,6 +7,7 @@ import tempfile
 import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -26,6 +27,7 @@ from app.storage.records import PublicationSelection, SearchProfile, spec_id
 from app.storage.search import search_text, search_vector
 from tests.storage.database import apply_migrations
 from app.storage.retrieval import (DatabaseRetriever, find_in_document, hybrid_search, passage_from_chunk, read_chunk,
+                                   run_turns, speaker_at,
                                    read_passage, selected_embedding_spec)
 
 
@@ -121,6 +123,122 @@ class Stage3IntegrationTest(unittest.TestCase):
             self.assertTrue(any("Luca Ferrari" in item.hit.people for item in hits))
             self.assertTrue(all("Derek" not in item.hit.raw_text for item in hits))
 
+    def test_a_scope_limits_search_and_widens_when_it_matches_nothing(self):
+        def cleanup():
+            self.conn.execute("reset role")
+            self.conn.execute("update knowledge.corpus_state set profile_id=null where singleton=true")
+            self.conn.execute("truncate knowledge.documents cascade")
+            self.conn.execute("delete from knowledge.profiles where profile_id=%s", ("scope-proof",))
+            self.conn.execute("set role knowledge_runtime")
+        self.addCleanup(cleanup)
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder)
+            files = (("Notes/apple.md", "# Apple\n\nThe apple is ripe today.\n"),
+                     ("Articles/pear.md", "# Pear\n\nThe pear is ripe today.\n"))
+            runs = [fixture_run(base, body, relative_path=path) for path, body in files]
+            for run_dir, _, _ in runs:
+                load_run(self.conn, run_dir)
+            spec = runs[0][1]
+            create_profile(self.conn, SearchProfile(profile_id="scope-proof", variant="fixed_raw",
+                chunking_version=spec.chunking_version, embedding_spec_id=spec_id(spec)))
+            for run_dir, _, _ in runs:
+                publish_run(self.conn, PublicationSelection(run_id=run_dir.name, profile_id="scope-proof"))
+            select_profile(self.conn, "scope-proof")
+            everything = {hit.document_id for hit in search_text(self.conn, "ripe")}
+            self.assertEqual(len(everything), 2)
+            apple = next(hit.document_id for hit in search_text(self.conn, "apple"))
+            other = (everything - {apple}).pop()
+            self.assertEqual({hit.document_id for hit in search_text(self.conn, "ripe", document_ids=[apple])}, {apple})
+            vector = {hit.document_id for hit in search_vector(
+                self.conn, [1.0, 0.0, 0.0], spec_id=spec_id(spec), metric="cosine", document_ids=[other])}
+            self.assertEqual(vector, {other})
+            self.assertEqual(search_text(self.conn, "ripe", document_ids=[]), [])
+            embedded = EmbeddingResult(model=spec.model_spec(), vectors=[[1.0, 0.0, 0.0]])
+            with patch("app.storage.retrieval.embed_queries", return_value=(spec_id(spec), spec, embedded)):
+                retriever = DatabaseRetriever(self.conn, MagicMock(), provider_tag="unused",
+                                              max_embedding_usd_per_million=Decimal("0"))
+                self.assertEqual({item.hit.document_id for item in retriever.search("ripe")}, everything)
+                retriever = DatabaseRetriever(self.conn, MagicMock(), provider_tag="unused",
+                                              max_embedding_usd_per_million=Decimal("0"))
+                retriever.narrow([apple])
+                # Every search of a narrowed answer, not only the first, stays inside the scope.
+                for query in ("ripe", "today"):
+                    self.assertEqual({item.hit.document_id for item in retriever.search(query)}, {apple})
+                self.assertFalse(retriever.widened)
+                self.assertEqual(retriever.find(retriever.search("ripe")[0], "ripe")[0].hit.document_id, apple)
+                outside = DatabaseRetriever(self.conn, MagicMock(), provider_tag="unused",
+                                            max_embedding_usd_per_million=Decimal("0"))
+                outside.narrow([apple])
+                # Carried evidence from outside the scope can still be searched inside its own document.
+                lead = next(item for item in DatabaseRetriever(
+                    self.conn, MagicMock(), provider_tag="unused", max_embedding_usd_per_million=Decimal("0")
+                ).search("pear") if item.hit.document_id == other)
+                self.assertEqual(outside.find(lead, "pear")[0].hit.document_id, other)
+                # A scope that matches nothing widens once and stays widened.
+                missing = DatabaseRetriever(self.conn, MagicMock(), provider_tag="unused",
+                                            max_embedding_usd_per_million=Decimal("0"))
+                missing.narrow(["no-such-document"])
+                self.assertEqual({item.hit.document_id for item in missing.search("ripe")}, everything)
+                self.assertTrue(missing.widened)
+                self.assertEqual({item.hit.document_id for item in missing.search("pear")}, everything)
+                empty = DatabaseRetriever(self.conn, MagicMock(), provider_tag="unused",
+                                          max_embedding_usd_per_million=Decimal("0"))
+                empty.narrow([])
+                self.assertTrue(empty.widened)
+                self.assertEqual({item.hit.document_id for item in empty.search("ripe")}, everything)
+
+    def test_a_transcript_passage_carries_the_speaker_of_its_turn(self):
+        def cleanup():
+            self.conn.execute("reset role")
+            self.conn.execute("update knowledge.corpus_state set profile_id=null where singleton=true")
+            self.conn.execute("truncate knowledge.documents cascade")
+            self.conn.execute("delete from knowledge.profiles where profile_id=%s", ("speaker-proof",))
+            self.conn.execute("set role knowledge_runtime")
+        self.addCleanup(cleanup)
+        text = ("---\ntitle: Interview\n---\n**Tim Ferriss:** Welcome to the show.\n\n"
+                "**Niels Hoven:** Thanks for having me. The coral pear is ripe.\n\n"
+                "**Tim Ferriss:** Tell me more.\n")
+        article = "# Orchard\n\nThe coral pear is ripe.\n"
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder)
+            runs = [fixture_run(base, text, relative_path="Transcripts/interview.md"),
+                    fixture_run(base, article, relative_path="Articles/orchard.md")]
+            for run_dir, _, _ in runs:
+                load_run(self.conn, run_dir)
+            spec = runs[0][1]
+            create_profile(self.conn, SearchProfile(profile_id="speaker-proof", variant="fixed_raw",
+                chunking_version=spec.chunking_version, embedding_spec_id=spec_id(spec)))
+            for run_dir, _, _ in runs:
+                publish_run(self.conn, PublicationSelection(run_id=run_dir.name, profile_id="speaker-proof"))
+            select_profile(self.conn, "speaker-proof")
+            hits = {hit.relative_path: hit for hit in search_text(self.conn, "pear")}
+            transcript, orchard = hits["Transcripts/interview.md"], hits["Articles/orchard.md"]
+
+            def keys(hit):
+                return dict(document_id=hit.document_id, run_id=hit.run_id, source_sha256=hit.source_sha256,
+                            chunk_id=hit.chunk_id)
+
+            chunk = read_chunk(self.conn, **keys(transcript))
+            self.assertEqual(chunk["speakers"], ["Tim Ferriss", "Niels Hoven"])
+            niels = text.index("Thanks")
+            self.assertEqual(passage_from_chunk(chunk, niels, niels + 20).speaker, "Niels Hoven")
+            # A passage that starts mid-turn, as an @offset continuation does, still has the turn's speaker.
+            mid = text.index("coral")
+            self.assertEqual(passage_from_chunk(chunk, mid, mid + 5).speaker, "Niels Hoven")
+            self.assertEqual(passage_from_chunk(chunk, mid, mid + 5).run_speakers, ["Tim Ferriss", "Niels Hoven"])
+            tim = text.index("Tell me")
+            self.assertEqual(passage_from_chunk(chunk, tim, tim + 7).speaker, "Tim Ferriss")
+            # The same lookup for a receipt saved before passages carried a speaker.
+            turns = run_turns(self.conn, transcript.run_id)
+            self.assertEqual([turn["speaker"] for turn in turns], ["Tim Ferriss", "Niels Hoven", "Tim Ferriss"])
+            self.assertEqual(speaker_at({"turns": turns}, mid), "Niels Hoven")
+            self.assertIsNone(run_turns(self.conn, "no-such-run"))
+            self.assertEqual(run_turns(self.conn, orchard.run_id), [])
+            article_chunk = read_chunk(self.conn, **keys(orchard))
+            start = article_chunk["spans"][0]["start_char"]
+            passage = passage_from_chunk(article_chunk, start, start + 5)
+            self.assertEqual((passage.speaker, passage.run_speakers), (None, None))
+
     def test_passage_read_is_scoped_to_selected_revision_and_chunk(self):
         with tempfile.TemporaryDirectory() as folder:
             base = Path(folder)
@@ -152,6 +270,8 @@ class Stage3IntegrationTest(unittest.TestCase):
             sources = load_sources(self.conn)
             self.assertEqual([(item["document_id"], item["chunks"]) for item in sources], [(hit.document_id, 1)])
             self.assertEqual(sources[0]["first_chunk"]["chunk_id"], hit.chunk_id)
+            self.assertIsNotNone(sources[0]["added_at"])
+            self.assertLessEqual(sources[0]["added_at"], sources[0]["updated_at"])
             for changed in ({"source_sha256": "0" * 64}, {"document_id": "unknown"},
                             {"chunk_id": "unknown"}, {"start_char": -1},
                             {"end_char": span["end_char"] + 1}):
@@ -163,6 +283,14 @@ class Stage3IntegrationTest(unittest.TestCase):
             self.assertEqual({h.run_id for h in search_text(self.conn, "ripe")}, {second.name})
             with self.assertRaises(StorageError):
                 read_passage(self.conn, **args)
+            # An edit moves updated_at and keeps added_at; a capture job that wrote the file earlier wins.
+            edited = load_sources(self.conn)[0]
+            self.assertEqual(edited["added_at"], sources[0]["added_at"])
+            self.assertGreater(edited["updated_at"], sources[0]["updated_at"])
+            self.conn.execute("""insert into knowledge.capture_jobs (kind, status, vault_path, created_at)
+                values ('text', 'done', %s, %s)""", (edited["relative_path"], edited["added_at"] - timedelta(hours=1)))
+            self.assertEqual(load_sources(self.conn)[0]["added_at"], sources[0]["added_at"] - timedelta(hours=1))
+            self.conn.execute("delete from knowledge.capture_jobs where vault_path=%s", (edited["relative_path"],))
             with self.conn.transaction():
                 self.conn.execute("set transaction read only")
                 with self.assertRaises(psycopg.errors.ReadOnlySqlTransaction), self.conn.transaction():

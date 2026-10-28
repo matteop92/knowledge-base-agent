@@ -157,7 +157,8 @@ def embed_queries(conn: psycopg.Connection, client: OpenRouterClient, queries: l
 
 def hybrid_search(conn: psycopg.Connection, client: OpenRouterClient, query: str, *,
                   provider_tag: str, max_embedding_usd_per_million: Decimal,
-                  k: int = 20) -> list[FusedHit]:
+                  k: int = 20, document_ids: list[str] | None = None) -> list[FusedHit]:
+    """Fused hits over the whole vault, or over only `document_ids` (a narrowed question's scope)."""
     _check_k(k)
     if k > MAX_CHANNEL_K:
         raise StorageError("hybrid K must be at most 20")
@@ -165,10 +166,12 @@ def hybrid_search(conn: psycopg.Connection, client: OpenRouterClient, query: str
         conn, client, [query], provider_tag=provider_tag,
         max_embedding_usd_per_million=max_embedding_usd_per_million)
     vector = search_vector(conn, embedded.vectors[0], spec_id=spec_id,
-                           metric=spec.distance_metric, k=MAX_CHANNEL_K)
-    lexical = search_text(conn, query, k=MAX_CHANNEL_K)
+                           metric=spec.distance_metric, k=MAX_CHANNEL_K, document_ids=document_ids)
+    lexical = search_text(conn, query, k=MAX_CHANNEL_K, document_ids=document_ids)
     global_hits = fuse_hits(vector, lexical, k=k)
     sources = named_sources(conn, query)
+    if document_ids is not None:
+        sources = [document_id for document_id in sources if document_id in document_ids]
     if not sources:
         return global_hits
     reserved: list[FusedHit] = []
@@ -251,6 +254,12 @@ def read_passage(conn: psycopg.Connection, *, document_id: str, run_id: str,
     return passage_from_chunk(chunk, start_char, end_char)
 
 
+# A parsed speaker-turn block `b` as the {start_char, end_char, speaker} object `speaker_at` reads.
+TURN_JSON = """jsonb_build_object('start_char', (b->'span'->>'start_char')::int,
+                    'end_char', (b->'span'->>'end_char')::int, 'speaker', b->>'speaker')"""
+TURN_START = "(b->'span'->>'start_char')::int"
+
+
 def read_chunk(conn: psycopg.Connection, *, document_id: str, run_id: str, source_sha256: str,
                chunk_id: str) -> dict:
     """The text of every source span of one published chunk, in one query.
@@ -269,7 +278,18 @@ def read_chunk(conn: psycopg.Connection, *, document_id: str, run_id: str, sourc
                 where gap->>'reason' is distinct from 'whitespace' and exists (
                     select 1 from jsonb_array_elements(c.source_spans) span
                     where (gap->'span'->>'start_char')::int < (span->>'end_char')::int
-                      and (span->>'start_char')::int < (gap->'span'->>'end_char')::int))
+                      and (span->>'start_char')::int < (gap->'span'->>'end_char')::int)),
+            -- Speaker turns touching the chunk, so a passage takes the speaker of the turn it starts in.
+            (select coalesce(jsonb_agg(""" + TURN_JSON + """ order by """ + TURN_START + """), '[]'::jsonb)
+                from jsonb_array_elements(coalesce(r.parsed->'blocks', '[]'::jsonb)) b
+                where b->>'kind'='speaker_turn' and exists (
+                    select 1 from jsonb_array_elements(c.source_spans) span
+                    where (b->'span'->>'start_char')::int < (span->>'end_char')::int
+                      and (span->>'start_char')::int < (b->'span'->>'end_char')::int)),
+            (select coalesce(jsonb_agg(speaker order by first_at), '[]'::jsonb) from (
+                select b->>'speaker' as speaker, min((b->'span'->>'start_char')::int) as first_at
+                from jsonb_array_elements(coalesce(r.parsed->'blocks', '[]'::jsonb)) b
+                where b->>'kind'='speaker_turn' group by 1) speakers)
             from knowledge.runs r join knowledge.documents d on d.document_id=r.document_id
             join knowledge.active_runs ar on ar.run_id=r.run_id and ar.document_id=r.document_id
             join knowledge.chunks c on c.run_id=r.run_id
@@ -282,10 +302,10 @@ def read_chunk(conn: psycopg.Connection, *, document_id: str, run_id: str, sourc
         row = cur.fetchone()
     if row is None:
         raise StorageError("source passage is not in the active published run")
-    source_length, root_alias, relative_path, spans, texts, gaps = row
+    source_length, root_alias, relative_path, spans, texts, gaps, turns, speakers = row
     return {"document_id": document_id, "run_id": run_id, "source_sha256": source_sha256, "chunk_id": chunk_id,
             "source_length": source_length, "root_alias": root_alias, "relative_path": relative_path,
-            "spans": spans, "texts": texts, "gaps": gaps}
+            "spans": spans, "texts": texts, "gaps": gaps, "turns": turns, "speakers": speakers}
 
 
 def chunk_is_active(conn: psycopg.Connection, *, document_id: str, run_id: str, source_sha256: str,
@@ -323,7 +343,38 @@ def passage_from_chunk(chunk: dict, start_char: int, end_char: int) -> SourcePas
     return SourcePassage(document_id=chunk["document_id"], run_id=chunk["run_id"],
                          source_sha256=chunk["source_sha256"], root_alias=chunk["root_alias"],
                          relative_path=chunk["relative_path"], chunk_id=chunk["chunk_id"],
-                         start_char=start_char, end_char=end_char, text=text)
+                         start_char=start_char, end_char=end_char, text=text,
+                         speaker=speaker_at(chunk, start_char),
+                         passage_speakers=speakers_between(chunk, start_char, end_char) or None,
+                         run_speakers=chunk.get("speakers") or None)
+
+
+def speakers_between(chunk: dict, start_char: int, end_char: int) -> list[str]:
+    """Everyone whose turn overlaps [start_char, end_char), in order, from a `read_chunk` result."""
+    return list(dict.fromkeys(turn["speaker"] for turn in chunk.get("turns") or []
+                              if turn["start_char"] < end_char and start_char < turn["end_char"]))
+
+
+def speaker_at(chunk: dict, position: int) -> str | None:
+    """The speaker of the turn that contains `position`, from a `read_chunk` result; None outside a transcript.
+
+    A continuation passage, or a chunk that starts partway through a turn, has no label in its own
+    text, so the speaker comes from the parsed blocks.
+    """
+    return next((turn["speaker"] for turn in chunk.get("turns") or []
+                 if turn["start_char"] <= position < turn["end_char"]), None)
+
+
+def run_turns(conn: psycopg.Connection, run_id: str) -> list[dict] | None:
+    """Every speaker turn of a stored run, as `speaker_at` reads them; None when the run is no longer stored.
+
+    Receipts saved before passages carried a speaker use this to find who spoke a cited passage.
+    """
+    row = conn.execute("""select coalesce(jsonb_agg(""" + TURN_JSON + """ order by """ + TURN_START + """)
+            filter (where b->>'kind'='speaker_turn'), '[]'::jsonb)
+        from knowledge.runs r left join lateral jsonb_array_elements(coalesce(r.parsed->'blocks', '[]'::jsonb)) b on true
+        where r.run_id=%s group by r.run_id""", (run_id,)).fetchone()
+    return row[0] if row else None
 
 
 class DatabaseRetriever:
@@ -335,16 +386,35 @@ class DatabaseRetriever:
         self.client = client
         self.provider_tag = provider_tag
         self.max_embedding_usd_per_million = max_embedding_usd_per_million
+        # A narrowed question searches only these documents; None is the whole vault.
+        self.scope: list[str] | None = None
+        self.widened = False  # the scope matched nothing, so the whole vault was searched instead
+        self._searched = False
         # One query per chunk: every passage of a chunk comes from its first read. The caller's
         # repeatable-read transaction keeps the cached text identical to a fresh read.
         self._chunks: dict[tuple[str, str, str, str], dict] = {}
 
+    def narrow(self, document_ids: list[str]) -> None:
+        """Search only these documents. An empty scope widens at once."""
+        self.scope = list(document_ids)
+        if not self.scope:
+            self.scope, self.widened = None, True
+
     def search(self, query: str) -> list[FusedHit]:
-        return hybrid_search(self.conn, self.client, query,
-                             provider_tag=self.provider_tag,
-                             max_embedding_usd_per_million=self.max_embedding_usd_per_million)
+        def run() -> list[FusedHit]:
+            return hybrid_search(self.conn, self.client, query, provider_tag=self.provider_tag,
+                                 max_embedding_usd_per_million=self.max_embedding_usd_per_million,
+                                 document_ids=self.scope)
+
+        first, self._searched = not self._searched, True
+        found = run()
+        if first and self.scope is not None and not found:
+            self.scope, self.widened = None, True
+            found = run()
+        return found
 
     def find(self, reference: FusedHit, query: str) -> list[FusedHit]:
+        # A find stays inside its lead's document, so carried evidence from outside the scope can still be searched.
         return find_in_document(self.conn, reference, query)
 
     def read(self, reference: FusedHit, span_index: int, *, offset: int = 0) -> SourcePassage:

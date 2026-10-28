@@ -10,16 +10,18 @@ from decimal import Decimal
 from typing import Any, Callable, Protocol
 from urllib.parse import quote
 
+from app.agent.catalog import resolve_scope
 from app.agent.endpoints import check_answer_routes, measured_usd, private_routes, worst_case_usd
 from app.agent.memory import (PRIOR_TURNS, REWRITE_INPUT_CHARS, REWRITE_MAX_OUTPUT_TOKENS, REWRITE_MODEL, PriorTurn,
                               prior_turn_from_receipt)
 from app.agent.records import AnswerLimits, AnswerResult
+from app.agent.router import RouteDecision
 from app.api.conversations import ConversationStore
 from app.api.settings import Settings
 from app.storage.search import LABEL_METADATA, source_author, source_label
 from app.models.client import ModelClientError
 from app.models.openrouter import completion_limit
-from app.models.routes import PRICE_CEILINGS, TAGS, price_usd
+from app.models.routes import DECISION_CALL_WORST_USD, PRICE_CEILINGS, TAGS, price_usd
 from app.storage import StorageError
 from app.storage.spend import SpendCapError, check_daily_cap, record_spend
 
@@ -28,6 +30,8 @@ WEB_MAX_OUTPUT_TOKENS = 2500
 # At about 110 output tokens a second a full 10,000-token reply takes about 90 s, so one request
 # gets 120 s and the whole answer 300 s (the broad CLI profile, with the same limit, has 420 s).
 WEB_REQUEST_TIMEOUT_SECONDS = 120
+# Room in the input budget for the router call, whose body lists the vault's people, tags and titles.
+DECISION_INPUT_BYTES = 80_000
 
 
 @dataclass
@@ -82,13 +86,8 @@ class OpenRouterAnswerEngine:
                                                    REWRITE_MAX_OUTPUT_TOKENS, None)[1]))) + self._router_worst_case()
 
     def _router_worst_case(self) -> Decimal:
-        """A first question may also make one router call; a follow-up makes the rewrite instead."""
-        from app.agent.properties import ROUTER_INPUT_CHARS, ROUTER_MAX_OUTPUT_TOKENS, ROUTER_MODEL
-        if not self.settings.property_router:
-            return Decimal(0)
-        return Decimal(str(price_usd(ROUTER_MODEL, ROUTER_INPUT_CHARS,
-                                     completion_limit(ROUTER_MODEL, "property_router_v1",
-                                                      ROUTER_MAX_OUTPUT_TOKENS, None)[1])))
+        """Every question makes one router call."""
+        return Decimal(str(DECISION_CALL_WORST_USD)) if self.settings.question_router else Decimal(0)
 
     def answer(self, question: str, prior: list[PriorTurn] | None = None) -> AnswerOutcome:
         from app.agent.harness import answer_question
@@ -100,13 +99,15 @@ class OpenRouterAnswerEngine:
         answer = self.settings
         private_route, model_providers = private_routes(answer.model, answer.embedding_provider_tag,
                                                         answer.generation_provider_tag)
-        if prior or answer.property_router:
+        if prior:
             model_providers[REWRITE_MODEL] = {**private_route, "only": [TAGS[REWRITE_MODEL]],
                                               "require_parameters": True}
-        # A follow-up's rewrite gets its own request so the answer keeps its full allowance.
+        # The rewrite, the router call and a possible re-embed when a narrowed search widens each get their own
+        # request so the answer keeps its full allowance.
         client = OpenRouterClient(allow_live=True, request_budget=answer.request_budget + (1 if prior else 0)
-                                  + (1 if answer.property_router and not prior else 0),
-                                  estimated_input_token_budget=answer.input_byte_budget,
+                                  + (2 if answer.question_router else 0),
+                                  estimated_input_token_budget=answer.input_byte_budget
+                                  + (DECISION_INPUT_BYTES if answer.question_router else 0),
                                   conservative_input_budget=True, provider=private_route,
                                   model_providers=model_providers, timeout_seconds=WEB_REQUEST_TIMEOUT_SECONDS)
         routes, embedding_model, rewrite_prices = None, None, {}
@@ -125,24 +126,37 @@ class OpenRouterAnswerEngine:
                     reasoning_effort=answer.reasoning_effort)
                 retriever = DatabaseRetriever(conn, client, provider_tag=answer.embedding_provider_tag,
                                               max_embedding_usd_per_million=answer.max_embedding_usd_per_million)
-                memory, query = None, None
-                routing_started = time.monotonic()
-                if not prior and answer.property_router:
-                    routed = route_properties(client, conn, question, retriever, rewrite_prices)
-                    if routed is not None:
-                        return AnswerOutcome(routed, self._cost(client, routes, answer.model, embedding_model,
-                                                                rewrite_prices), list(client.usage_log))
+                memory, query, decision = None, None, RouteDecision()
                 if prior:
                     memory = build_memory(prior, active=active_revisions(conn, prior))
                     query = rewrite_followup(client, question, memory.turns, rewrite_prices)
+                routing_started = time.monotonic()
+                # A follow-up is routed on its rewritten query; with no rewrite it goes plain without a call.
+                if answer.question_router and (query or not prior):
+                    routed, decision, sources = route_question(client, conn, query or question, retriever)
+                    if routed is not None:
+                        return AnswerOutcome(routed, self._cost(client, routes, answer.model, embedding_model,
+                                                                rewrite_prices), list(client.usage_log))
+                    if decision.route == "narrowed":
+                        scope = resolve_scope(sources, types=decision.narrowing.types,
+                                              folders=decision.narrowing.folders, period=decision.narrowing.period,
+                                              latest=decision.narrowing.latest)
+                        retriever.narrow(scope.document_ids)
                 result = answer_question(question, retriever=retriever, client=client,
                                          model=ModelSpec(provider="openrouter", model_id=answer.model,
                                                          model_version="current"),
                                          limits=self.limits, reasoning_effort=answer.reasoning_effort,
-                                         memory=memory, search_query=query)
-                if not prior and answer.property_router:
+                                         memory=memory, search_query=query, prompt_version=answer.prompt_version,
+                                         attribution_retry=answer.attribution_retry)
+                if answer.question_router:
                     # Time spent deciding the route is part of the answer's wait.
-                    result = result.model_copy(update={"elapsed_seconds": time.monotonic() - routing_started})
+                    update = {"elapsed_seconds": time.monotonic() - routing_started, "routing": decision.record()}
+                    if decision.route == "narrowed":
+                        line = (decision.narrowing.widened_line() if retriever.widened else
+                                decision.narrowing.scope_line(len(scope.document_ids), scope.added_from_date))
+                        update["answer"] = f"{line}\n\n{result.answer}"
+                        update["routing"] = decision.record(scope.document_ids) | {"widened": retriever.widened}
+                    result = result.model_copy(update=update)
         except Exception as exc:
             raise AnswerFailed(self._cost(client, routes, answer.model, embedding_model, rewrite_prices),
                                list(client.usage_log)) from exc
@@ -185,37 +199,30 @@ def rewrite_followup(client, question: str, recent: list[dict[str, str]],
                             model=ModelSpec(provider="openrouter", model_id=REWRITE_MODEL, model_version="current"))
 
 
-def route_properties(client, conn, question: str, retriever,
-                     prices: dict[str, tuple[Decimal, Decimal]]) -> AnswerResult | None:
-    """A count or list question answered from stored properties, or None for the answer loop.
+def route_question(client, conn, question: str, retriever) -> tuple[AnswerResult | None, RouteDecision, list]:
+    """Route the question; a catalog question comes back already answered from the loaded sources.
 
-    The router model (gpt-6-luna) is optional like the follow-up rewrite: if its route fails
-    the privacy or price check, or the call fails, the question goes to the loop.
+    The router is optional like the follow-up rewrite: if its route fails the privacy or price
+    check, or the call fails, the decision is plain and the question goes to the loop. The sources
+    are returned for the narrowed route.
     """
-    from app.agent.properties import ROUTER_MODEL, answer_properties, route_model, to_sources
-    from app.models.client import ModelSpec
-    from app.models.routes import verify_routes
+    from app.agent.properties import answer_catalog, to_sources
+    from app.agent.router import route_question as decide_route
     from app.storage.search import load_sources
 
     started = time.monotonic()
     sources = to_sources(load_sources(conn))
+    decision = decide_route(question, sources, client=client)
+    if decision.route != "catalog":
+        return None, decision, sources
     try:
-        checked = verify_routes(client, [ROUTER_MODEL], structured_ids={ROUTER_MODEL})[ROUTER_MODEL]
-        prices[ROUTER_MODEL] = (Decimal(str(checked["input_usd_per_million"])) / Decimal(1_000_000),
-                                Decimal(str(checked["output_usd_per_million"])) / Decimal(1_000_000))
-        query = route_model(question, sources, client=client,
-                            model=ModelSpec(provider="openrouter", model_id=ROUTER_MODEL, model_version="current"))
-    except (ModelClientError, ValueError, KeyError, TypeError, AttributeError) as exc:
-        log.warning("property router skipped error=%s", type(exc).__name__)
-        return None
-    if query is None:
-        return None
-    try:
-        return answer_properties(query, sources, retriever=retriever, started=started,
-                                 model_calls=1, route={"model": ROUTER_MODEL})
+        result = answer_catalog(decision.plan, sources, retriever=retriever, started=started,
+                                model_calls=1, route={"spec": decision.record()["spec"]})
     except (StorageError, IndexError, ValueError) as exc:
-        log.warning("property answer skipped error=%s", type(exc).__name__)
-        return None
+        log.warning("catalog answer skipped error=%s", type(exc).__name__)
+        return None, RouteDecision(called=True), sources
+    matched = result.actions[0]["matched"]
+    return result.model_copy(update={"routing": decision.record(matched)}), decision, sources
 
 
 def active_revisions(conn, prior: list[PriorTurn]) -> set[tuple[str, str]]:
@@ -241,13 +248,19 @@ def build_receipt(result: AnswerResult, labels: dict[str, tuple[str, str]], vaul
                 "author": labels.get(item.document_id, ("", ""))[1],
                 "run_id": item.run_id, "chunk_id": item.chunk_id, "source_sha256": item.source_sha256,
                 "root_alias": item.root_alias, "relative_path": item.relative_path, "obsidian_url": obsidian_link(vault_name, item.relative_path),
-                "start_char": item.start_char, "end_char": item.end_char, "text": item.text}
+                "start_char": item.start_char, "end_char": item.end_char, "text": item.text,
+                "speaker": item.speaker}
+
+    speakers = {item.document_id: item.run_speakers
+                for item in [*result.citations.values(), *result.inspected.values()] if item.run_speakers}
 
     return {"answer": result.answer, "completeness": result.completeness, "gaps": result.gaps,
             "citations": {ref: passage(item) for ref, item in result.citations.items()},
             "inspected": {ref: passage(item) for ref, item in result.inspected.items()},
             "termination": result.termination, "finalization_reason": result.finalization_reason,
             "needs": result.needs, "model_calls": result.model_calls, "memory": result.memory,
+            "routing": result.routing, "speakers": speakers, "prompt_version": result.prompt_version,
+            "attribution": result.attribution,
             "elapsed_seconds": result.elapsed_seconds}
 
 

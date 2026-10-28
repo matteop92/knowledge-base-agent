@@ -76,8 +76,8 @@ def run_configuration(rubric: AnswerRubric, config: dict, directory: Path, ledge
                 {"configuration": config, "rubric_version": rubric.version,
                  "source_revisions": observed_hashes, "questions": {}, "status": "running"})
     fingerprint = rubric_fingerprint(rubric)
-    from app.agent.harness import PROMPT
-    prompt_fingerprint = hashlib.sha256(PROMPT.encode()).hexdigest()
+    from app.agent.harness import load_prompt, prompt_family
+    prompt_fingerprint = hashlib.sha256(load_prompt(prompt_family(config.get("prompt_version"))[0]).encode()).hexdigest()
     manifest.setdefault("rubric_sha256", fingerprint)
     manifest.setdefault("prompt_sha256", prompt_fingerprint)
     if (manifest["configuration"] != config or manifest["rubric_version"] != rubric.version

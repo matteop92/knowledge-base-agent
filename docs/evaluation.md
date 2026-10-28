@@ -14,6 +14,16 @@ Recall is the number of the 51 required passages that appear in the top K result
 | Full-text search | 28 | 40 | 44 |
 | Both, merged by rank | 39 | 44 | 47 |
 
+The table searches only the six labelled files (`--only-labelled`), the corpus the labels were first measured on; re-measured on 2026-10-28 it gives the same numbers. The index now holds 48 notes, so searching all of them puts 42 unlabelled notes in competition:
+
+| Method, whole index | Top 5 | Top 10 | Top 20 |
+| --- | --- | --- | --- |
+| Vector search | 36 | 42 | 45 |
+| Full-text search | 23 | 28 | 35 |
+| Both, merged by rank | 37 | 40 | 46 |
+
+Full-text search loses most with more notes (40 down to 28 at K=10); merged search gives up 4 passages at K=10. The labels were pointed at the files' current IDs; three files had changed (spans moved by 18, 25 and -6 characters) and every quote still matches the stored text.
+
 - Vector search is strong on this set, and keyword search misses paraphrases. Merging did not add coverage here; it is kept because keyword search handles exact names and phrases that a vector can blur.
 - The embedding model, `perplexity/pplx-embed-v1-0.6b`, was chosen over `baai/bge-m3` in a six-file trial (42 against 40 of 51 passages at K=10). Indexing the corpus cost a fraction of a cent.
 - Chunking: structural chunks reached 47 of 51 at K=20, fixed 800-token chunks 45. Adding a generated context sentence to each chunk lost one passage.
@@ -32,6 +42,50 @@ The pass bar was 70%. v13 is lower on coverage (27 of 37 against 34 of 38) and b
 A model grader (`evals/answer_grader.py`, `gpt-5-mini` at medium reasoning, prompt v4) pre-rates answers; a person confirms ratings that decide a prompt. On held-out answers it agreed with the person on 97.1% of grounding checks with no false pass, caught 4 of 4 planted errors, but agreed on only 75% of coverage checks (bar: 90%) and scores about 11 points above the person. `gpt-6-luna` as grader was worse (50% grounding agreement). It is used to compare configurations graded the same way, read per dimension, not as an absolute score.
 
 Reasoning effort: `gpt-5-mini` at medium beat low and minimal on answer quality in an earlier test, so it is fixed and was not rerun.
+
+## Routing, catalog answers and speaker attribution
+
+The eval sets about the vault (questions, expected results, the exported feedback) live under the ignored `.local/` folder because they name real notes. This section records numbers only.
+
+**Router (TypeSafe Jev 1.14, `prompts/question_router_v1.json`).** The 67 labelled questions from the 2026-10-26 experiment, run again on the final spec as one combined call per question, in three option orders. A route counts as right when it matches the label; narrowing properties are the accepted type or folder, a period when the label has one, and "newest" when it has one.
+
+| Option order | Right at 0.6 | Plain sent to another route | Narrowing properties |
+| --- | --- | --- | --- |
+| plain, narrowed, catalog (used) | 66 of 67 | 0 | 16 of 16 |
+| catalog, narrowed, plain | 66 of 67 | 1 | 16 of 16 |
+| narrowed, catalog, plain | 65 of 67 | 1 | 16 of 16 |
+
+The one miss in the used order is a catalog question that went plain (route probability 0.45), which is the safe side. The thresholds stay at 0.6 for narrowed and catalog: 0.5 matched it in the used order but sent three plain questions elsewhere when catalog was listed first, 0.7 and 0.8 lost routes and a narrowing property. The used order is the only one that sent no plain question to another route. A confident yes to a filter whose value comes back as none (a person or tag that is not in the vault) sends the question to plain instead of dropping the filter, which would have widened a count to every source. A wording that asked one set of yes/no questions for both narrowing ("use only…") and catalog filters ("how many articles") dropped the type and period from catalog plans, so the two now have separate questions.
+
+A second set of 30 questions (held-out phrasings, "latest" as a narrowing, as a catalog sort and as a topic word, and rewritten follow-ups) scored 24 correct at 0.6 in the used order with 8 of 8 narrowing properties right. Three of the six misses are catalog questions about people who are not in this vault, which now go plain (the safe side). The others: two plain questions that mention a kind of source ("the saved podcast episodes", "in the transcripts") and so were narrowed (the labels are debatable; a wrong narrowing still widens to the whole vault when it finds nothing), and one follow-up count that went plain. The first set was used to tune the wording and the second was written afterwards, so the second is the fairer estimate.
+
+Run again on 2026-10-28, the used order scored 65 of 67 on the frozen set (one plain question about what a named article says went narrowed at about 0.7) and 23 of 30 on the second set. The same run without the added which-added question gave the same scores, so the drop from 66 and 24 comes from the model between days, not from the spec. The router's score moves by a question or two from one day to the next.
+
+**Catalog answers.** 26 questions with expected results taken from the database's own listing (counts, authors, guests, tags, dates, newest and oldest), not from the catalog code, and approved one by one. A source's type is its own `type` or `source_type` property, else its folder, so the Notes folder holds notes unless a note sets its own type. Tag questions include tags the classifier suggested, and it picks them again whenever a note changes. Run live three times each through the real router and catalog code with the question router on, all 26 pass on all 3 runs (about $0.02 a run). The first live run missed "which book highlights did I add first" (0 of 3): the router read "book highlights" as a kind of source to search inside. A separate yes/no question, "does this ask which source was added first or last", now turns a narrowed route into a catalog one when it answers yes at 0.9 or more and the narrowed and catalog routes together reach 0.6. Rewording the route options instead weakened plain count questions ("how many articles do I have" fell from 0.84 to about 0.55 for catalog), so the options are unchanged.
+
+**Seed evals.** Both evals made from the two flagged turns fail on the saved answers: the catalog answer listed seven notes with no result set, and the attribution check finds the sentence crediting Tim Ferriss with a passage spoken by Niels Hoven (the speaker is found from the stored run). A corrected sentence that names Niels Hoven passes. Live, the eval fails a sentence that cites a guest's passage while naming someone else; a sentence that names nobody passes. The latest-note eval passes on every run (22 of 22 across prompts v13 and v15). The Tim Ferriss attribution eval:
+
+| Setup | Passes | Passes that cited a guest passage |
+| --- | --- | --- |
+| v13, speaker only in a separate field | 1 of 6 | 1 |
+| v15, speaker only in a separate field | 6 of 9 in three batches of 3, 3 and 0; 0 of 5 in a fourth | 2 of the 6 |
+| v15, the same, with one retry when the answer is flagged | 4 of 5 (about 40 s longer when it retries) | 1 |
+| v13, speaker also written at the start of the passage text (used) | 3 of 5 | 2 |
+| v15, speaker also written at the start of the passage text | 3 of 5 | 0 |
+
+A pass where no sentence cites another speaker of the transcript is marked "not exercised": the answer avoided the problem, and the check had nothing to examine. Counted that way, v13 with the label has 2 real passes of 5 and v15 has none, so the speaker rule's passes come mostly from answers that stop citing the guest. About 2 in 5 answers still credit the wrong person, so the 3-of-3 bar is not met. The failing sentences are mostly summary lines ("each recommendation is drawn from Tim's remarks") that cite a guest's passage. Five runs per setting is too few to separate v13 from v15. The retrieval labels now point at the current IDs (see Search). The 85-check list still pins the old IDs, so a local script maps the answers onto the pinned sources before grading.
+
+**85-check list, v13 against v15.** Three runs of the eight questions per prompt with the speaker written in the passage text, graded by the model grader (`gpt-5-mini`, medium reasoning), which scores above a person and was not confirmed by one. Three of the 48 grader replies were malformed and graded again.
+
+| | v13 | v15 |
+| --- | --- | --- |
+| Overall | 220 of 234 (94.0%) | 197 of 222 (88.7%) |
+| Coverage | 103 of 106 (97.2%) | 87 of 96 (90.6%) |
+| Grounding | 94 of 96 (97.9%) | 93 of 94 (98.9%) |
+| Example | 23 of 23 | 17 of 19 |
+| By run | 91.5%, 92.3%, 98.6% | 91.8%, 89.7%, 84.5% |
+
+Grounding is level. v15 covers fewer of the points asked, and the checks under a missing point drop out as not applicable (22 against 9). Its coverage is outside v13's range, so v13 and v14 stay the answer prompts and v15 and v16 stay opt-in. The v16 follow-up read was not run.
 
 ## Cost and speed
 

@@ -42,7 +42,9 @@ class AnswerSettings:
     coverage_checks: int = 0  # finishes that may be sent back for unread chunks of used sources
     max_model_calls: int = 12
     max_seconds: float = 300
-    property_router: bool = True  # count and list questions about the sources skip the loop
+    question_router: bool = True  # every question is routed: catalog, narrowed or plain
+    attribution_retry: bool = False  # send a finish back once when a sentence credits the wrong speaker
+    prompt_version: str | None = None  # a prompt family such as "answer_agent_v15"; None keeps v13 and v14
 
 
 @dataclass(frozen=True)

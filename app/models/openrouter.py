@@ -69,6 +69,8 @@ class OpenRouterClient:
         # Token counts per billed request, for answer receipts; never any request or reply text.
         self.usage_log: list[dict[str, Any]] = []
         self.rate_limit_retries = 0
+        # Dollars booked for each decision-model call; they report cost, not tokens.
+        self.decision_costs: list[float] = []
         # A client serves one answer or one run, so each pinned route is checked once in its life.
         self._checked_routes: dict[tuple[str, str, bool], dict[str, Any]] = {}
 
@@ -234,6 +236,44 @@ class OpenRouterClient:
                                    "seconds": round(self.request_timings[-1][1], 3)})
             return data
         raise ModelClientError("OpenRouter rate limit retries exhausted")
+
+    # A routing call that has not answered by now is dropped and the question goes the plain way.
+    DECISION_TIMEOUT_SECONDS = 15.0
+
+    def decide(self, payload: dict[str, Any], *, worst_case_usd: float) -> dict[str, Any]:
+        """Post one decision request to `/systemone`; the call is booked at its reported dollar cost.
+
+        Until the response reports a cost, and for a call that fails after sending, the booking
+        is `worst_case_usd`. A decision call is never retried: the caller falls back instead.
+        """
+        body = json.dumps(payload).encode("utf-8")
+        http_request = request.Request(
+            self.BASE_URL + "/systemone", data=body, method="POST",
+            headers={"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"})
+        self._reserve([body.decode("utf-8")])
+        started = time.perf_counter()
+        booked = worst_case_usd
+        try:
+            with request.urlopen(http_request, timeout=min(self._timeout(), self.DECISION_TIMEOUT_SECONDS)) as response:
+                data = json.load(response)
+            if not isinstance(data, dict) or isinstance(data.get("error"), dict):
+                raise ModelClientError("OpenRouter decision call returned an error")
+            reported = (data.get("usage") or {}).get("cost")
+            if isinstance(reported, (int, float)) and not isinstance(reported, bool) and reported >= 0:
+                booked = float(reported)
+            return data
+        except error.HTTPError as exc:
+            raise ModelClientError(f"OpenRouter returned HTTP {exc.code}") from None
+        except (error.URLError, TimeoutError, OSError) as exc:
+            raise ModelClientError(f"OpenRouter request failed: {type(exc).__name__}") from None
+        except (ValueError, TypeError):
+            raise ModelClientError("OpenRouter returned invalid JSON") from None
+        finally:
+            self.request_timings.append((str(payload.get("model", "")), time.perf_counter() - started))
+            self.decision_costs.append(booked)
+            self.usage_log.append({"model": str(payload.get("model", "")), "input_tokens": None, "cached_tokens": None,
+                                   "output_tokens": None, "reasoning_tokens": None, "cost_usd": booked,
+                                   "seconds": round(self.request_timings[-1][1], 3)})
 
     @staticmethod
     def _usage(data: dict[str, Any]) -> ModelUsage:

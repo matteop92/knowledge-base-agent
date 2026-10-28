@@ -648,3 +648,43 @@ class HarnessTest(unittest.TestCase):
         self.assertEqual(result.actions[0]["results"][0]["rank"], 1)
         self.assertTrue(result.actions[-1]["sufficient"])
         self.assertEqual(result.inspected, result.citations)
+
+
+class SpeakerInputTests(unittest.TestCase):
+    def inspected_input(self, speaker):
+        import json
+
+        class SpeakerRetriever(FakeRetriever):
+            def read(self, reference, span_index):
+                return super().read(reference, span_index).model_copy(update={"speaker": speaker})
+
+        class CapturingClient(FakeClient):
+            def __init__(self, actions):
+                super().__init__(actions)
+                self.inputs = []
+
+            def generate_json(self, **kwargs):
+                self.inputs.append(json.loads(kwargs["input_text"]))
+                return super().generate_json(**kwargs)
+
+        client = CapturingClient([action_v3("read", reference_id="E1"),
+                                  action_v3("finish", answer="No verified source.", completeness="unsupported",
+                                            sufficient=False, gaps=["none"])])
+        answer_question("Explain", retriever=SpeakerRetriever(), client=client, model=MODEL,
+                        limits=AnswerLimits(max_model_calls=2))
+        return client.inputs[-1]["inspected"][0]["passages"][0]
+
+    def test_a_spoken_passage_is_a_labelled_object(self):
+        self.assertEqual(self.inspected_input("Niels Hoven"),
+                         {"id": "E1.0", "speaker": "Niels Hoven", "text": "Niels Hoven: actual source"})
+
+    def test_a_passage_that_already_starts_with_its_speaker_is_not_labelled_twice(self):
+        from app.agent.harness import passage_entry
+
+        spoken = SourcePassage(document_id="d", run_id="r", source_sha256="a" * 64, root_alias="root", relative_path="n.md",
+                               chunk_id="c", start_char=0, end_char=20, text="**Niels Hoven:** Hello there.",
+                               speaker="Niels Hoven")
+        self.assertEqual(passage_entry("E1.0", spoken)["text"], "**Niels Hoven:** Hello there.")
+
+    def test_a_passage_with_no_speaker_keeps_the_id_and_text_pair(self):
+        self.assertEqual(self.inspected_input(None), ["E1.0", "actual source"])

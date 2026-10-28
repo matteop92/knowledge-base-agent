@@ -97,7 +97,7 @@ def source_author(metadata: object, relative_path: str) -> str:
 
 def search_text(conn: psycopg.Connection, query: str, *, k: int = 10,
                 profile_id: str | None = None, historical_run_id: str | None = None,
-                document_id: str | None = None) -> list[SearchHit]:
+                document_id: str | None = None, document_ids: list[str] | None = None) -> list[SearchHit]:
     _check_k(k)
     if not isinstance(query, str):
         raise StorageError("text query must be a string")
@@ -121,10 +121,11 @@ def search_text(conn: psycopg.Connection, query: str, *, k: int = 10,
             where c.variant=p.variant and c.chunking_version=p.chunking_version
               and {_scope(historical_run_id)}
               and (%(document_id)s::text is null or r.document_id=%(document_id)s)
+              and (%(document_ids)s::text[] is null or r.document_id = any(%(document_ids)s))
               and to_tsvector('simple'::regconfig,c.raw_text) @@ websearch_to_tsquery('simple'::regconfig,%(query)s)
             order by score desc,c.chunk_id,c.run_id limit %(k)s"""
         params = {"query": query, "profile": profile[0], "history": historical_run_id, "k": k,
-                  "document_id": document_id}
+                  "document_id": document_id, "document_ids": document_ids}
         cur.execute(sql, params)
         rows = cur.fetchall()
         if not rows:
@@ -141,7 +142,7 @@ def search_text(conn: psycopg.Connection, query: str, *, k: int = 10,
 def search_vector(conn: psycopg.Connection, vector: list[float], *, spec_id: str,
                   metric: str, k: int = 10, profile_id: str | None = None,
                   historical_run_id: str | None = None,
-                  document_id: str | None = None) -> list[SearchHit]:
+                  document_id: str | None = None, document_ids: list[str] | None = None) -> list[SearchHit]:
     _check_k(k)
     if metric not in OPERATORS:
         raise StorageError("unsupported vector metric")
@@ -171,14 +172,16 @@ def search_vector(conn: psycopg.Connection, vector: list[float], *, spec_id: str
             where c.variant=p.variant and c.chunking_version=p.chunking_version
               and {_scope(historical_run_id)}
               and (%(document_id)s::text is null or r.document_id=%(document_id)s)
+              and (%(document_ids)s::text[] is null or r.document_id = any(%(document_ids)s))
             order by distance asc,c.chunk_id,c.run_id limit %(k)s"""
         cur.execute(sql, {"vector": value, "profile": profile[0], "history": historical_run_id,
-                          "k": k, "document_id": document_id})
+                          "k": k, "document_id": document_id, "document_ids": document_ids})
         return _hits(cur.fetchall())
 
 
 def load_sources(conn: psycopg.Connection) -> list[dict]:
-    """Every active source in the selected profile with its metadata, chunk count and first chunk, in one query."""
+    """Every active source in the selected profile with its metadata, chunk count, first chunk and
+    added and updated times, in one query."""
     with conn.cursor() as cur:
         profile = _profile(cur, None, None)
         cur.execute(f"""select r.document_id, r.run_id, r.source_sha256, d.root_alias, d.relative_path,
@@ -188,7 +191,12 @@ def load_sources(conn: psycopg.Connection) -> list[dict]:
                 (select jsonb_build_object('chunk_id', c.chunk_id, 'source_spans', c.source_spans)
                    from knowledge.chunks c where c.run_id=r.run_id
                    and c.variant=p.variant and c.chunking_version=p.chunking_version
-                   order by (c.source_spans->0->>'start_char')::int, c.chunk_id limit 1)
+                   order by (c.source_spans->0->>'start_char')::int, c.chunk_id limit 1),
+                -- First time the document entered the index: its earliest run, or the capture that wrote it.
+                least((select min(r2.loaded_at) from knowledge.runs r2 where r2.document_id=r.document_id),
+                      (select min(cj.created_at) from knowledge.capture_jobs cj
+                         where cj.vault_path=d.relative_path and cj.status='done')),
+                r.loaded_at
             from knowledge.active_runs ar
             join knowledge.runs r on r.run_id=ar.run_id and r.document_id=ar.document_id
             join knowledge.documents d on d.document_id=r.document_id
@@ -198,4 +206,5 @@ def load_sources(conn: psycopg.Connection) -> list[dict]:
         rows = cur.fetchall()
     keys = ("document_id", "run_id", "source_sha256", "root_alias", "relative_path")
     return [{**dict(zip(keys, row[:5])), "metadata": row[5] if isinstance(row[5], dict) else {},
-             "chunks": int(row[6]), "first_chunk": row[7]} for row in rows]
+             "chunks": int(row[6]), "first_chunk": row[7], "added_at": row[8], "updated_at": row[9]}
+            for row in rows]

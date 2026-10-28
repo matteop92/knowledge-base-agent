@@ -11,6 +11,7 @@ from typing import Protocol
 import psycopg
 
 from app.agent.actions import ACTION_SCHEMA_V3, AgentAction
+from app.agent.attribution import check_attribution
 from app.agent.memory import Memory
 from app.agent.records import AnswerLimits, AnswerResult
 from app.models.client import ModelClient, ModelClientError, ModelSpec
@@ -19,11 +20,24 @@ from app.storage.records import FusedHit, SourcePassage
 
 PROMPT_VERSION = "answer_agent_v13"
 PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / f"{PROMPT_VERSION}.md"
-PROMPT = PROMPT_PATH.read_text(encoding="utf-8")
-# Follow-ups use v14, which adds the conversation and carried evidence; v13 stays the baseline.
-FOLLOWUP_PROMPT_VERSION = "answer_agent_v14"
-FOLLOWUP_PROMPT = (PROMPT_PATH.parent / f"{FOLLOWUP_PROMPT_VERSION}.md").read_text(encoding="utf-8")
 CITATION = re.compile(r"\[(E\d+\.\d+(?:@\d+)?)\]")
+# Prompt families: (new question, follow-up). v15 and v16 add the speaker rule to v13 and v14 and change
+# nothing else; v13 and v14 stay the defaults until the speaker rule has passed its trials.
+PROMPT_FAMILIES = {
+    "answer_agent_v13": ("answer_agent_v13", "answer_agent_v14"),
+    "answer_agent_v14": ("answer_agent_v13", "answer_agent_v14"),
+    "answer_agent_v15": ("answer_agent_v15", "answer_agent_v16"),
+    "answer_agent_v16": ("answer_agent_v15", "answer_agent_v16"),
+}
+
+
+def prompt_family(version: str | None = None) -> tuple[str, str]:
+    """The (new question, follow-up) prompts of a prompt version; no value is the default family."""
+    return PROMPT_FAMILIES[version or PROMPT_VERSION]
+
+
+def load_prompt(version: str) -> str:
+    return (PROMPT_PATH.parent / f"{version}.md").read_text(encoding="utf-8")
 
 
 MAX_CANDIDATES_SHOWN = 20
@@ -38,15 +52,32 @@ class AnswerRetriever(Protocol):
     def read(self, reference: FusedHit, span_index: int, *, offset: int = 0) -> SourcePassage: ...
 
 
+def passage_entry(key: str, passage: SourcePassage) -> list[str] | dict[str, str]:
+    """A passage as the model sees it: `[id, text]`, or labelled fields when a speaker said it.
+
+    The speaker is also written at the start of the text, as in the transcript, unless the passage
+    already starts with it: models follow a name in the text they read better than a separate field.
+    """
+    if passage.speaker:
+        labelled = re.match(rf"\W*{re.escape(passage.speaker)}\W*:", passage.text, re.IGNORECASE)
+        text = passage.text if labelled else f"{passage.speaker}: {passage.text}"
+        return {"id": key, "speaker": passage.speaker, "text": text}
+    return [key, passage.text]
+
+
 def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelClient,
                     model: ModelSpec, limits: AnswerLimits | None = None,
                     reasoning_effort: str | None = None,
                     allow_legacy_actions: bool = False, memory: Memory | None = None,
-                    search_query: str | None = None) -> AnswerResult:
+                    search_query: str | None = None, prompt_version: str | None = None,
+                    attribution_retry: bool = False) -> AnswerResult:
     """All mutable budgets, references, and evidence belong to this invocation.
 
     `memory` carries earlier turns of the conversation; `search_query` replaces the question
-    for the host's first search (a follow-up rewritten to stand on its own).
+    for the host's first search (a follow-up rewritten to stand on its own). `prompt_version` names
+    a prompt family (`PROMPT_FAMILIES`); a follow-up uses the family's follow-up prompt. No value
+    keeps v13 for new questions and v14 for follow-ups. `attribution_retry` sends a finish back once when the
+    attribution check flags a sentence, so the model can name the right speaker (one more model call).
     """
     if not question.strip():
         raise ValueError("question must not be empty")
@@ -59,13 +90,17 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
     best_rank: dict[str, int] = {}
     read_refs: set[str] = set()
     host_search: dict | None = None
-    prompt = FOLLOWUP_PROMPT if memory is not None else PROMPT
+    if prompt_version is not None and prompt_version not in PROMPT_FAMILIES:
+        raise ValueError(f"unknown prompt version: {prompt_version}")
+    family = prompt_family(prompt_version)
+    used_version = family[1] if memory is not None else family[0]
+    prompt = load_prompt(used_version)
     host_query = search_query or question
     # Carried passages count as inspected; new candidates are numbered after their chunks.
     inspected: dict[str, SourcePassage] = dict(memory.carried) if memory else {}
     carried_ids = set(inspected)
     next_ref = memory.chunk_count if memory else 0
-    memory_record = ({**memory.record(), "search_query": host_query, "prompt_version": FOLLOWUP_PROMPT_VERSION}
+    memory_record = ({**memory.record(), "search_query": host_query, "prompt_version": used_version}
                      if memory else None)
     carried_chunks = memory.carried_chunks if memory else set()
     needs: dict[str, dict] = {"N1": {"description": question, "status": "open", "evidence_ids": [], "rationale": None}}
@@ -75,12 +110,17 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
     finish_correction_used = False
     malformed_correction_used = False
     budget_correction_used = False
+    attribution_retry_used = False
     reads_at_coverage_check: int | None = None
     base_schema = ACTION_SCHEMA_V3
     coverage_checks = 0
     queries_run: dict[tuple[str, str], list[str]] = {}
     finalization_reason: str | None = None
+    held: AnswerResult | None = None  # the flagged answer kept while the attribution retry runs
+
     def stopped(reason: str, termination: str) -> AnswerResult:
+        if held is not None:  # the retry failed: the answer already accepted, with its flags, still stands
+            return held.model_copy(update={"model_calls": calls, "elapsed_seconds": time.monotonic() - started})
         return AnswerResult(answer="I could not verify enough source evidence to answer safely.",
                             completeness="unsupported" if not inspected else "partial",
                             citations={}, gaps=[reason], actions=actions, model_calls=calls,
@@ -191,7 +231,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                      for ref in shown()]
         read_evidence = [{"chunk": ref, "title": candidates[ref].hit.title or candidates[ref].hit.relative_path.rsplit("/", 1)[-1],
                           "people": candidates[ref].hit.people,
-                          "passages": [[key, item.text] for key, item in inspected.items()
+                          "passages": [passage_entry(key, item) for key, item in inspected.items()
                                        if key.startswith(ref + ".")]}
                          for ref in candidates if ref in read_refs]
         turn_input = {"question": question}
@@ -199,7 +239,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
             turn_input["conversation"] = memory.turns
             turn_input["earlier_evidence"] = [
                 {"chunk": ref, "title": title,
-                 "passages": [[key, item.text] for key, item in inspected.items()
+                 "passages": [passage_entry(key, item) for key, item in inspected.items()
                               if key in carried_ids and key.startswith(ref + ".")]}
                 for ref, title in memory.chunk_titles.items()]
             if memory.changed:
@@ -469,12 +509,25 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
             completeness = action.completeness or "partial"
             if action.version == 3 and unresolved:
                 private_gaps.extend(f"Unresolved need {key}: {needs[key]['description']}" for key in unresolved)
-            if completeness == "complete" and private_gaps:
-                completeness = "partial"
-            return AnswerResult(answer=action.answer or "", completeness=completeness,
-                                citations={ref: inspected[ref] for ref in action.citation_ids},
-                                gaps=private_gaps, actions=actions, model_calls=calls,
-                                inspected=inspected, needs=needs, finalization_reason=finalization_reason,
-                                host_search=host_search, memory=memory_record,
-                                elapsed_seconds=time.monotonic() - started)
+            flags = check_attribution(action.answer or "", {ref: inspected[ref] for ref in action.citation_ids})
+            flagged_gaps = private_gaps + [flag.gap() for flag in flags]
+            flagged_completeness = "partial" if completeness == "complete" and flagged_gaps else completeness
+            accepted = AnswerResult(answer=action.answer or "", completeness=flagged_completeness,
+                                    prompt_version=used_version, attribution=[flag.record() for flag in flags],
+                                    citations={ref: inspected[ref] for ref in action.citation_ids},
+                                    gaps=flagged_gaps, actions=actions, model_calls=calls, inspected=inspected,
+                                    needs=needs, finalization_reason=finalization_reason, host_search=host_search,
+                                    memory=memory_record, elapsed_seconds=time.monotonic() - started)
+            if (flags and attribution_retry and not attribution_retry_used and not force_finish
+                    and calls < limits.max_model_calls):
+                attribution_retry_used = True
+                held = accepted
+                actions[-1]["rejected"] = "A sentence credits words to the wrong speaker"
+                feedback = ("Before finishing, fix these sentences: " + "; ".join(
+                    f"“{flag.sentence[:200]}” cites a passage spoken by {', '.join(flag.cited_speakers)} "
+                    f"but names {', '.join(flag.named)}" for flag in flags)
+                    + ". Rewrite each so it names the speaker of the passage it cites (for example \"Niels Hoven, on "
+                    "Tim's show, ...\"), or cite a passage the named person said. Change nothing else, then finish again.")
+                continue
+            return accepted
     return stopped("Investigation budget ended before a valid grounded answer.", "exhausted")

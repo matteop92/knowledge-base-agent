@@ -1,5 +1,5 @@
-document_id: 25bb2079-575e-5072-82b9-f866068fd7aa
-source_sha256: 3a372b289b975c4baddc4443e18d462f922657bd0d886a1d8faa1cc38551d564
+document_id: 059ee965-e9a4-56d6-9e00-8ac443cb8c82
+source_sha256: 876d80aec2356e80240b7d89056b23f63973681eb088fde87b1b2eaf31f34c29
 source_title: 'The Tim Ferriss Show Transcripts: How to Teach a 3-Year-Old to Read and Rethinking Education
   — Tim Coaches Niels Hoven of Mentava (#882)'
 questions:
@@ -7,13 +7,13 @@ questions:
   question: Which channels bring Mentava its best customers, and why does Niels think they work?
   expected: supported
   must_find:
-  - start_char: 57437
-    end_char: 57718
+  - start_char: 57431
+    end_char: 57712
     quote: I think our best customers are X, and word of mouth. And I think the reason for both of those
       is that our message gets in front of people who are receptive to hearing it. I would say that a
       big part of our struggle is top of funnel. How do we raise awareness with the right people?
-  - start_char: 58074
-    end_char: 58530
+  - start_char: 58068
+    end_char: 58524
     quote: 'I think people hear that and believe in the mission and because it’s hard to make sophisticated
       product decisions about these nuanced products, they hear the mission and they’re like, okay, this
       is a company that believes in a mission of very accelerated learning, which is something that I
@@ -26,14 +26,14 @@ questions:
   question: Why does Mentava offer a 14-day free trial?
   expected: supported
   must_find:
-  - start_char: 32105
-    end_char: 32460
+  - start_char: 32099
+    end_char: 32454
     quote: Okay. So the point of the 14-day free trial is that we know we are not good at explaining what
       differentiates our software. We think what works best is just get it in the hands of the customer
       and let them try. So I think within 14 days, we think that’s enough time that a customer can figure
       out if this is going to be a good fit for their family or not.
-  - start_char: 32462
-    end_char: 32665
+  - start_char: 32456
+    end_char: 32659
     quote: A very common problem is exactly what happened with Jake where he has a kid who is probably
       not developmentally ready to learn to read. And so we want the parents to recognize that during
       the free trial.
@@ -41,13 +41,13 @@ questions:
   question: What happened when Mentava offered free months for customer referrals?
   expected: supported
   must_find:
-  - start_char: 63977
-    end_char: 64238
+  - start_char: 63971
+    end_char: 64232
     quote: I believe we did as big as, if your friend signs up, we will give them a free month and we
       will give you a free month. So that’s basically, that’s $1,000 user acquisition cost. And we sent
       out coupon codes to our entire customer base, and we got zero referrals.
-  - start_char: 64239
-    end_char: 64559
+  - start_char: 64233
+    end_char: 64553
     quote: Even though we know that customers are actively referring friends, we have a lot of people
       who sign up. I do an intro call with almost every customer who comes on board. And so we know that
       a lot of people came because they saw their friend use it through word of mouth, but the incentives
@@ -57,14 +57,14 @@ questions:
   question: What makes parents reluctant or selective about recommending Mentava to friends?
   expected: supported
   must_find:
-  - start_char: 62972
-    end_char: 63308
+  - start_char: 62966
+    end_char: 63302
     quote: Going from there to word of mouth, we have a lot of parents say to us that they tell their
       friends about it. There’s some reluctance to tell their friends about it, because there’s a certain
       amount of shame around using a $500 a month app. There’s this sort of cultural shame around using
       your resources to allow your kids to get ahead.
-  - start_char: 65550
-    end_char: 65912
+  - start_char: 65544
+    end_char: 65906
     quote: What I’ve heard from the people who do refer their friends is that they’re very selective about
       who they mention it to. They have specific ideas about which of their friends would be receptive,
       and they tell those friends about it. And my theory is that they tell those friends about it anyway
@@ -73,15 +73,15 @@ questions:
   question: How does Tim suggest founders use investor updates to get more help?
   expected: supported
   must_find:
-  - start_char: 55768
-    end_char: 56158
+  - start_char: 55762
+    end_char: 56152
     quote: The reason I mentioned that is that I get probably 10 to 20 investor updates, a month. And
       some of them are super long, yours are not super long. But if you have investor asks, I would put
       them at the very top. I would skip all the updates. I would skip all of the numbers. I would skip
       the runway. I would skip the new hires. I shouldn’t say skip. I would defer. I would put it lower
       down.
-  - start_char: 56324
-    end_char: 56563
+  - start_char: 56318
+    end_char: 56557
     quote: But the vast majority, I don’t have voting rights. So the only way that I can really impart
       influence is by trying to be helpful, but I also am in an inbox with a million other things. So
       having the asks at the very top will get more help.
@@ -90,16 +90,16 @@ questions:
   question: What direct contact does Niels have with new customers?
   expected: supported
   must_find:
-  - start_char: 64343
-    end_char: 64508
+  - start_char: 64337
+    end_char: 64502
     quote: I do an intro call with almost every customer who comes on board. And so we know that a lot
       of people came because they saw their friend use it through word of mouth
 - id: product_opportunity
   question: What did conversations with other parents teach Niels about the product opportunity?
   expected: supported
   must_find:
-  - start_char: 8596
-    end_char: 9345
+  - start_char: 8590
+    end_char: 9339
     quote: And so, other parents noticed what I was doing. They asked me questions about it. I pointed
       them to the same software, and some of them had some success and some of them didn’t. And really
       what I realized as all of this was going on was that the problem was in the design of the software.
@@ -120,18 +120,18 @@ questions:
   kind: multi_section_synthesis
   expected: supported
   must_find:
-  - start_char: 14062
-    end_char: 14393
+  - start_char: 14056
+    end_char: 14387
     quote: This phrasing, unusually fast learners, I would actually just scrap unusually and go straight
       to fast learners. Part of the reason for that is that when I saw this on the website, I was like,
       “Well, what is unusually fast?” Even if I consider my kid fast, maybe unusually fast is what, 1
       out of 100? 1 out of 1,000? And I stumbled.
-  - start_char: 40325
-    end_char: 40497
+  - start_char: 40319
+    end_char: 40491
     quote: Is there any reason to have people sign up and then do the readiness check as opposed to do
       an abbreviated readiness check, a two-minute, “Is your kid ready?” type of quiz?
-  - start_char: 41039
-    end_char: 41634
+  - start_char: 41033
+    end_char: 41628
     quote: 'I really think that selling the parents relief, not just the kid’s speed is a big deal, that
       you don’t have to be the teacher because the 500 can be anchored in a few different ways. $500 a
       month. Is it the same or is it less than a tutor? Well, let’s just say it’s the same.
@@ -141,19 +141,19 @@ questions:
       kid a fish, meaning the teacher is motivating the kid versus you’re teaching the kid to fish, meaning
       the kid is becoming a self-motivated, self-directed learner, then Mentava still wins, even if they’re
       equally effective.'
-  - start_char: 84162
-    end_char: 84375
+  - start_char: 84156
+    end_char: 84369
     quote: So the testimonials, I would 100% test having the testimonials very prominent. And just looking
       at your homepage as a print advertisement effectively, you want to have a clean visual progression
       through the piece.
   useful:
-  - start_char: 78957
-    end_char: 79222
+  - start_char: 78951
+    end_char: 79216
     quote: So instead of get started in the top right, which is that button, and I still, well, it’s replicated
       in another place on the homepage, but it’s, “Is my child ready?” Instead of get started, maybe it
       helps, maybe it doesn’t. Something that’s very easy to split test.
-  - start_char: 102166
-    end_char: 102375
+  - start_char: 102160
+    end_char: 102369
     quote: I mean, for instance, with some of these mock-ups or if you’re testing copy options, I think
       it’s most valuable if it’s on your own website because you control it and you can try to discern
       intent to purchase.
@@ -169,25 +169,25 @@ questions:
   kind: focused_diagnostic
   expected: supported
   must_find:
-  - start_char: 34559
-    end_char: 34802
+  - start_char: 34553
+    end_char: 34796
     quote: What share of failed trials come back like a Jake? And are they prompted three months later
       or are they just told when the kid doesn’t pass the hurdle, try coming back in three months? I guess
       how proactive is the outreach and what percentage?
-  - start_char: 34821
-    end_char: 34853
+  - start_char: 34815
+    end_char: 34847
     quote: There’s zero proactive outreach.
-  - start_char: 40325
-    end_char: 40497
+  - start_char: 40319
+    end_char: 40491
     quote: Is there any reason to have people sign up and then do the readiness check as opposed to do
       an abbreviated readiness check, a two-minute, “Is your kid ready?” type of quiz?
-  - start_char: 40516
-    end_char: 40640
+  - start_char: 40510
+    end_char: 40634
     quote: I like that idea a lot. We’ve been talking about that for a long time, just put the readiness
       check directly on the website.
   useful:
-  - start_char: 78957
-    end_char: 79222
+  - start_char: 78951
+    end_char: 79216
     quote: So instead of get started in the top right, which is that button, and I still, well, it’s replicated
       in another place on the homepage, but it’s, “Is my child ready?” Instead of get started, maybe it
       helps, maybe it doesn’t. Something that’s very easy to split test.
@@ -196,28 +196,28 @@ questions:
   kind: focused_diagnostic
   expected: supported
   must_find:
-  - start_char: 98977
-    end_char: 99570
+  - start_char: 98971
+    end_char: 99564
     quote: Because sure, you can get feedback that is measurable in the forms of clicks and so on, and
       you can use user testing and see how people are reacting to a website, which I think is interesting.
       If you have a webcam on, you can look at their face and where they pause, which is not going to
       be transmitted if you’re only getting click-through data or click data in the case of a heat map,
       let’s say. But when you’re talking to people in person and trying to explain what you do, it’s like,
       do they lean in or do they lean back? Do they follow up with a question or they’re like, oh, interesting.
-  - start_char: 102166
-    end_char: 102375
+  - start_char: 102160
+    end_char: 102369
     quote: I mean, for instance, with some of these mock-ups or if you’re testing copy options, I think
       it’s most valuable if it’s on your own website because you control it and you can try to discern
       intent to purchase.
   useful:
-  - start_char: 100072
-    end_char: 100410
+  - start_char: 100066
+    end_char: 100404
     quote: Or if you give them a paragraph and then two or three people at a bar, you’re just having casual
       conversations with at an event, they all ask about the same little thing that you’ve been discounting
       that has been a minor cameo in your messaging as opposed to the leading headline. And you’re like,
       you know what? Maybe I should test that.
-  - start_char: 104702
-    end_char: 104973
+  - start_char: 104696
+    end_char: 104967
     quote: But these are all different tentacles that are all out probing that bring information back
       to the central brain that then determines which I want to split test in a place with higher stakes,
       but better signaling for purchase intention, which would be your website, right?

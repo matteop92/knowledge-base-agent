@@ -22,5 +22,19 @@ class ReceiptTests(unittest.TestCase):
                          ("Knowledge/b.md", ""))
 
 
+    def test_receipt_stores_each_passage_speaker_and_each_cited_documents_speakers(self):
+        spoken = passage("d1", "Knowledge/a.md").model_copy(update={"speaker": "Niels Hoven",
+                                                                       "run_speakers": ["Tim Ferriss", "Niels Hoven"]})
+        cited = {"E1.0": spoken, "E2.0": passage("d2", "Knowledge/b.md")}
+        result = AnswerResult(answer="A [E1.0] B [E2.0]", completeness="complete", citations=cited, gaps=[],
+                              actions=[], model_calls=1, inspected=dict(cited), needs={}, elapsed_seconds=0.1,
+                              routing={"route": "plain"})
+        receipt = build_receipt(result, {}, "Vault")
+        self.assertEqual(receipt["citations"]["E1.0"]["speaker"], "Niels Hoven")
+        self.assertIsNone(receipt["citations"]["E2.0"]["speaker"])
+        self.assertEqual(receipt["speakers"], {"d1": ["Tim Ferriss", "Niels Hoven"]})
+        self.assertEqual(receipt["routing"], {"route": "plain"})
+
+
 if __name__ == "__main__":
     unittest.main()
