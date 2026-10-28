@@ -24,7 +24,7 @@ def run(scenario: str):
 class DesktopListTests(unittest.TestCase):
     def test_one_card_per_type_with_the_kicker_text(self) -> None:
         cards = run("sevenCards")
-        self.assertEqual([card["kicker"] for card in cards], ["Book · 2015", "86 highlights", "Post", "Note", "Transcript",
+        self.assertEqual([card["kicker"] for card in cards], ["Book · 2015", "Highlights", "Post", "Note", "Transcript",
                                                               "Article · example.org", "Quote"])
         self.assertEqual([card["cls"].split()[1] for card in cards],
                          ["s-cover", "s-cover", "s-post", "s-note", "s-transcript", "s-article", "s-quote"])

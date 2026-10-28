@@ -58,9 +58,6 @@ class Conn:
 
     def execute(self, sql, params=()):
         sql = " ".join(sql.split())
-        if "jsonb_array_elements" in sql and "'highlight'" in sql:
-            self.counted = params[0]  # only highlights sources are counted
-            return Result([(IDS["highlights"], 3)])
         if "jsonb_array_elements" in sql:
             return Result([(IDS["quote"], "Be the change.")])
         if sql.startswith("select d.relative_path"):
@@ -93,12 +90,9 @@ class ListTests(unittest.TestCase):
         self.assertEqual(rows[IDS["highlights"]]["tags"], ["craft"])
         self.assertEqual(rows[IDS["article"]]["source_name"], "example.org")
 
-    def test_only_highlights_carry_a_count_and_only_quotes_a_quote(self) -> None:
-        conn = Conn()
-        rows = self.listed(conn)
-        self.assertEqual(conn.counted, ["run-highlights"])
-        self.assertEqual(rows[IDS["highlights"]]["highlight_count"], 3)
-        self.assertEqual(sum("highlight_count" in item for item in rows.values()), 1)
+    def test_only_quotes_carry_a_quote_text(self) -> None:
+        rows = self.listed()
+        self.assertNotIn("highlight_count", rows[IDS["highlights"]])
         self.assertEqual(rows[IDS["quote"]]["quote_text"], "Be the change.")
         self.assertEqual(sum("quote_text" in item for item in rows.values()), 1)
 

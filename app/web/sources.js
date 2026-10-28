@@ -45,9 +45,6 @@
 
   const kicker = (source) => {
     if (source.type === "book") return source.book_year ? `Book · ${source.book_year}` : "Book";
-    if (source.type === "highlights") {
-      return source.highlight_count ? plural(source.highlight_count, "highlight", "highlights") : "Highlights";
-    }
     return KICKERS[source.type] || "Note";
   };
 

@@ -110,7 +110,7 @@ const row = (i, type, title, extra = {}) => ({ id: `id-${i}`, type, title, autho
   description: null, obsidian_url: "obsidian://open?vault=V&file=a.md", opens_in_obsidian: type === "book", ...extra });
 const mixed = () => [
   row(1, "book", "Book title", { authors: ["Ada Stone"], book_year: "2015" }),
-  row(2, "highlights", "Highlights title", { authors: ["Ada Stone"], highlight_count: 86 }),
+  row(2, "highlights", "Highlights title", { authors: ["Ada Stone"] }),
   row(3, "post", "Post title", { platform: "linkedin", source_name: "LinkedIn", authors: ["Cy Lane"], tags: ["x", "z"] }),
   row(4, "note", "Note title", { authors: ["Ben Hart"], tags: ["y"] }),
   row(5, "transcript", "Transcript title", { platform: "podcast", source_name: "Show Alpha", authors: ["Ben Hart"], guests: ["Ada Stone"] }),

@@ -27,13 +27,6 @@ DETAIL_SQL = f"""select d.relative_path, {LABEL_METADATA}, coalesce(r.parsed->'b
     join knowledge.corpus_state s on s.profile_id=a.profile_id
     where r.document_id=%s"""
 
-# Highlights per document, counted only for the runs of highlights sources (counting all runs would read every
-# run's full parsed JSON).
-HIGHLIGHT_COUNTS_SQL = """select r.document_id, count(*)
-    from knowledge.runs r cross join lateral jsonb_array_elements(coalesce(r.parsed->'blocks', '[]'::jsonb)) b
-    where r.run_id = any(%s) and b->>'kind'='highlight' and coalesce(b->>'content_role', 'source')='source'
-    group by r.document_id"""
-
 # The text of quote sources, which the cards show in full.
 QUOTE_TEXT_SQL = """select r.document_id, string_agg(b->>'raw_text', E'\\n\\n' order by (b->>'index')::int)
     from knowledge.runs r cross join lateral jsonb_array_elements(coalesce(r.parsed->'blocks', '[]'::jsonb)) b
@@ -109,15 +102,11 @@ class SourceStore:
             sources = to_sources(rows)
             facts = [card_facts(row["metadata"], row["relative_path"], source.added_at)
                      for row, source in zip(rows, sources)]
-            runs = {kind: [row["run_id"] for row, fact in zip(rows, facts) if fact["type"] == kind]
-                    for kind in ("highlights", "quote")}
-            counts = dict(conn.execute(HIGHLIGHT_COUNTS_SQL, (runs["highlights"],)).fetchall()) if runs["highlights"] else {}
-            quotes = dict(conn.execute(QUOTE_TEXT_SQL, (runs["quote"],)).fetchall()) if runs["quote"] else {}
+            quote_runs = [row["run_id"] for row, fact in zip(rows, facts) if fact["type"] == "quote"]
+            quotes = dict(conn.execute(QUOTE_TEXT_SQL, (quote_runs,)).fetchall()) if quote_runs else {}
         result = []
         for row, source, fact in zip(rows, sources, facts):
             item = self._header(source, row["metadata"])
-            if fact["type"] == "highlights" and source.document_id in counts:
-                item["highlight_count"] = int(counts[source.document_id])
             if fact["type"] == "quote" and quotes.get(source.document_id):
                 item["quote_text"] = quotes[source.document_id].strip()
             result.append(item)
