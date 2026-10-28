@@ -104,14 +104,17 @@ def check_attribution(check: dict, receipt: dict, lookup: Lookup | None = None) 
                     speaker = lookup(passage["run_id"], passage["start_char"])
                 except LookupError as exc:
                     return CheckResult(False, str(exc))
-            if not speaker or fold(speaker) == person:
+            if not speaker:
+                continue
+            said_by = list(dict.fromkeys([speaker, *(passage.get("passage_speakers") or [])]))
+            if any(fold(name) == person for name in said_by):
                 continue
             examined += 1
             known = list(dict.fromkeys([check["person"], speaker, *(passage.get("run_speakers") or []),
                                         *(receipt.get("speakers") or {}).get(passage.get("document_id"), [])]))
             named = named_speakers(sentence, known)
-            if named and speaker not in named:
-                failures.append(f"{ref} was said by {speaker}, but the sentence names {', '.join(named)}: {sentence[:120]}")
+            if named and not set(named) & set(said_by):
+                failures.append(f"{ref} was said by {', '.join(said_by)}, but the sentence names {', '.join(named)}: {sentence[:120]}")
     if failures:
         return CheckResult(False, "; ".join(failures))
     if not examined:

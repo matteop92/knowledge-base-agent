@@ -11,7 +11,7 @@ from pathlib import Path
 
 import psycopg
 
-from app.agent.harness import PROMPT_FAMILIES, PROMPT_PATH, PROMPT_VERSION, answer_question, load_prompt
+from app.agent.harness import PROMPT_FAMILIES, PROMPT_PATH, PROMPT_VERSION, answer_question, load_prompt, prompt_family
 from app.agent.actions import ACTION_SCHEMA_V3
 from app.agent.records import AnswerLimits
 from app.models.client import ModelClientError, ModelSpec
@@ -103,12 +103,13 @@ def main(argv: list[str] | None = None) -> int:
             hashes = dict(conn.execute("""select r.document_id,r.source_sha256 from knowledge.runs r
                 join knowledge.active_runs ar on ar.run_id=r.run_id
                 join knowledge.corpus_state state on state.profile_id=ar.profile_id""").fetchall())
+            prompt_version = prompt_family(args.prompt_version)[0]
             metadata = {"model": args.model, "reasoning_effort": args.reasoning_effort,
                         "generation_route": generation_endpoint, "embedding_route": embedding_endpoint,
                         "embedding_spec_id": sid, "source_revisions": hashes,
-                        "prompt_version": PROMPT_FAMILIES[args.prompt_version][0],
-                        "prompt_sha256": hashlib.sha256(load_prompt(PROMPT_FAMILIES[args.prompt_version][0]).encode("utf-8")).hexdigest(),
-                        "prompt_file_sha256": hashlib.sha256((PROMPT_PATH.parent / f"{PROMPT_FAMILIES[args.prompt_version][0]}.md").read_bytes()).hexdigest(),
+                        "prompt_version": prompt_version,
+                        "prompt_sha256": hashlib.sha256(load_prompt(prompt_version).encode("utf-8")).hexdigest(),
+                        "prompt_file_sha256": hashlib.sha256((PROMPT_PATH.parent / f"{prompt_version}.md").read_bytes()).hexdigest(),
                         "action_schema_version": 3,
                         "action_schema_sha256": hashlib.sha256(json.dumps(ACTION_SCHEMA_V3, sort_keys=True).encode()).hexdigest(),
                         "budget_profile": args.budget_profile,

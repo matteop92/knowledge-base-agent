@@ -23,9 +23,17 @@ PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / f"{PROMPT_VERSIO
 CITATION = re.compile(r"\[(E\d+\.\d+(?:@\d+)?)\]")
 # Prompt families: (new question, follow-up). v15 and v16 add the speaker rule to v13 and v14 and change
 # nothing else; v13 and v14 stay the defaults until the speaker rule has passed its trials.
-PROMPT_FAMILIES = {"answer_agent_v13": ("answer_agent_v13", "answer_agent_v14"),
-                   "answer_agent_v15": ("answer_agent_v15", "answer_agent_v16")}
-PROMPT_FAMILIES |= {followup: family for family in list(PROMPT_FAMILIES.values()) for followup in family[1:]}
+PROMPT_FAMILIES = {
+    "answer_agent_v13": ("answer_agent_v13", "answer_agent_v14"),
+    "answer_agent_v14": ("answer_agent_v13", "answer_agent_v14"),
+    "answer_agent_v15": ("answer_agent_v15", "answer_agent_v16"),
+    "answer_agent_v16": ("answer_agent_v15", "answer_agent_v16"),
+}
+
+
+def prompt_family(version: str | None = None) -> tuple[str, str]:
+    """The (new question, follow-up) prompts of a prompt version; no value is the default family."""
+    return PROMPT_FAMILIES[version or PROMPT_VERSION]
 
 
 def load_prompt(version: str) -> str:
@@ -84,7 +92,7 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
     host_search: dict | None = None
     if prompt_version is not None and prompt_version not in PROMPT_FAMILIES:
         raise ValueError(f"unknown prompt version: {prompt_version}")
-    family = PROMPT_FAMILIES[prompt_version or PROMPT_VERSION]
+    family = prompt_family(prompt_version)
     used_version = family[1] if memory is not None else family[0]
     prompt = load_prompt(used_version)
     host_query = search_query or question
@@ -108,7 +116,11 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
     coverage_checks = 0
     queries_run: dict[tuple[str, str], list[str]] = {}
     finalization_reason: str | None = None
+    held: AnswerResult | None = None  # the flagged answer kept while the attribution retry runs
+
     def stopped(reason: str, termination: str) -> AnswerResult:
+        if held is not None:  # the retry failed: the answer already accepted, with its flags, still stands
+            return held.model_copy(update={"model_calls": calls, "elapsed_seconds": time.monotonic() - started})
         return AnswerResult(answer="I could not verify enough source evidence to answer safely.",
                             completeness="unsupported" if not inspected else "partial",
                             citations={}, gaps=[reason], actions=actions, model_calls=calls,
@@ -498,9 +510,18 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
             if action.version == 3 and unresolved:
                 private_gaps.extend(f"Unresolved need {key}: {needs[key]['description']}" for key in unresolved)
             flags = check_attribution(action.answer or "", {ref: inspected[ref] for ref in action.citation_ids})
+            flagged_gaps = private_gaps + [flag.gap() for flag in flags]
+            flagged_completeness = "partial" if completeness == "complete" and flagged_gaps else completeness
+            accepted = AnswerResult(answer=action.answer or "", completeness=flagged_completeness,
+                                    prompt_version=used_version, attribution=[flag.record() for flag in flags],
+                                    citations={ref: inspected[ref] for ref in action.citation_ids},
+                                    gaps=flagged_gaps, actions=actions, model_calls=calls, inspected=inspected,
+                                    needs=needs, finalization_reason=finalization_reason, host_search=host_search,
+                                    memory=memory_record, elapsed_seconds=time.monotonic() - started)
             if (flags and attribution_retry and not attribution_retry_used and not force_finish
                     and calls < limits.max_model_calls):
                 attribution_retry_used = True
+                held = accepted
                 actions[-1]["rejected"] = "A sentence credits words to the wrong speaker"
                 feedback = ("Before finishing, fix these sentences: " + "; ".join(
                     f"“{flag.sentence[:200]}” cites a passage spoken by {', '.join(flag.cited_speakers)} "
@@ -508,14 +529,5 @@ def answer_question(question: str, *, retriever: AnswerRetriever, client: ModelC
                     + ". Rewrite each so it names the speaker of the passage it cites (for example \"Niels Hoven, on "
                     "Tim's show, ...\"), or cite a passage the named person said. Change nothing else, then finish again.")
                 continue
-            private_gaps.extend(flag.gap() for flag in flags)
-            if completeness == "complete" and private_gaps:
-                completeness = "partial"
-            return AnswerResult(answer=action.answer or "", completeness=completeness, prompt_version=used_version,
-                                attribution=[flag.record() for flag in flags],
-                                citations={ref: inspected[ref] for ref in action.citation_ids},
-                                gaps=private_gaps, actions=actions, model_calls=calls,
-                                inspected=inspected, needs=needs, finalization_reason=finalization_reason,
-                                host_search=host_search, memory=memory_record,
-                                elapsed_seconds=time.monotonic() - started)
+            return accepted
     return stopped("Investigation budget ended before a valid grounded answer.", "exhausted")

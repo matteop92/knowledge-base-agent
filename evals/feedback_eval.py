@@ -114,6 +114,7 @@ def run_evals(entries: list[dict], *, answer: Answer, route: Route, repeats: int
                 continue
             kind = entry["check"]["kind"]
             receipt: dict = {}
+            cost: float | None = None  # set once a call has billed, so a failing check keeps the real cost
             try:
                 if kind == "route":
                     routing, cost = route(entry["question"])
@@ -122,8 +123,8 @@ def run_evals(entries: list[dict], *, answer: Answer, route: Route, repeats: int
                     routing = receipt.get("routing")
                 outcome = run_check(entry, receipt, routing, lookup)
             except Exception as exc:  # noqa: BLE001 - a failed call is a failed run
-                # An answer that failed after billing carries its cost; otherwise count the reserve.
-                cost = float(getattr(exc, "cost_usd", reserve_usd))
+                # A failed answer carries its cost, a failed check keeps the answer's; otherwise count the reserve.
+                cost = float(getattr(exc, "cost_usd", reserve_usd if cost is None else cost))
                 outcome, routing = CheckResult(False, f"error: {type(exc).__name__}"), None
             spent += Decimal(str(cost))
             results[entry["id"]].append({"repeat": repeat, "passed": outcome.passed, "detail": outcome.detail,
@@ -263,11 +264,11 @@ def run_command(args) -> int:
 
     summary = run_evals(entries, answer=answer, route=route, repeats=args.repeats, max_usd=args.max_usd,
                         reserve_usd=args.reserve_usd, lookup=speaker_lookup(connect_runtime), save=save)
-    from app.agent.harness import PROMPT_FAMILIES, PROMPT_VERSION, load_prompt
+    from app.agent.harness import load_prompt, prompt_family
     from app.agent.router import SPEC_SHA256, SPEC_VERSION
     import hashlib
 
-    version = PROMPT_FAMILIES[settings.prompt_version or PROMPT_VERSION][0]
+    version = prompt_family(settings.prompt_version)[0]
     summary |= {"config": overrides, "prompt_version": version,
                 "prompt_sha256": hashlib.sha256(load_prompt(version).encode()).hexdigest(),
                 "router_spec": SPEC_VERSION, "router_spec_sha256": SPEC_SHA256}

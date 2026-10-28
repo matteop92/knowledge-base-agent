@@ -254,6 +254,12 @@ def read_passage(conn: psycopg.Connection, *, document_id: str, run_id: str,
     return passage_from_chunk(chunk, start_char, end_char)
 
 
+# A parsed speaker-turn block `b` as the {start_char, end_char, speaker} object `speaker_at` reads.
+TURN_JSON = """jsonb_build_object('start_char', (b->'span'->>'start_char')::int,
+                    'end_char', (b->'span'->>'end_char')::int, 'speaker', b->>'speaker')"""
+TURN_START = "(b->'span'->>'start_char')::int"
+
+
 def read_chunk(conn: psycopg.Connection, *, document_id: str, run_id: str, source_sha256: str,
                chunk_id: str) -> dict:
     """The text of every source span of one published chunk, in one query.
@@ -274,9 +280,7 @@ def read_chunk(conn: psycopg.Connection, *, document_id: str, run_id: str, sourc
                     where (gap->'span'->>'start_char')::int < (span->>'end_char')::int
                       and (span->>'start_char')::int < (gap->'span'->>'end_char')::int)),
             -- Speaker turns touching the chunk, so a passage takes the speaker of the turn it starts in.
-            (select coalesce(jsonb_agg(jsonb_build_object('start_char', (b->'span'->>'start_char')::int,
-                    'end_char', (b->'span'->>'end_char')::int, 'speaker', b->>'speaker')
-                    order by (b->'span'->>'start_char')::int), '[]'::jsonb)
+            (select coalesce(jsonb_agg(""" + TURN_JSON + """ order by """ + TURN_START + """), '[]'::jsonb)
                 from jsonb_array_elements(coalesce(r.parsed->'blocks', '[]'::jsonb)) b
                 where b->>'kind'='speaker_turn' and exists (
                     select 1 from jsonb_array_elements(c.source_spans) span
@@ -340,7 +344,15 @@ def passage_from_chunk(chunk: dict, start_char: int, end_char: int) -> SourcePas
                          source_sha256=chunk["source_sha256"], root_alias=chunk["root_alias"],
                          relative_path=chunk["relative_path"], chunk_id=chunk["chunk_id"],
                          start_char=start_char, end_char=end_char, text=text,
-                         speaker=speaker_at(chunk, start_char), run_speakers=chunk.get("speakers") or None)
+                         speaker=speaker_at(chunk, start_char),
+                         passage_speakers=speakers_between(chunk, start_char, end_char) or None,
+                         run_speakers=chunk.get("speakers") or None)
+
+
+def speakers_between(chunk: dict, start_char: int, end_char: int) -> list[str]:
+    """Everyone whose turn overlaps [start_char, end_char), in order, from a `read_chunk` result."""
+    return list(dict.fromkeys(turn["speaker"] for turn in chunk.get("turns") or []
+                              if turn["start_char"] < end_char and start_char < turn["end_char"]))
 
 
 def speaker_at(chunk: dict, position: int) -> str | None:
@@ -358,9 +370,8 @@ def run_turns(conn: psycopg.Connection, run_id: str) -> list[dict] | None:
 
     Receipts saved before passages carried a speaker use this to find who spoke a cited passage.
     """
-    row = conn.execute("""select coalesce(jsonb_agg(jsonb_build_object('start_char', (b->'span'->>'start_char')::int,
-            'end_char', (b->'span'->>'end_char')::int, 'speaker', b->>'speaker')
-            order by (b->'span'->>'start_char')::int) filter (where b->>'kind'='speaker_turn'), '[]'::jsonb)
+    row = conn.execute("""select coalesce(jsonb_agg(""" + TURN_JSON + """ order by """ + TURN_START + """)
+            filter (where b->>'kind'='speaker_turn'), '[]'::jsonb)
         from knowledge.runs r left join lateral jsonb_array_elements(coalesce(r.parsed->'blocks', '[]'::jsonb)) b on true
         where r.run_id=%s group by r.run_id""", (run_id,)).fetchone()
     return row[0] if row else None

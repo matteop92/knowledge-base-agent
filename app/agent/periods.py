@@ -26,6 +26,10 @@ class Period:
     field: str  # "date" (the note's own date) or "added" (when it entered the index)
     label: str  # for the scope line, e.g. "from September 2026"
 
+    def record(self) -> dict[str, str]:
+        """The period as stored in a receipt."""
+        return {"start": self.start, "end": self.end, "field": self.field}
+
     def contains(self, day: str | None) -> bool:
         return bool(day) and self.start <= day[:10] <= self.end
 

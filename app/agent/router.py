@@ -57,7 +57,7 @@ class Narrowing:
             if getattr(self, name):
                 data[name] = getattr(self, name)
         if self.period:
-            data["period"] = {"start": self.period.start, "end": self.period.end, "field": self.period.field}
+            data["period"] = self.period.record()
         return data
 
 
@@ -181,7 +181,7 @@ def _flagged(answers: dict[str, Any], flag: str, value: str) -> str | None:
     chosen = _chosen(answers, value)
     # A confident yes with no value would silently widen a count or list to every source. A weak yes is
     # ignored (the model says yes to filters it then cannot fill about as often as it is right).
-    if chosen is None and answers[flag] >= SPEC["thresholds"]["strong_flag"]:
+    if chosen is None and _strongly_yes(answers, flag):
         raise PlanError(f"{flag} was yes but {value} named nothing")
     return chosen
 

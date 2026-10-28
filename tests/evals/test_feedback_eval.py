@@ -211,6 +211,26 @@ class RunTests(unittest.TestCase):
         self.assertEqual(summary["evals"]["route-1"]["passes"], 0)
         self.assertIn("RuntimeError", summary["evals"]["route-1"]["details"][0])
 
+    def test_a_failure_is_charged_what_the_call_cost_and_a_failed_check_keeps_the_billed_answer(self):
+        class Billed(Exception):
+            cost_usd = 0.4
+
+        def failed_answer(question):
+            raise Billed()
+
+        entry = [{"id": "a", "question": "Q", "approved": True,
+                  "check": {"kind": "attribution", "document": "ep", "person": "Tim Ferriss"}}]
+        summary = run_evals(entry, answer=failed_answer, route=failed_answer, repeats=1, max_usd=Decimal("5"),
+                            reserve_usd=Decimal("0.1"))
+        self.assertEqual(Decimal(summary["spent_usd"]), Decimal("0.4"))
+
+        def billed_then_broken_check(question):
+            return {"answer": "x [E1.0]", "citations": {"E1.0": object()}}, 0.3  # object() breaks the check after billing
+
+        summary = run_evals(entry, answer=billed_then_broken_check, route=failed_answer, repeats=1, max_usd=Decimal("5"),
+                            reserve_usd=Decimal("0.1"))
+        self.assertEqual((summary["evals"]["a"]["passes"], Decimal(summary["spent_usd"])), (0, Decimal("0.3")))
+
     def test_compare_lists_every_eval_once_with_both_pass_rates(self):
         first = self.run_evals(iter([["d1"]] * 3))
         second = self.run_evals(iter([["d1"], ["x"], ["x"]]))

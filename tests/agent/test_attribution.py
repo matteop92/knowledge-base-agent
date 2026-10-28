@@ -4,8 +4,10 @@ import unittest
 
 from app.agent.attribution import check_attribution, named_speakers, split_sentences
 from app.agent.harness import answer_question
-from app.models.client import GenerationResult, ModelSpec
+from app.agent.records import AnswerLimits
+from app.models.client import GenerationResult, ModelClientError, ModelSpec
 from app.storage.records import FusedHit, SearchHit, SourcePassage
+from app.storage.retrieval import speakers_between
 from tests.agent.test_actions import action_v3
 
 MODEL = ModelSpec(provider="fake", model_id="fake", model_version="1")
@@ -62,6 +64,25 @@ class AttributionTests(unittest.TestCase):
         unlabelled = passage(None, SPEAKERS)
         self.assertEqual(self.flags("Tim says so [E1.0].", **{"E1.0": unlabelled}), [])
 
+    def test_a_passage_that_runs_across_two_speakers_credits_either(self):
+        both = passage("Tim Ferriss", SPEAKERS).model_copy(update={"passage_speakers": ["Tim Ferriss", "Niels Hoven"]})
+        self.assertEqual(self.flags("Niels Hoven says platforms hire slowly [E1.2].", **{"E1.2": both}), [])
+        self.assertEqual(self.flags("Tim says platforms hire slowly [E1.2].", **{"E1.2": both}), [])
+        self.assertEqual(len(self.flags("Tim says so [E1.2].", **{"E1.2": NIELS})), 1)
+
+    def test_speakers_between_lists_every_overlapping_turn_once(self):
+        chunk = {"turns": [{"start_char": 0, "end_char": 10, "speaker": "Tim Ferriss"},
+                           {"start_char": 10, "end_char": 20, "speaker": "Niels Hoven"},
+                           {"start_char": 20, "end_char": 30, "speaker": "Tim Ferriss"}]}
+        self.assertEqual(speakers_between(chunk, 5, 15), ["Tim Ferriss", "Niels Hoven"])
+        self.assertEqual(speakers_between(chunk, 10, 20), ["Niels Hoven"])
+        self.assertEqual(speakers_between({}, 0, 5), [])
+
+    def test_a_first_name_two_speakers_share_names_neither(self):
+        shared = ["Tim Ferriss", "Tim Cook"]
+        self.assertEqual(named_speakers("Tim says so", shared), [])
+        self.assertEqual(named_speakers("Tim Cook says so", shared), ["Tim Cook"])
+
     def test_citations_after_the_full_stop_stay_with_their_sentence(self):
         sentences = split_sentences("Tim notes the first point. [E1.2] Niels adds a second one. [E1.3]")
         self.assertEqual(sentences, ["Tim notes the first point [E1.2].", "Niels adds a second one [E1.3]."])
@@ -80,7 +101,10 @@ class FakeClient:
 
     def generate_json(self, **kwargs):
         self.prompts.append(kwargs["system_prompt"])
-        return GenerationResult(data=next(self.actions), model=MODEL)
+        item = next(self.actions)
+        if isinstance(item, Exception):
+            raise item
+        return GenerationResult(data=item, model=MODEL)
 
 
 class FakeRetriever:
@@ -127,6 +151,18 @@ class HarnessCheckTests(unittest.TestCase):
                            citation_ids=["E1.0"], completeness="complete", sufficient=True)])
         result = answer_question("Explain", retriever=FakeRetriever(), client=twice, model=MODEL, attribution_retry=True)
         self.assertEqual((result.completeness, len(result.gaps), result.model_calls), ("partial", 1, 3))
+
+    def test_no_retry_is_sent_when_the_call_budget_is_spent(self):
+        result = answer_question("Explain", retriever=FakeRetriever(), client=FakeClient(finish("Tim says so [E1.0].")),
+                                 model=MODEL, limits=AnswerLimits(max_model_calls=2), attribution_retry=True)
+        self.assertEqual((result.completeness, result.model_calls, len(result.gaps)), ("partial", 2, 1))
+
+    def test_a_failed_retry_keeps_the_answer_already_accepted_with_its_flag(self):
+        client = FakeClient(finish("Tim says so [E1.0].") + [ModelClientError("OpenRouter structured output was incomplete (finish=error)")])
+        result = answer_question("Explain", retriever=FakeRetriever(), client=client, model=MODEL, attribution_retry=True)
+        self.assertEqual((result.answer, result.completeness, result.model_calls), ("Tim says so [E1.0].", "partial", 3))
+        self.assertEqual(len(result.gaps), 1)
+        self.assertEqual(result.attribution[0]["named"], ["Tim Ferriss"])
 
     def test_the_retry_is_off_by_default(self):
         result = answer_question("Explain", retriever=FakeRetriever(), client=FakeClient(finish("Tim says so [E1.0].")),

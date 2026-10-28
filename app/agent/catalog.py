@@ -69,7 +69,7 @@ class CatalogPlan:
         if self.sort != "none":
             data["sort"] = self.sort
         if self.period:
-            data["period"] = {"start": self.period.start, "end": self.period.end, "field": self.period.field}
+            data["period"] = self.period.record()
         return data
 
 
