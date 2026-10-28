@@ -94,7 +94,7 @@
     const row = h("div", "s-kicker-row");
     row.append(h("span", "s-kicker", kicker(source)));
     if (source.opens_in_obsidian) {
-      const out = icon("out");
+      const out = icon("upright");
       out.classList.add("s-out");
       row.append(out);
     }
@@ -228,7 +228,11 @@
 
   function renderMenuTriggers() {
     const host = $("sources-menus");
-    host.replaceChildren();
+    // Built once, so the trigger a person is on keeps keyboard focus (and no ring appears on a mouse click).
+    if (host.children.length) {
+      for (const trigger of host.children) trigger.setAttribute("aria-expanded", view.menu === trigger.dataset.menu ? "true" : "false");
+      return;
+    }
     for (const [key, label] of MENUS) {
       const trigger = h("button", "smenu-trigger");
       trigger.type = "button";
@@ -248,9 +252,6 @@
     view.menuTrigger = trigger;
     renderMenuTriggers();
     renderMenuPanel();
-    const fresh = document.querySelector(`.smenu-trigger[data-menu="${key}"]`);
-    view.menuTrigger = fresh;
-    if (fresh) fresh.focus();
   }
 
   function closeMenu(returnFocus) {
@@ -265,14 +266,19 @@
   const MENU_PICK = { types: "type", tags: "tag", people: "person" };
   const MENU_EMPTY = "Nothing to filter by";
 
-  function menuRow(row, onPick) {
+  // The marker at the left of a row: an empty ring, filled green with a check once chosen (a dot for a single choice).
+  function marker(radio) {
+    const mark = h("span", radio ? "smenu-mark is-radio" : "smenu-mark");
+    if (!radio) mark.append(icon("check"));
+    return mark;
+  }
+
+  function menuRow(row, onPick, radio) {
     const button = h("button", "smenu-row");
     button.type = "button";
     button.setAttribute("aria-pressed", row.selected ? "true" : "false");
     if (row.selected) button.classList.add("is-selected");
-    const check = icon("check");
-    check.classList.add("smenu-check");
-    button.append(check, h("span", "smenu-name", row.label), h("span", "smenu-count", String(row.count)));
+    button.append(marker(radio), h("span", "smenu-name", row.label), h("span", "smenu-count", String(row.count)));
     button.addEventListener("click", onPick);
     return button;
   }
@@ -292,7 +298,7 @@
           setFilter({ ...view.filter, date: row.key === "any" ? null : { preset: row.key } });
           const fresh = $("sources-menu-panel").querySelector(".smenu-list");
           if (fresh && fresh.children[position]) fresh.children[position].focus({ preventScroll: true });
-        });
+        }, true);
         list.append(button);
       }
       panel.append(list);
@@ -589,9 +595,7 @@
       button.dataset.focus = `person:${row.value}`;
       button.setAttribute("aria-pressed", row.selected ? "true" : "false");
       button.classList.toggle("is-selected", row.selected);
-      const check = icon("check");
-      check.classList.add("smenu-check");
-      button.append(check, h("span", "smenu-name", row.label), h("span", "f-count", String(row.count)));
+      button.append(marker(false), h("span", "smenu-name", row.label), h("span", "f-count", String(row.count)));
       button.addEventListener("click", () => {
         const token = { kind: "person", value: row.value };
         setFilter(row.selected ? F.removeToken(view.filter, token) : F.addToken(view.filter, token));

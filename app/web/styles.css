@@ -630,12 +630,16 @@ span.pick-tag { background: var(--paper); box-shadow: 0 0 0 1px rgba(29, 28, 26,
 .smenu-row { background: transparent; min-height: 32px; border-radius: 8px; }
 .smenu-row:hover:not(:disabled) { background: var(--row-active); }
 .smenu-row.is-selected, .smenu-row.is-selected:hover:not(:disabled) { background: var(--gap-bg); }
-.smenu-check { width: 16px; height: 16px; color: var(--accent); visibility: hidden; flex: none; }
-.is-selected > .smenu-check { visibility: visible; }
+.smenu-mark { width: 16px; height: 16px; border-radius: 999px; flex: none; display: inline-flex; align-items: center; justify-content: center; box-shadow: inset 0 0 0 1.5px rgba(29, 28, 26, 0.22); color: var(--accent-ink); }
+.smenu-mark .icon { width: 10px; height: 10px; visibility: hidden; }
+.smenu-mark.is-radio::after { content: ""; width: 6px; height: 6px; border-radius: 999px; background: var(--accent-ink); visibility: hidden; }
+.is-selected > .smenu-mark { background: var(--accent); box-shadow: none; }
+.is-selected > .smenu-mark .icon, .is-selected > .smenu-mark.is-radio::after { visibility: visible; }
 .smenu-empty { margin: 0; padding: 8px 10px; font-size: 14px; color: var(--muted); }
 .smenu-range { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px 4px 4px; box-shadow: inset 0 1px 0 var(--hairline-row); margin-top: 4px; }
 .smenu-date, .f-date { display: grid; gap: 4px; font-size: 12.5px; color: var(--muted); }
-.smenu-date input, .f-date input { height: 32px; min-height: 32px; padding: 0 8px; font-size: 16px; }
+.smenu-date, .f-date { min-width: 0; }
+.smenu-date input, .f-date input { width: 100%; min-width: 0; height: 32px; min-height: 32px; padding: 0 8px; font-size: 16px; }
 .schips { display: none; gap: 6px; margin: 8px 0 0; padding: 0; overflow-x: auto; list-style: none; }
 .schip { height: 32px; padding-left: 10px; flex: none; }
 .schip .stoken-remove { width: 32px; min-width: 32px; height: 32px; min-height: 32px; }
