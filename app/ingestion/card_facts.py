@@ -13,9 +13,6 @@ from urllib.parse import urlsplit
 from app.agent.properties import _names, source_type
 
 CARD_TYPES = ("book", "highlights", "post", "note", "transcript", "article", "quote")
-# Some notes store a show's abbreviation as the author. Add an entry (lower case) to show the full show
-# name instead of a person. Nothing is guessed: only listed values are treated as shows.
-SHOW_NAMES: dict[str, str] = {}
 PLATFORM_HOSTS = {"linkedin.com": "linkedin", "x.com": "x", "twitter.com": "x",
                   "youtube.com": "youtube", "youtu.be": "youtube"}
 PLATFORM_WORDS = {"linkedin": "linkedin", "x": "x", "twitter": "x", "x.com": "x", "youtube": "youtube",
@@ -70,11 +67,6 @@ def card_facts(metadata: dict, relative_path: str, added: datetime | str | None 
     if platform == "youtube" and not channel and len(authors) == 1 and _text(frontmatter.get("author")):
         # The capture writes the channel into `author`; it is the publisher, not a speaker.
         channel, authors = authors[0], []
-    for name in list(authors):
-        mapped = SHOW_NAMES.get(name.casefold())
-        if mapped:
-            authors.remove(name)
-            show = show or mapped
     if channel:
         authors = [name for name in authors if name.casefold() != channel.casefold()]
     if show:

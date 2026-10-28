@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import unittest
 from datetime import datetime, timezone
-from unittest import mock
 
-from app.ingestion import card_facts as module
 from app.ingestion.card_facts import card_facts
 
 
@@ -42,13 +40,6 @@ class PeopleTests(unittest.TestCase):
                        "source_url": "https://youtu.be/x"})
         self.assertEqual(found["source_name"], "Channel Name")
         self.assertEqual(found["authors"], [])
-
-    def test_a_mapped_show_abbreviation_is_not_a_person(self) -> None:
-        with mock.patch.dict(module.SHOW_NAMES, {"sa": "Show Alpha"}):
-            found = facts({"authors": ["SA"], "guests": ["Ada Stone"]}, "Knowledge/Transcripts/Ep.md")
-        self.assertEqual(found["authors"], [])
-        self.assertEqual(found["guests"], ["Ada Stone"])
-        self.assertEqual((found["platform"], found["source_name"]), ("podcast", "Show Alpha"))
 
     def test_guest_from_frontmatter_and_author_kept(self) -> None:
         found = facts({"authors": ["Ben Hart"], "frontmatter": {"guest": "[[Ada Stone]]"}})
