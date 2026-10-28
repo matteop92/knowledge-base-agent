@@ -139,6 +139,7 @@ def build_questions(vocab: dict[str, list[str]], question: str,
         "person_role": {"type": "choice", "instructions": catalog["person_role"], "criteria": dict(catalog["roles"])},
         "sort": {"type": "choice", "instructions": catalog["sort"], "criteria": dict(catalog["sorts"])},
         "single": {"type": "noul", "instructions": catalog["single"]},
+        "which_added": {"type": "noul", "instructions": catalog["which_added"]},
         "cat_by_type": {"type": "noul", "instructions": catalog["by_type"]},
         "cat_by_date": {"type": "noul", "instructions": catalog["by_date"]},
         "cat_by_folder": {"type": "noul", "instructions": catalog["by_folder"]},
@@ -165,6 +166,11 @@ def _chosen(answers: dict[str, Any], name: str) -> str | None:
 def _yes(answers: dict[str, Any], name: str) -> bool:
     value = answers.get(name)
     return isinstance(value, float) and value >= SPEC["thresholds"]["flag"]
+
+
+def _strongly_yes(answers: dict[str, Any], name: str) -> bool:
+    value = answers.get(name)
+    return isinstance(value, float) and value >= SPEC["thresholds"]["strong_flag"]
 
 
 def _flagged(answers: dict[str, Any], flag: str, value: str) -> str | None:
@@ -230,11 +236,19 @@ def interpret(answers: dict[str, Any], question: str, vocab: dict[str, list[str]
     if not isinstance(route, Choice):
         return RouteDecision(called=True)
     decision = RouteDecision(probabilities=route.probabilities, called=True)
+    # "Which book highlights did I add first?" names a kind of source but asks for a source, not for what it
+    # says: a confident yes on which_added makes a narrowed answer a catalog one, and the two non-plain routes
+    # count together toward the catalog threshold.
+    odds = route.probabilities
+    asks_which_added = (route.choice in ("narrowed", "catalog") and _strongly_yes(answers, "which_added")
+                        and odds.get("narrowed", 0) + odds.get("catalog", 0) >= SPEC["thresholds"]["catalog"])
+    choice = "catalog" if asks_which_added else route.choice
     threshold = SPEC["thresholds"].get(route.choice)
-    if route.choice == "plain" or threshold is None or route.probabilities.get(route.choice, 0) < threshold:
+    if not asks_which_added and (route.choice == "plain" or threshold is None
+                                 or odds.get(route.choice, 0) < threshold):
         return decision
     try:
-        if route.choice == "catalog":
+        if choice == "catalog":
             decision.plan = _plan(answers, question, vocab, today)
         else:
             narrowing = _narrowing(answers, question, today)
@@ -244,7 +258,7 @@ def interpret(answers: dict[str, Any], question: str, vocab: dict[str, list[str]
     except PlanError as exc:
         log.warning("router plan rejected error=%s", exc)
         return decision
-    decision.route = route.choice
+    decision.route = choice
     return decision
 
 

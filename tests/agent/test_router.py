@@ -116,6 +116,32 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(decide("my latest thinking on AI agents", by_latest=0.2).route, "plain")
         self.assertEqual(decide("q", route_name="narrowed", by_latest=0.2).route, "plain")
 
+    def test_a_confident_which_added_makes_a_narrowed_route_a_catalog_one(self):
+        question = "Which book highlights did I add first?"
+        kwargs = dict(route_name="narrowed", probability=0.7, cat_by_type=0.9, type_value=choice("highlights"),
+                      sort=choice("added_oldest"), single=0.9)
+        decision = decide(question, which_added=0.95, **kwargs)
+        self.assertEqual(decision.route, "catalog")
+        self.assertEqual((decision.plan.types, decision.plan.sort, decision.plan.limit),
+                         (["highlights"], "added_oldest", 1))
+        for weak in (0.6, 0.05):
+            with self.subTest(which_added=weak):
+                self.assertEqual(decide(question, which_added=weak, by_type=0.9, **kwargs).route, "narrowed")
+
+    def test_a_confident_which_added_counts_both_non_plain_routes_toward_catalog(self):
+        split = Choice("narrowed", {"plain": 0.05, "narrowed": 0.55, "catalog": 0.4})
+        kwargs = dict(cat_by_type=0.9, type_value=choice("highlights"), sort=choice("added_oldest"), single=0.9)
+        found = interpret({**answers(**kwargs), "route": split, "which_added": 0.95}, "q", VOCAB, TODAY)
+        self.assertEqual((found.route, found.plan.sort), ("catalog", "added_oldest"))
+        unsure = interpret({**answers(**kwargs), "route": split, "which_added": 0.5}, "q", VOCAB, TODAY)
+        self.assertEqual(unsure.route, "plain")
+        mostly_plain = Choice("plain", {"plain": 0.7, "narrowed": 0.2, "catalog": 0.1})
+        self.assertEqual(interpret({**answers(**kwargs), "route": mostly_plain, "which_added": 0.95}, "q", VOCAB,
+                                   TODAY).route, "plain")
+
+    def test_which_added_does_not_move_a_plain_route(self):
+        self.assertEqual(decide("What are the first steps to hiring?", which_added=0.95).route, "plain")
+
     def test_a_plan_that_fails_validation_is_plain(self):
         decision = decide("q", route_name="catalog", by_tag=0.9, tag_value=choice("not-a-tag"))
         self.assertEqual(decision.route, "plain")

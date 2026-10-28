@@ -49,9 +49,33 @@ The one miss in the used order is a catalog question that went plain (route prob
 
 A second set of 30 questions (held-out phrasings, "latest" as a narrowing, as a catalog sort and as a topic word, and rewritten follow-ups) scored 24 correct at 0.6 in the used order with 8 of 8 narrowing properties right. Three of the six misses are catalog questions about people who are not in this vault, which now go plain (the safe side). The others: two plain questions that mention a kind of source ("the saved podcast episodes", "in the transcripts") and so were narrowed (the labels are debatable; a wrong narrowing still widens to the whole vault when it finds nothing), and one follow-up count that went plain. The first set was used to tune the wording and the second was written afterwards, so the second is the fairer estimate.
 
-**Catalog answers.** 26 questions with expected results taken from the database's own listing (counts, authors, guests, tags, dates, newest and oldest), not from the catalog code. Through the real router and catalog code over a source list rebuilt from that listing, 25 of 26 match. The miss was routed narrowed ("which book highlights did I add first"). These are drafts until each is approved.
+Run again on 2026-10-28, the used order scored 65 of 67 on the frozen set (one plain question, "Is there an article that explains movie logic? What does it say?", went narrowed at about 0.7) and 23 of 30 on the second set. The same run without the added which-added question gave the same scores, so the drop from 66 and 24 comes from the model between days, not from the spec. The router's score moves by a question or two from one day to the next.
 
-**Seed evals.** Both evals made from the two flagged turns fail on the saved answers: the catalog answer listed seven notes with no result set, and the attribution check finds the sentence crediting Tim Ferriss with a passage spoken by Niels Hoven (the speaker is found from the stored run). A corrected sentence that names Niels Hoven passes. Live, three runs each (the eval fails a sentence that cites a guest's passage while naming someone else; a sentence that names nobody passes). The latest-note eval passed 12 of 12 runs across prompts v13 and v15. The Tim Ferriss attribution eval passed 1 of 6 runs on v13 and 6 of 9 on v15, in three batches of 3, 3 and 0. Re-scored with the current check, the same answers give v15 3, 3 and 0 passes, so the model's wording moves the result as much as the prompt does, and v15 does not yet meet the 3-of-3 bar. The failing sentences are mostly summary lines ("each recommendation is drawn from Tim's remarks") that cite a guest's passage. The retrieval trial cannot run: its labels point at document IDs from an earlier vault layout (five of six files are in the index unchanged under new IDs; the Tim Ferriss file has changed). The v13 spread, v15 against v13 on the 85-check list, and the v16 follow-up read have not been run, so v13 and v14 stay the answer prompts.
+**Catalog answers.** 26 questions with expected results taken from the database's own listing (counts, authors, guests, tags, dates, newest and oldest), not from the catalog code, and approved one by one. A source's type is its own `type` or `source_type` property, else its folder, so the Notes folder holds notes unless a note sets its own type. Tag questions include tags the classifier suggested, and it picks them again whenever a note changes. Run live three times each through the real router and catalog code with the question router on, all 26 pass on all 3 runs (about $0.02 a run). The first live run missed "which book highlights did I add first" (0 of 3): the router read "book highlights" as a kind of source to search inside. A separate yes/no question, "does this ask which source was added first or last", now turns a narrowed route into a catalog one when it answers yes at 0.9 or more and the narrowed and catalog routes together reach 0.6. Rewording the route options instead weakened plain count questions ("how many articles do I have" fell from 0.84 to about 0.55 for catalog), so the options are unchanged.
+
+**Seed evals.** Both evals made from the two flagged turns fail on the saved answers: the catalog answer listed seven notes with no result set, and the attribution check finds the sentence crediting Tim Ferriss with a passage spoken by Niels Hoven (the speaker is found from the stored run). A corrected sentence that names Niels Hoven passes. Live, the eval fails a sentence that cites a guest's passage while naming someone else; a sentence that names nobody passes. The latest-note eval passes on every run (22 of 22 across prompts v13 and v15). The Tim Ferriss attribution eval:
+
+| Setup | Passes |
+| --- | --- |
+| v13, speaker only in a separate field | 1 of 6 |
+| v15, speaker only in a separate field | 6 of 9 in three batches of 3, 3 and 0; 0 of 5 in a fourth |
+| v15, the same, with one retry when the answer is flagged | 4 of 5 (about 40 s longer when it retries) |
+| v13, speaker also written at the start of the passage text (used) | 3 of 5 |
+| v15, speaker also written at the start of the passage text | 3 of 5 |
+
+About 2 in 5 answers still credit the wrong person, so the 3-of-3 bar is not met. The failing sentences are mostly summary lines ("each recommendation is drawn from Tim's remarks") that cite a guest's passage. Five runs per setting is too few to separate v13 from v15. The retrieval trial still cannot run: its labels point at document IDs from an earlier vault layout (five of six files are in the index unchanged under new IDs; the Tim Ferriss file has changed). The 85-check list pins the same old IDs, so a local script maps the answers onto the pinned sources before grading.
+
+**85-check list, v13 against v15.** Three runs of the eight questions per prompt with the speaker written in the passage text, graded by the model grader (`gpt-5-mini`, medium reasoning), which scores above a person and was not confirmed by one. Three of the 48 grader replies were malformed and graded again.
+
+| | v13 | v15 |
+| --- | --- | --- |
+| Overall | 220 of 234 (94.0%) | 197 of 222 (88.7%) |
+| Coverage | 103 of 106 (97.2%) | 87 of 96 (90.6%) |
+| Grounding | 94 of 96 (97.9%) | 93 of 94 (98.9%) |
+| Example | 23 of 23 | 17 of 19 |
+| By run | 91.5%, 92.3%, 98.6% | 91.8%, 89.7%, 84.5% |
+
+Grounding is level. v15 covers fewer of the points asked, and the checks under a missing point drop out as not applicable (22 against 9). Its coverage is outside v13's range, so v13 and v14 stay the answer prompts and v15 and v16 stay opt-in. The v16 follow-up read was not run.
 
 ## Cost and speed
 

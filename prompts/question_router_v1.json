@@ -51,7 +51,8 @@
       "dated_newest": "Most recent publication or note date first",
       "dated_oldest": "Earliest publication or note date first"
     },
-    "single": "Does the question ask for exactly one source (the latest note, the newest source, which one)?",
+    "which_added": "Does the question ask which source was added, uploaded or saved first or last (the earliest or the most recently added one), rather than what a source says?",
+  "single": "Does the question ask for exactly one source (the latest note, the newest source, which one)?",
     "by_type": "Does the question ask about sources of a particular kind, such as articles, book highlights, books, transcripts, notes or social posts?",
     "by_date": "Does the question ask for sources dated or added in a specific period, such as 2025, October or last week?",
     "by_folder": "Does the question name a folder of the vault?"

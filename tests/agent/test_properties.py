@@ -41,7 +41,15 @@ class PropertyTests(unittest.TestCase):
         self.assertEqual(garden.people, ["Ada Stone", "Cal Reyes"])
         self.assertEqual(SOURCES[4].guests, ["Fay Lund"])
         self.assertEqual(source_type({}, "Knowledge/Articles/a.md"), "article")
-        self.assertEqual(source_type({"source_type": "Book"}, "Knowledge/Notes/a.md"), "book")
+        self.assertEqual(source_type({"source_type": "Book"}, "Knowledge/Notes/a.md"), "note")
+        self.assertEqual(source_type({"source_type": "Book"}, "Inbox/a.md"), "book")
+        self.assertIsNone(source_type({}, "Inbox/a.md"))
+
+    def test_type_comes_from_the_note_then_its_folder_then_the_classifier(self):
+        own = {"source_type": "social_post"}
+        self.assertEqual(source_type({"source_type": "transcript"}, "Knowledge/Notes/a.md", own), "social_post")
+        self.assertEqual(source_type({"source_type": "transcript"}, "Knowledge/Notes/a.md", {"type": "Book"}), "book")
+        self.assertEqual(source_type({"source_type": "transcript"}, "Knowledge/Notes/a.md", {}), "note")
 
     def test_frontmatter_type_wins_and_a_generated_date_fills_a_missing_one(self):
         typed = source("Knowledge/Notes/typed.md", title="Typed", frontmatter={"type": "Article"},

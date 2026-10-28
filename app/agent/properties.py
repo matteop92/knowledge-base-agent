@@ -60,12 +60,16 @@ def _names(value: object) -> list[str]:
 
 
 def source_type(generated: dict, relative_path: str, frontmatter: dict | None = None) -> str | None:
+    """The note's own `type` or `source_type` first, then its folder, then the classifier's guess."""
     frontmatter = frontmatter or {}
-    for value in (frontmatter.get("type"), frontmatter.get("source_type"), generated.get("source_type")):
+    for value in (frontmatter.get("type"), frontmatter.get("source_type")):
         if isinstance(value, str) and value.strip():
             return value.strip().lower()
     folder = PurePosixPath(relative_path).parent.name.lower()
-    return FOLDER_TYPES.get(folder)
+    if folder in FOLDER_TYPES:
+        return FOLDER_TYPES[folder]
+    value = generated.get("source_type")
+    return value.strip().lower() if isinstance(value, str) and value.strip() else None
 
 
 FILENAME_DATE = re.compile(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)")
