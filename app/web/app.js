@@ -647,7 +647,8 @@ function fillSource(section, data, index) {
   const url = source.url;
   if (url.startsWith("obsidian://")) {
     if (source.author || source.folder) where.append(textElement("span", "dot", ""));
-    const link = textElement("a", "open-obsidian", "See in Obsidian");
+    const link = textElement("a", "open-obsidian", "Open in Obsidian");
+    link.prepend(icon("obsidian"));
     link.href = url;
     where.append(link);
   }

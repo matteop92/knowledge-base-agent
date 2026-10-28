@@ -210,12 +210,38 @@ const scenarios = {
     app.els["sources-filters"].click();
     const section = app.els["sheet"].querySelector('[data-sheet="filters"]');
     const open = { sheets: app.calls.sheets, show: text(section.querySelector(".f-show")) };
-    section.querySelectorAll(".f-pill").filter((p) => p.dataset.focus === "tag:alpha")[0].click();
-    section.querySelectorAll(".f-segment").filter((p) => p.dataset.focus === "date:week")[0].click();
-    const live = text(section.querySelector(".f-show"));
-    const types = section.querySelectorAll(".f-section").map((s) => text(s.querySelector(".kicker")));
+    const kickers = section.querySelectorAll(".f-section").map((x) => text(x.querySelector(".kicker")));
+    section.querySelectorAll(".f-pill").filter((p) => p.dataset.focus === "type:note")[0].click();
+    const afterType = text(section.querySelector(".f-show"));
+    const summaries = section.querySelectorAll(".f-nav").map((n) => [text(n.querySelector(".f-nav-name")), text(n.querySelector(".f-nav-value"))]);
+    section.querySelectorAll(".f-nav").filter((n) => n.dataset.focus === "facet:tags")[0].click();
+    const page = section.querySelector(".f-facet");
+    const facet = { facet: page.dataset.facet, title: text(page.querySelector(".f-title")), rows: page.querySelectorAll(".f-row").length };
+    page.querySelectorAll(".f-row")[0].click();
+    const picked = text(section.querySelector(".f-picked"));
+    section.querySelector(".f-back").click();
+    const afterBack = section.querySelectorAll(".f-nav").map((n) => text(n.querySelector(".f-nav-value")));
     section.querySelector(".f-clear").click();
-    return { open, live, types, afterClear: text(section.querySelector(".f-show")), badge: app.els["sources-badge"].hidden };
+    return { open, kickers, afterType, summaries, facet, picked, afterBack, afterClear: text(section.querySelector(".f-show")), badge: app.els["sources-badge"].hidden };
+  },
+  async facetPeople() {
+    const people = Array.from({ length: 40 }, (_, i) => `${String.fromCharCode(65 + (i % 26))}name Person${i}`);
+    const many = people.map((name, i) => row(i, "note", `Note ${i}`, { authors: [name] }));
+    const app = boot({ phone: true, sources: many }); app.screen.show(); await app.flush();
+    app.els["sources-filters"].click();
+    const section = app.els["sheet"].querySelector('[data-sheet="filters"]');
+    section.querySelectorAll(".f-nav").filter((n) => n.dataset.focus === "facet:people")[0].click();
+    const page = section.querySelector(".f-facet");
+    const headings = page.querySelectorAll(".f-group").map((g) => text(g));
+    const rail = page.querySelectorAll(".f-rail-letter").length;
+    const placeholder = page.querySelector("input").placeholder;
+    const input = page.querySelector("input");
+    input.value = "name person3"; input.dispatch("input");
+    const searched = { groups: page.querySelectorAll(".f-group").map((g) => text(g)), rows: page.querySelectorAll(".f-row").length, bold: page.querySelectorAll(".f-match").length, rail: page.querySelectorAll(".f-rail-letter").length };
+    page.querySelectorAll(".f-row")[0].click();
+    const after = { sameInput: section.querySelector(".f-facet").querySelector("input") === input, picked: text(section.querySelector(".f-picked")), groups: section.querySelectorAll(".f-group").map((g) => text(g)).slice(0, 1) };
+    input.value = "zzz"; input.dispatch("input");
+    return { headings: headings.slice(0, 4), count: headings.length, rail, placeholder, searched, after, none: text(page.querySelector(".f-none")) };
   },
   async readerTranscript() {
     const detail = { source_url: null, body: [{ kind: "speaker_turn", text: "Hello.", speaker: "Ben Hart" }, { kind: "speaker_turn", text: "Hi.", speaker: "Ada Stone" }] };

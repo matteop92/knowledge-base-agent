@@ -101,12 +101,27 @@ class PhoneTests(unittest.TestCase):
         self.assertEqual((out["badge0"], out["aria0"]), (True, "Filters"))  # no badge without filters
         self.assertEqual((out["aria1"], out["badge"]), ("Filters, 1 active", "1"))
 
-    def test_the_sheet_updates_live_and_clear_all_resets_it(self) -> None:
+    def test_the_summary_sheet_keeps_date_and_type_inline_and_sends_long_lists_to_their_own_pages(self) -> None:
         out = run("filterSheet")
         self.assertEqual(out["open"], {"sheets": ["filters"], "show": "Show 7 sources"})
-        self.assertNotEqual(out["live"], "Show 7 sources")
-        self.assertEqual(out["types"], ["Date added", "Type", "Tags", "People"])
+        self.assertEqual(out["kickers"], ["Date added", "Type", "Browse"])
+        self.assertEqual(out["afterType"], "Show 1 source")  # live count, no Done button
+        self.assertEqual([row[0] for row in out["summaries"]], ["People", "Tags"])
+        self.assertEqual(out["facet"]["facet"], "tags")
+        self.assertEqual(out["picked"], "1 selected")
+        self.assertEqual(out["afterBack"][1], "alpha")  # the summary row names what was chosen
         self.assertEqual((out["afterClear"], out["badge"]), ("Show 7 sources", True))
+
+    def test_a_long_people_list_has_most_used_then_a_to_z_a_rail_and_a_search_that_keeps_the_page(self) -> None:
+        out = run("facetPeople")
+        self.assertEqual(out["headings"][:2], ["Most in your notes", "A"])
+        self.assertEqual(out["placeholder"], "Search 40 people")
+        self.assertGreater(out["rail"], 10)
+        self.assertTrue(out["searched"]["groups"][0].endswith("for “name person3”"))
+        self.assertEqual(out["searched"]["rows"], out["searched"]["bold"])  # every hit shows the typed letters in bold
+        self.assertTrue(out["after"]["sameInput"])  # picking a row keeps the search box
+        self.assertEqual((out["after"]["picked"], out["after"]["groups"]), ("1 selected", ["Selected"]))
+        self.assertEqual(out["none"], "No people match “zzz”.")
 
     def test_the_sheet_and_header_follow_the_documented_patterns(self) -> None:
         css = (WEB / "styles.css").read_text(encoding="utf-8")

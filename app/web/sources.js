@@ -18,7 +18,7 @@
   const TRANSITION_GRACE_MS = 250;
 
   const view = { sources: [], vaultName: "", loaded: false, loadSeq: 0, filter: F.empty(), showAll: false, groups: [],
-    active: 0, menu: null, menuTrigger: null, expanded: { tags: false, people: false }, dateMode: null };
+    active: 0, menu: null, menuTrigger: null, facet: null, facetQuery: "", rail: [], dateMode: null };
   const reader = { open: false, pushed: false, closing: false, gen: 0, source: null, opener: null, scroll: 0, seq: 0 };
 
   const h = (tag, cls, text) => {
@@ -492,7 +492,12 @@
   }
 
   // The phone filter sheet ------------------------------------------------------------------------
+  // A summary page (date and type inline, then one row each for People and Tags) and, behind each row, a page with
+  // its own search box: a long list is found by typing, never by scrolling a wall of pills.
   const DATE_MODES = [["any", "Any"], ["week", "Week"], ["month", "30 days"], ["custom", "Custom"]];
+  const FACETS = { people: { title: "People", kind: "person", noun: "people" }, tags: { title: "Tags", kind: "tag", noun: "tags" } };
+  const MOST_USED = 8;
+  const RAIL_FROM = 30;  // the A-Z rail appears once a list is this long
 
   function dateMode() {
     if (view.dateMode === "custom") return "custom";
@@ -500,43 +505,22 @@
     return !date ? "any" : date.preset === "week" || date.preset === "month" ? date.preset : "custom";
   }
 
-  function sheetPills(rows, kind, limit, expandKey) {
-    const wrap = h("div", "f-pills");
-    const shown = view.expanded[expandKey] ? rows : rows.slice(0, limit);
-    for (const row of shown) {
-      const pill = h("button", "f-pill");
-      pill.type = "button";
-      pill.dataset.focus = `${kind}:${row.value}`;
-      pill.setAttribute("aria-pressed", row.selected ? "true" : "false");
-      pill.classList.toggle("is-selected", row.selected);
-      pill.append(row.label, h("span", "f-count", String(row.count)));
-      pill.addEventListener("click", () => {
-        const token = { kind, value: row.value };
-        setFilter(row.selected ? F.removeToken(view.filter, token) : F.addToken(view.filter, token));
-      });
-      wrap.append(pill);
-    }
-    return wrap;
+  function pick(kind, row) {
+    const token = { kind, value: row.value };
+    setFilter(row.selected ? F.removeToken(view.filter, token) : F.addToken(view.filter, token));
   }
 
-  function expander(key, total, limit, noun) {
-    if (total <= limit) return null;
-    const link = h("button", "f-link", view.expanded[key] ? "Show fewer" : `All ${total} ${noun}`);
-    link.type = "button";
-    link.dataset.focus = `expand:${key}`;
-    link.addEventListener("click", () => { view.expanded[key] = !view.expanded[key]; fillFilters($("sheet").querySelector('[data-sheet="filters"]')); });
-    return link;
+  function footer(extra) {
+    const foot = h("div", "f-foot");
+    if (extra) foot.append(extra);
+    const show = h("button", "f-show", `Show ${plural(results().length, "source", "sources")}`);
+    show.type = "button";
+    show.addEventListener("click", () => closeSheet());
+    foot.append(show);
+    return foot;
   }
 
-  function fillFilters(section) {
-    const previous = section.querySelector(".f-scroll");
-    const scroll = previous ? previous.scrollTop : 0;
-    const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.focus : null;
-    const rows = F.counts(view.filter, view.sources, now());
-    const total = results().length;
-    const body = h("div", "f-scroll");
-    body.append(h("h2", "f-title", "Filters"));
-
+  function dateSection() {
     const date = h("div", "f-section");
     date.append(h("span", "kicker", "Date added"));
     const segments = h("div", "f-segments");
@@ -577,50 +561,190 @@
       }
       date.append(range);
     }
-    body.append(date);
+    return date;
+  }
+
+  function summaryPage(section) {
+    const rows = F.counts(view.filter, view.sources, now());
+    const body = h("div", "f-scroll");
+    body.append(h("h2", "f-title", "Filters"), dateSection());
 
     const types = h("div", "f-section");
-    types.append(h("span", "kicker", "Type"), sheetPills(rows.types, "type", 99, "types"));
+    types.append(h("span", "kicker", "Type"));
+    const pills = h("div", "f-pills");
+    for (const row of rows.types) {
+      const pill = h("button", "f-pill");
+      pill.type = "button";
+      pill.dataset.focus = `type:${row.value}`;
+      pill.setAttribute("aria-pressed", row.selected ? "true" : "false");
+      pill.classList.toggle("is-selected", row.selected);
+      pill.append(row.label, h("span", "f-count", String(row.count)));
+      pill.addEventListener("click", () => pick("type", row));
+      pills.append(pill);
+    }
+    types.append(pills);
     body.append(types);
 
-    const tags = h("div", "f-section");
-    tags.append(h("span", "kicker", "Tags"), sheetPills(rows.tags, "tag", 12, "tags"));
-    const moreTags = expander("tags", rows.tags.length, 12, "tags");
-    if (moreTags) tags.append(moreTags);
-    body.append(tags);
-
-    const people = h("div", "f-section");
-    people.append(h("span", "kicker", "People"));
-    const list = h("div", "f-people");
-    const shown = view.expanded.people ? rows.people : rows.people.slice(0, 5);
-    for (const row of shown) {
-      const button = h("button", "f-person");
+    const browse = h("div", "f-section");
+    browse.append(h("span", "kicker", "Browse"));
+    const list = h("div", "f-nav-list");
+    for (const [key, facet] of Object.entries(FACETS)) {
+      const chosen = rows[key].filter((row) => row.selected).map((row) => row.label);
+      const button = h("button", "f-nav");
       button.type = "button";
-      button.dataset.focus = `person:${row.value}`;
-      button.setAttribute("aria-pressed", row.selected ? "true" : "false");
-      button.classList.toggle("is-selected", row.selected);
-      button.append(marker(false), h("span", "smenu-name", row.label), h("span", "f-count", String(row.count)));
-      button.addEventListener("click", () => {
-        const token = { kind: "person", value: row.value };
-        setFilter(row.selected ? F.removeToken(view.filter, token) : F.addToken(view.filter, token));
-      });
+      button.dataset.focus = `facet:${key}`;
+      const summary = h("span", chosen.length ? "f-nav-value is-chosen" : "f-nav-value", chosen.length ? chosen.join(", ") : `Any of ${rows[key].length}`);
+      const caret = icon("back");
+      caret.classList.add("f-nav-caret");
+      button.append(h("span", "f-nav-name", facet.title), summary, caret);
+      button.addEventListener("click", () => { view.facet = key; view.facetQuery = ""; fillFilters(section); });
       list.append(button);
     }
-    people.append(list);
-    const morePeople = expander("people", rows.people.length, 5, "people");
-    if (morePeople) people.append(morePeople);
-    body.append(people);
+    browse.append(list);
+    body.append(browse);
 
-    const foot = h("div", "f-foot");
     const clear = h("button", "f-clear", "Clear all");
     clear.type = "button";
     clear.addEventListener("click", () => { view.dateMode = null; setFilter(F.empty()); });
-    const show = h("button", "f-show", `Show ${plural(total, "source", "sources")}`);
-    show.type = "button";
-    show.addEventListener("click", () => closeSheet());
-    foot.append(clear, show);
-    section.replaceChildren(body, foot);
-    body.scrollTop = scroll;
+    section.replaceChildren(body, footer(clear));
+  }
+
+  // A row's name with the typed letters in medium weight.
+  function highlighted(label, query) {
+    const name = h("span", "smenu-name");
+    const at = query ? label.toLowerCase().indexOf(query.toLowerCase()) : -1;
+    if (at < 0) { name.textContent = label; return name; }
+    name.append(label.slice(0, at), h("b", "f-match", label.slice(at, at + query.length)), label.slice(at + query.length));
+    return name;
+  }
+
+  function facetRow(facet, row, query) {
+    const button = h("button", "f-row");
+    button.type = "button";
+    button.dataset.focus = `${facet.kind}:${row.value}`;
+    button.setAttribute("aria-pressed", row.selected ? "true" : "false");
+    button.classList.toggle("is-selected", row.selected);
+    button.append(marker(), highlighted(row.label, query), h("span", "f-count", String(row.count)));
+    button.addEventListener("click", () => pick(facet.kind, row));
+    return button;
+  }
+
+  function facetList(list, key) {
+    const facet = FACETS[key];
+    const query = view.facetQuery.trim();
+    const rows = F.counts(view.filter, view.sources, now())[key];
+    const chosen = rows.filter((row) => row.selected);
+    const rest = rows.filter((row) => !row.selected);
+    list.replaceChildren();
+    const group = (title, items, letter) => {
+      const head = h("div", "f-group", title);
+      if (letter) head.dataset.letter = letter;
+      list.append(head, ...items);
+    };
+    if (chosen.length) group("Selected", chosen.map((row) => facetRow(facet, row, "")));
+    if (query) {
+      const found = rest.filter((row) => row.label.toLowerCase().includes(query.toLowerCase()));
+      if (found.length) group(`${plural(found.length, "match", "matches")} for “${query}”`, found.map((row) => facetRow(facet, row, query)));
+      else list.append(h("p", "f-none", `No ${facet.noun} match “${query}”.`));
+      return;
+    }
+    const top = rest.slice(0, MOST_USED);
+    if (rest.length > MOST_USED) group("Most in your notes", top.map((row) => facetRow(facet, row, "")));
+    const sorted = [...(rest.length > MOST_USED ? rest : [])].sort((a, b) => a.label.localeCompare(b.label));
+    const letters = [];
+    for (const row of sorted) {
+      const letter = /^[a-z]/i.test(row.label) ? row.label[0].toUpperCase() : "#";
+      if (letters[letters.length - 1] !== letter) {
+        letters.push(letter);
+        const head = h("div", "f-group", letter);
+        head.dataset.letter = letter;
+        list.append(head);
+      }
+      list.append(facetRow(facet, row, ""));
+    }
+    if (rest.length <= MOST_USED) group(chosen.length ? "Others" : facet.title, rest.map((row) => facetRow(facet, row, "")));
+    view.rail = rest.length >= RAIL_FROM ? letters : [];
+  }
+
+  function railFor(list) {
+    const rail = h("div", "f-rail");
+    rail.setAttribute("aria-label", "Jump to a letter");
+    for (const letter of view.rail || []) {
+      const button = h("button", "f-rail-letter", letter);
+      button.type = "button";
+      button.addEventListener("click", () => {
+        const target = [...list.querySelectorAll(".f-group")].find((node) => node.dataset.letter === letter);
+        if (target) target.scrollIntoView({ block: "start" });
+      });
+      rail.append(button);
+    }
+    return rail;
+  }
+
+  function facetPage(section) {
+    const key = view.facet;
+    const facet = FACETS[key];
+    const existing = section.querySelector(".f-facet");
+    if (existing && existing.dataset.facet === key) {
+      // Picking a row keeps the page, its search box and its scroll place; only the rows, counts and button change.
+      const list = existing.querySelector(".f-list");
+      const scroll = list.scrollTop;
+      facetList(list, key);
+      list.scrollTop = scroll;
+      existing.querySelector(".f-picked").textContent = chosenText(key);
+      existing.querySelector(".f-show").textContent = `Show ${plural(results().length, "source", "sources")}`;
+      return;
+    }
+    const page = h("div", "f-facet");
+    page.dataset.facet = key;
+    const head = h("div", "f-head");
+    const back = h("button", "f-back");
+    back.type = "button";
+    back.setAttribute("aria-label", "Back to filters");
+    back.append(icon("back"));
+    back.addEventListener("click", () => { view.facet = null; fillFilters(section); });
+    head.append(back, h("h2", "f-title", facet.title), h("span", "f-picked", chosenText(key)));
+    const search = h("div", "f-search");
+    search.append(icon("search"));
+    const input = h("input");
+    input.type = "search";
+    input.placeholder = `Search ${F.counts(view.filter, view.sources, now())[key].length} ${facet.noun}`;
+    input.setAttribute("aria-label", `Search ${facet.noun}`);
+    input.autocomplete = "off";
+    input.value = view.facetQuery;
+    search.append(input);
+    const list = h("div", "f-list");
+    const middle = h("div", "f-middle");
+    input.addEventListener("input", () => {
+      view.facetQuery = input.value;
+      facetList(list, key);
+      list.scrollTop = 0;
+      const rail = middle.querySelector(".f-rail");
+      if (rail) rail.hidden = !!input.value.trim();
+    });
+    facetList(list, key);
+    middle.append(list);
+    if ((view.rail || []).length) {
+      const rail = railFor(list);
+      rail.hidden = !!view.facetQuery.trim();
+      middle.append(rail);
+    }
+    page.append(head, search, middle, footer());
+    section.replaceChildren(page);
+  }
+
+  function chosenText(key) {
+    const count = F.counts(view.filter, view.sources, now())[key].filter((row) => row.selected).length;
+    return count ? `${count} selected` : "";
+  }
+
+  function fillFilters(section) {
+    const previous = section.querySelector(".f-scroll");
+    const scroll = previous ? previous.scrollTop : 0;
+    const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.focus : null;
+    if (view.facet) facetPage(section); else summaryPage(section);
+    const body = section.querySelector(".f-scroll");
+    if (body) body.scrollTop = scroll;
     if (focused) {
       const again = [...section.querySelectorAll("[data-focus]")].find((node) => node.dataset.focus === focused);
       if (again) again.focus({ preventScroll: true });
@@ -628,6 +752,8 @@
   }
 
   function openFilters() {
+    view.facet = null;
+    view.facetQuery = "";
     openSheet("filters", $("sources-filters"), fillFilters);
   }
 

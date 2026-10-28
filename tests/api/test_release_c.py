@@ -311,7 +311,7 @@ const out = ({
 })();"""
         out = _node(probe)
         self.assertEqual(out["done"], {"status": "done", "icon": "saved", "tip": "Saved and searchable", "title": "Note",
-                                       "meta": [":See in Obsidian", "type-pill:Text"]})
+                                       "meta": ["open-obsidian:Open in Obsidian", "type-pill:Text"]})
         self.assertEqual(out["queued"]["tip"], "Queued")  # the "searchable soon" detail lives in the tooltip
         self.assertEqual(out["running"], {"status": "running", "icon": "saving", "tip": "Saving…", "title": "Video",
                                           "meta": ["muted:Saving…", "type-pill:YouTube"]})
