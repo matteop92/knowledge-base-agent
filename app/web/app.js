@@ -14,7 +14,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const RUN_PROBLEMS = ["Hybrid retrieval failed.", "Document find failed.", "Document find provenance failed.",
   "Original source read failed.", "Investigation budget ended before a valid grounded answer."];
 
-const state = { conversationId: null, polling: new Map(), running: false, capReached: false, view: "ask", loadSeq: 0 };
+const state = { conversationId: null, polling: new Map(), running: false, capReached: false, view: "ask", loadSeq: 0, scope: null };
 
 function store(key, value) {
   try { value === null ? localStorage.removeItem(key) : localStorage.setItem(key, value); } catch (_) { /* private mode */ }
@@ -250,7 +250,15 @@ async function loadStarters() {
   }
 }
 
+// "Ask about this" limits the next questions to one source; the chip over the composer shows it and removes it.
+function setScope(scope) {
+  state.scope = scope;
+  $("scope-chip").hidden = !scope;
+  $("scope-chip-text").textContent = scope ? `Asking about: ${scope.title}` : "";
+}
+
 function newQuestion() {
+  setScope(null);
   state.loadSeq += 1;
   stopPolling();
   state.conversationId = null;
@@ -264,6 +272,7 @@ function newQuestion() {
 }
 
 async function openConversation(id) {
+  setScope(null);
   const mine = ++state.loadSeq;  // a slower, older request must not replace what the user opened since
   setView("ask");
   stopPolling();
@@ -296,7 +305,7 @@ async function ask(question) {
   try {
     const path = state.conversationId
       ? `/api/conversations/${encodeURIComponent(state.conversationId)}/turns` : "/api/conversations";
-    const started = await api("POST", path, { question });
+    const started = await api("POST", path, state.scope ? { question, source_id: state.scope.id } : { question });
     $("question").value = "";
     autosize();
     syncSend();
@@ -862,14 +871,16 @@ function openFeedback(element, turnId, opener) {
 }
 
 // Views and sheets ----------------------------------------------------------------------------
-// Two tabs share one page: each owns a container shown with `hidden`, so switching keeps what was typed.
+// Four tabs share one page: each owns a container shown with `hidden`, so switching keeps what was typed.
 function applyView(view) {
   const changed = state.view !== view;
+  if (changed && state.view === "sources") window.sourcesScreen.leave();
   state.view = view;
   $("app").dataset.view = view;
   $("view-ask").hidden = view !== "ask";
   $("capture").hidden = view !== "add";
   $("settings").hidden = view !== "settings";
+  $("sources").hidden = view !== "sources";
   for (const tab of document.querySelectorAll("[data-tab]")) {
     if (tab.dataset.tab === view) tab.setAttribute("aria-current", "page"); else tab.removeAttribute("aria-current");
   }
@@ -877,6 +888,7 @@ function applyView(view) {
   if (view === "settings") $("open-settings").setAttribute("aria-current", "page"); else $("open-settings").removeAttribute("aria-current");
   if (!changed) return undefined;
   if (view === "add") return window.captureScreen.show();
+  if (view === "sources") return window.sourcesScreen.show();
   return view === "settings" ? window.settingsScreen.show() : undefined;
 }
 
@@ -885,7 +897,7 @@ function setView(view) {
   return new Promise((resolve) => closeSheet(() => resolve(applyView(view))));
 }
 
-const SHEET_TITLES = { source: "Source", gaps: "What’s missing", feedback: "What was wrong?", tags: "Notes for this tag" };
+const SHEET_TITLES = { source: "Source", gaps: "What’s missing", feedback: "What was wrong?", tags: "Notes for this tag", filters: "Filters" };
 // `mark` says what the open sheet is showing (a source, a turn's gaps, a tag), so syncActive can fill the matching controls.
 const sheet = { open: false, closing: false, opener: null, name: null, serial: 0, afterClose: [], mark: null };
 // Source, Gaps and a tag’s notes swap in place while the desktop panel stays open; the other sheets never do.
@@ -1110,7 +1122,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // A click anywhere else folds the account menu away. The desktop panel has no dimmed backdrop: a click on the
   // page behind it closes it, but not a click on the panel or on the controls that open or swap it. Where the click
   // happened is read from the event path, because a control may already have been replaced by the time this runs.
-  const SHEET_CONTROLS = ["marker", "source-number", "gap-chip", "thumbs", "tag-row"];
+  const SHEET_CONTROLS = ["marker", "source-number", "gap-chip", "thumbs", "tag-row", "sbar-filters"];
   let pressedInSheet = false;
   document.addEventListener("pointerdown", (event) => {
     pressedInSheet = event.composedPath().some((node) => node.id === "sheet");
@@ -1135,7 +1147,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   window.addEventListener("popstate", () => {
     if (sheet.open) teardownSheet();
     else if (navState.open) setNavOpen(false, true);
+    else window.sourcesScreen.popped();
   });
+  $("scope-chip-remove").addEventListener("click", () => { setScope(null); $("question").focus(); });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeSheet();

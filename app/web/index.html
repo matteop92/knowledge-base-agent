@@ -14,6 +14,8 @@
   <script src="/static/app.js" defer></script>
   <script src="/static/capture.js" defer></script>
   <script src="/static/settings.js" defer></script>
+  <script src="/static/source-filter.js" defer></script>
+  <script src="/static/sources.js" defer></script>
 </head>
 <body>
   <!-- Icons: one sprite, referenced with <use> -->
@@ -40,6 +42,19 @@
     <symbol id="i-failed" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><circle cx="128" cy="128" r="102"/><path d="M128 80v56"/><path d="M128 172h.01"/></symbol>
     <symbol id="i-retry" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><path d="M216 128a88 88 0 1 1-26-62.4"/><path d="M216 40v40h-40"/></symbol>
     <symbol id="i-close" viewBox="0 0 256 256"><path fill="currentColor" d="M204.24,195.76a6,6,0,1,1-8.48,8.48L128,136.49,60.24,204.24a6,6,0,0,1-8.48-8.48L119.51,128,51.76,60.24a6,6,0,0,1,8.48-8.48L128,119.51l67.76-67.75a6,6,0,0,1,8.48,8.48L136.49,128Z"/></symbol>
+    <symbol id="i-books" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><rect x="32" y="40" width="56" height="176" rx="8"/><path d="M32 80h56"/><path d="M104 216V48a8 8 0 0 1 8-8h40a8 8 0 0 1 8 8v168"/><path d="M104 216h56"/><path d="M176 68l36-8a8 8 0 0 1 9.6 6l30 140"/></symbol>
+    <symbol id="i-search" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><circle cx="112" cy="112" r="80"/><path d="M169 169l55 55"/></symbol>
+    <symbol id="i-out" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><path d="M192 136v64a8 8 0 0 1-8 8H56a8 8 0 0 1-8-8V72a8 8 0 0 1 8-8h64"/><path d="M160 40h56v56"/><path d="M104 152L216 40"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><rect x="96" y="24" width="64" height="120" rx="32"/><path d="M56 120a72 72 0 0 0 144 0"/><path d="M128 192v40"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><circle cx="128" cy="128" r="96"/><path d="M32 128h192"/><path d="M128 32c-26 24-40 60-40 96s14 72 40 96c26-24 40-60 40-96s-14-72-40-96Z"/></symbol>
+    <symbol id="i-linkedin" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><rect x="32" y="32" width="192" height="192" rx="20"/><path d="M92 112v64"/><path d="M128 176v-40a28 28 0 0 1 56 0v40"/><path d="M128 112v64"/><path d="M92 82h.01" stroke-width="18"/></symbol>
+    <symbol id="i-xlogo" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><path d="M52 52h44l108 152h-44Z"/><path d="M56 204l66-72"/><path d="M134 124l66-72"/></symbol>
+    <symbol id="i-youtube" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><rect x="24" y="64" width="208" height="128" rx="36"/><path d="M108 98l48 30-48 30Z"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><path d="M40 80h92"/><path d="M188 80h28"/><circle cx="160" cy="80" r="24"/><path d="M40 176h28"/><path d="M124 176h92"/><circle cx="96" cy="176" r="24"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><path d="M32 128V48a16 16 0 0 1 16-16h80l96 96-96 96Z" transform="translate(0 0)"/><path d="M84 84h.01" stroke-width="18"/></symbol>
+    <symbol id="i-person" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><circle cx="128" cy="96" r="44"/><path d="M48 220a80 80 0 0 1 160 0"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><rect x="40" y="48" width="176" height="168" rx="12"/><path d="M40 100h176"/><path d="M88 28v32"/><path d="M168 28v32"/></symbol>
+    <symbol id="i-stack" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><path d="M32 96l96-48 96 48-96 48Z"/><path d="M32 136l96 48 96-48"/></symbol>
   </svg>
 
   <!-- Sign-in -->
@@ -72,6 +87,7 @@
       <nav class="side-nav" aria-label="Main">
         <button type="button" class="side-item" data-tab="ask" aria-label="Ask"><svg class="icon" aria-hidden="true"><use href="#i-ask"/></svg><span class="label">Ask</span></button>
         <button type="button" class="side-item" data-tab="add" aria-label="Add to notes"><svg class="icon" aria-hidden="true"><use href="#i-add"/></svg><span class="label">Add to notes</span></button>
+        <button type="button" class="side-item" data-tab="sources" aria-label="Sources"><svg class="icon" aria-hidden="true"><use href="#i-books"/></svg><span class="label">Sources</span></button>
       </nav>
       <button type="button" id="sidebar-history" class="history-toggle" aria-label="History" aria-expanded="true" aria-controls="history-panel"><span class="section-title">History</span><svg class="icon chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
       <div id="history-panel" class="history-panel">
@@ -113,6 +129,10 @@
             </div>
           </main>
           <form id="composer" class="composer">
+            <div id="scope-chip" class="scope-chip" hidden>
+              <span id="scope-chip-text" class="scope-chip-text"></span>
+              <button type="button" id="scope-chip-remove" class="chip-remove" aria-label="Stop limiting to this source"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button>
+            </div>
             <div class="composer-box">
               <label for="question" class="sr-only">Your question</label>
               <textarea id="question" rows="1" placeholder="Ask a question" required></textarea>
@@ -211,6 +231,69 @@
             <p class="muted caption tags-note">Approved tags apply to notes you add from now on. Older notes keep their tags.</p>
           </div>
         </section>
+
+        <section id="sources" class="view view-sources" hidden aria-labelledby="sources-title">
+          <div class="sources-wrap">
+            <div class="sources-head">
+              <h1 id="sources-title">Sources</h1>
+              <span id="sources-count" class="sources-count"></span>
+            </div>
+            <p class="sources-intro">Everything the agent can quote from. Type a title, a person, a tag or a type to narrow it down.</p>
+            <div class="sources-pin">
+            <div id="sources-bar" class="sbar">
+              <div class="sbar-field">
+                <svg class="icon sbar-icon" aria-hidden="true"><use href="#i-search"/></svg>
+                <ul id="sources-tokens" class="stokens" aria-label="Active filters"></ul>
+                <label for="sources-input" class="sr-only">Search sources</label>
+                <input id="sources-input" class="sbar-input" type="text" role="combobox" aria-expanded="false" aria-controls="sources-suggest" aria-autocomplete="list" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search titles, people, tags or types">
+                <button type="button" id="sources-clear" class="sbar-clear" aria-label="Clear all filters" hidden><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button>
+              </div>
+              <span class="sbar-divider" aria-hidden="true"></span>
+              <div id="sources-menus" class="sbar-menus"></div>
+              <button type="button" id="sources-filters" class="sbar-filters" aria-haspopup="dialog"><svg class="icon" aria-hidden="true"><use href="#i-sliders"/></svg><span>Filters</span><span id="sources-badge" class="sbar-badge" hidden></span></button>
+              <div id="sources-suggest" class="ssuggest" role="listbox" aria-label="Suggestions" hidden></div>
+              <div id="sources-menu-panel" class="smenu" hidden></div>
+            </div>
+            <ul id="sources-chips" class="schips" aria-label="Active filters" hidden></ul>
+            </div>
+            <p id="sources-result" class="sources-result" aria-live="polite"></p>
+            <div id="sources-notice" class="sources-notice" hidden></div>
+            <ul id="sources-list" class="sources-list"></ul>
+            <div class="sources-more"><button type="button" id="sources-more" class="plain more-button" hidden></button></div>
+            <div id="sources-empty" class="sources-empty" hidden>
+              <p class="sources-empty-title"></p>
+              <p class="sources-empty-sub"></p>
+            </div>
+          </div>
+        </section>
+
+        <section id="source-reader" class="view view-reader" hidden aria-label="Source">
+          <header class="reader-bar">
+            <button type="button" id="reader-back" class="reader-link"><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg><span>Sources</span></button>
+            <span class="reader-spacer"></span>
+            <a id="reader-obsidian" class="reader-link reader-obsidian" href="#" aria-label="Open in Obsidian" hidden><svg class="icon" aria-hidden="true"><use href="#i-out"/></svg><span>Open in Obsidian</span></a>
+            <button type="button" id="reader-ask" class="primary reader-ask"><svg class="icon" aria-hidden="true"><use href="#i-ask"/></svg><span>Ask about this</span></button>
+          </header>
+          <div class="reader-scroll">
+            <article class="reader-col">
+              <div id="reader-typeline" class="s-topline"></div>
+              <h1 id="reader-title" class="reader-title" tabindex="-1"></h1>
+              <p id="reader-voices" class="s-voices" hidden></p>
+              <ul id="reader-tags" class="s-tags" hidden></ul>
+              <p id="reader-lead" class="reader-lead" hidden></p>
+              <div id="reader-inshort" class="reader-inshort" hidden><span class="kicker">In short</span><p id="reader-inshort-text"></p></div>
+              <hr id="reader-rule" class="reader-rule">
+              <div id="reader-notice" class="sources-notice" hidden></div>
+              <div id="reader-body" class="reader-body"></div>
+              <p id="reader-original" class="reader-original" hidden><a id="reader-original-link" href="#" target="_blank" rel="noopener noreferrer">Read the original</a></p>
+            </article>
+          </div>
+          <form id="reader-askbox" class="reader-askbox">
+            <label for="reader-ask-input" class="sr-only">Ask about this</label>
+            <input id="reader-ask-input" type="text" autocomplete="off" placeholder="Ask about this…">
+            <button type="submit" id="reader-ask-send" class="send" aria-label="Ask"><svg class="icon" aria-hidden="true"><use href="#i-send"/></svg></button>
+          </form>
+        </section>
       </div>
 
       <!-- Shown while a file is dragged over the page. -->
@@ -233,6 +316,7 @@
         <section data-sheet="gaps" hidden></section>
         <section data-sheet="feedback" hidden></section>
         <section data-sheet="tags" hidden></section>
+        <section data-sheet="filters" hidden></section>
       </div>
     </div>
   </div>

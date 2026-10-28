@@ -231,7 +231,7 @@ const navState = { open: false };
 function teardownSheet() { log.push("sheet"); }
 function setNavOpen(open, fromBack) { log.push("nav:" + open + ":" + fromBack); }
 let listener;
-const window = { addEventListener: (name, fn) => { listener = fn; } };
+const window = { addEventListener: (name, fn) => { listener = fn; }, sourcesScreen: { popped: () => log.push("reader") } };
 """ + handler + """
 const out = {};
 sheet.open = true; navState.open = true; listener(); out.both = log.splice(0);
@@ -241,7 +241,8 @@ console.log(JSON.stringify(out));"""
         out = _node(probe)
         self.assertEqual(out["both"], ["sheet"])
         self.assertEqual(out["drawer"], ["nav:false:true"])
-        self.assertEqual(out["none"], [])
+        # With no sheet and no drawer open, Back belongs to the Sources reader (which ignores it when closed).
+        self.assertEqual(out["none"], ["reader"])
 
     def test_recent_rows_show_state_icon_link_type_and_retry(self) -> None:
         capture = (WEB / "capture.js").read_text(encoding="utf-8").replace("\r", "")
