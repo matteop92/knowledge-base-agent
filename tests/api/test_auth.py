@@ -429,7 +429,7 @@ class QuestionRouteTests(unittest.TestCase):
                                            return_value=(None, mock.MagicMock())))
             stack.enter_context(mock.patch("app.api.answers.check_answer_routes"))
             retriever_class = stack.enter_context(mock.patch("app.storage.retrieval.DatabaseRetriever"))
-            stack.enter_context(mock.patch("app.agent.memory.build_memory"))
+            self.build = stack.enter_context(mock.patch("app.agent.memory.build_memory"))
             stack.enter_context(mock.patch("app.api.answers.active_revisions", return_value=set()))
             stack.enter_context(mock.patch("app.api.answers.rewrite_followup", return_value=rewrite))
             stack.enter_context(mock.patch("app.api.answers.source_title", return_value="Pear notes"))
@@ -441,6 +441,21 @@ class QuestionRouteTests(unittest.TestCase):
             self.outcome = engine.answer("is it ripe?", prior, source_id="doc-1")
         self.retriever = retriever_class.return_value
         return routed
+
+    @staticmethod
+    def prior_turn():
+        from app.agent.memory import PriorTurn
+        from app.storage.records import SourcePassage
+
+        def passage(document_id):
+            return SourcePassage(document_id=document_id, run_id="r", source_sha256="a" * 64, root_alias="p",
+                                 relative_path="a.md", chunk_id="c", start_char=0, end_char=1, text="x")
+        return PriorTurn("q", "a", {"E1.1": passage("doc-1"), "E2.1": passage("doc-2")}, {})
+
+    def test_a_scoped_follow_up_carries_no_passages_from_other_sources(self) -> None:
+        self.scoped(prior=[self.prior_turn()], rewrite="q")
+        carried = self.build.call_args.args[0][0].passages
+        self.assertEqual([item.document_id for item in carried.values()], ["doc-1"])
 
     def test_a_scoped_question_searches_only_that_source_strictly_and_never_calls_the_router(self) -> None:
         routed = self.scoped()
@@ -457,7 +472,7 @@ class QuestionRouteTests(unittest.TestCase):
         base = AnswerSettings().request_budget
         self.scoped()
         self.assertEqual(self.clients[0]["request_budget"], base)
-        self.scoped(prior=[object()], rewrite="q")
+        self.scoped(prior=[self.prior_turn()], rewrite="q")
         self.assertEqual(self.clients[0]["request_budget"], base + 1)
 
 

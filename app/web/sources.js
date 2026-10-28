@@ -19,7 +19,7 @@
 
   const view = { sources: [], vaultName: "", loaded: false, loadSeq: 0, filter: F.empty(), showAll: false, groups: [],
     active: 0, menu: null, menuTrigger: null, expanded: { tags: false, people: false }, dateMode: null };
-  const reader = { open: false, pushed: false, source: null, opener: null, scroll: 0, seq: 0 };
+  const reader = { open: false, pushed: false, closing: false, gen: 0, source: null, opener: null, scroll: 0, seq: 0 };
 
   const h = (tag, cls, text) => {
     const node = document.createElement(tag);
@@ -211,7 +211,7 @@
         remove.type = "button";
         remove.setAttribute("aria-label", `Remove filter: ${label}`);
         remove.append(icon("close"));
-        remove.addEventListener("click", () => { setFilter(F.removeToken(view.filter, token)); $("sources-input").focus(); });
+        remove.addEventListener("click", () => { setFilter(F.removeToken(view.filter, token)); if (!phone.matches) $("sources-input").focus(); });
         item.append(remove);
         target.append(item);
       }
@@ -287,7 +287,13 @@
     if (key === "dates") {
       const list = h("div", "smenu-list");
       for (const row of rows.dates) {
-        list.append(menuRow(row, () => setFilter({ ...view.filter, date: row.key === "any" ? null : { preset: row.key } })));
+        const button = menuRow(row, () => {
+          const position = [...list.children].indexOf(button);
+          setFilter({ ...view.filter, date: row.key === "any" ? null : { preset: row.key } });
+          const fresh = $("sources-menu-panel").querySelector(".smenu-list");
+          if (fresh && fresh.children[position]) fresh.children[position].focus({ preventScroll: true });
+        });
+        list.append(button);
       }
       panel.append(list);
       const range = h("div", "smenu-range");
@@ -326,7 +332,7 @@
       const date = range.from || range.to ? { from: range.from || undefined, to: range.to || undefined } : null;
       view.filter = { ...view.filter, date };
       view.showAll = false;
-      render(true);
+      render();
     });
     wrap.append(input);
     return wrap;
@@ -397,6 +403,7 @@
 
   function onKey(event) {
     const input = $("sources-input");
+    if (event.isComposing || (event.repeat && event.key === "Backspace")) return;
     const items = flatItems();
     const action = F.keyAction(event.key, { empty: input.value === "", count: items.length, index: view.active });
     if (action.type === "none") return;
@@ -757,8 +764,9 @@
   }
 
   function openReader(source, opener) {
-    if (reader.open) return;
+    if (reader.open || reader.closing) return;
     reader.open = true;
+    const gen = ++reader.gen;
     reader.source = source;
     reader.opener = opener;
     reader.scroll = $("sources").scrollTop;
@@ -769,6 +777,7 @@
     const card = opener.querySelector(".s-title");
     // The body loads once the page is drawn: a view transition runs its update a frame later and would clear it.
     transition(() => {
+      if (!reader.open || reader.gen !== gen) return;  // Back came before the transition ran
       showReader(source);
       $("reader-title").focus({ preventScroll: true });
       loadDetail(source);
@@ -780,18 +789,21 @@
     if (!reader.open) return;
     reader.open = false;
     reader.seq += 1;
+    reader.gen += 1;
     const opener = reader.opener;
     transition(() => {
+      if (reader.open) return;  // reopened before the transition ran
       showList();
       if (opener && opener.isConnected) opener.focus({ preventScroll: true });
     }, $("reader-title"), opener && opener.isConnected ? opener.querySelector(".s-title") : null);
-    if (reader.pushed) history.back();
+    if (reader.pushed) { reader.closing = true; history.back(); }
   }
 
   // popstate: the browser already went back. Idempotent, so a repeat or a late event does nothing.
   function popped() {
     if (!reader.pushed) return;
     reader.pushed = false;
+    reader.closing = false;
     if (reader.open) {
       reader.open = false;
       reader.seq += 1;
@@ -819,7 +831,8 @@
       reader.seq += 1;
       $("source-reader").hidden = true;
       $("app").removeAttribute("data-reader");
-      if (reader.pushed) history.back();
+      reader.gen += 1;
+      if (reader.pushed) { reader.closing = true; history.back(); }
     }
     closeMenu(false);
     closeSuggest();

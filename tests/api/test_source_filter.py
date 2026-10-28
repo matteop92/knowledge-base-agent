@@ -65,6 +65,12 @@ class SourceFilterTests(unittest.TestCase):
         self.assertEqual(out["types"], [["article", 1], ["transcript", 1]])
         self.assertEqual(out["dates"][0], ["any", 1])
 
+    def test_tag_rows_count_what_would_remain_with_every_selected_tag_applied(self) -> None:
+        out = run("""const c = f.counts(make({ tags: ["markets", "maps"] }), SOURCES, NOW);
+          console.log(JSON.stringify(c.tags.map((r) => [r.value, r.count])));""")
+        # Sources 3 and 4 carry both tags; "maple" is only on 4, "farming" on neither of them.
+        self.assertEqual(sorted(out), [["maple", 1], ["maps", 2], ["markets", 2]])
+
     def test_suggestions_are_capped_sorted_by_count_and_hide_zero_rows(self) -> None:
         out = run("""const groups = f.suggest("ma", make(), SOURCES, NOW);
           console.log(JSON.stringify(groups.map((g) => [g.kind, g.items.map((i) => [i.value, i.count])])));""")

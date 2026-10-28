@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import Any, Callable, Protocol
 from urllib.parse import quote
@@ -132,6 +132,10 @@ class OpenRouterAnswerEngine:
                 retriever = DatabaseRetriever(conn, client, provider_tag=answer.embedding_provider_tag,
                                               max_embedding_usd_per_million=answer.max_embedding_usd_per_million)
                 memory, query, decision = None, None, RouteDecision()
+                if prior and source_id is not None:
+                    # Passages carried from other sources must not be cited under a one-source scope.
+                    prior = [replace(turn, passages={ref: item for ref, item in turn.passages.items()
+                                                     if item.document_id == source_id}) for turn in prior]
                 if prior:
                     memory = build_memory(prior, active=active_revisions(conn, prior))
                     query = rewrite_followup(client, question, memory.turns, rewrite_prices)

@@ -74,6 +74,9 @@ class DateTests(unittest.TestCase):
     def test_published_beats_created(self) -> None:
         self.assertEqual(facts({"published": "2024-05-01", "created": "2025-01-01"})["card_date"], "2024-05-01")
 
+    def test_a_value_that_is_not_a_day_is_skipped(self) -> None:
+        self.assertEqual(facts({"published": "[[Oct 2024]]", "created": "2025-01-01"})["card_date"], "2025-01-01")
+
     def test_no_dates_falls_back_to_added(self) -> None:
         added = datetime(2026, 10, 3, 9, tzinfo=timezone.utc)
         self.assertEqual(facts({}, added=added)["card_date"], "2026-10-03")

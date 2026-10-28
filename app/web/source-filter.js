@@ -55,7 +55,8 @@
     const dates = filtered(sources, state, now, "date");
     return {
       types: tally(filtered(sources, state, now, "types"), (s) => [s.type], state.types, (v) => TYPE_LABELS[v] || v),
-      tags: tally(filtered(sources, state, now, "tags"), tagsOf, state.tags, (v) => v),
+      // Tags must all match, so a row counts the sources that would remain with it added: no tag filter is skipped.
+      tags: tally(filtered(sources, state, now), tagsOf, state.tags, (v) => v),
       people: tally(filtered(sources, state, now, "people"), peopleOf, state.people, (v) => v),
       dates: [{ key: "any", label: "Any time", count: dates.length, selected: !state.date },
         ...PRESETS.map((item) => ({ key: item.key, label: item.label,

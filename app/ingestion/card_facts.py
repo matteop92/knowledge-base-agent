@@ -6,6 +6,7 @@ The vault is the authority and nothing here is written back to it. Rules that ar
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any
 from urllib.parse import urlsplit
@@ -17,6 +18,7 @@ PLATFORM_HOSTS = {"linkedin.com": "linkedin", "x.com": "x", "twitter.com": "x",
                   "youtube.com": "youtube", "youtu.be": "youtube"}
 PLATFORM_WORDS = {"linkedin": "linkedin", "x": "x", "twitter": "x", "x.com": "x", "youtube": "youtube",
                   "website": "website", "web": "website", "podcast": "podcast"}
+DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
 PERSON_TYPES = ("post", "note", "transcript")
 
 
@@ -73,7 +75,7 @@ def card_facts(metadata: dict, relative_path: str, added: datetime | str | None 
         authors = [name for name in authors if name.casefold() != show.casefold()]
 
     facts: dict[str, Any] = {"type": kind, "authors": authors, "guests": guests}
-    if kind in PERSON_TYPES and (show or guests or flagged or platform == "podcast"):
+    if kind in PERSON_TYPES and (show or (guests and kind == "transcript") or flagged or platform == "podcast"):
         platform = "podcast"
     elif platform == "podcast" and kind not in PERSON_TYPES:
         platform = None
@@ -89,7 +91,8 @@ def card_facts(metadata: dict, relative_path: str, added: datetime | str | None 
         facts["source_name"] = host
 
     dated = next((str(value)[:10] for value in (metadata.get("published"), metadata.get("date"),
-                                               metadata.get("created"), generated.get("date")) if value), None)
+                                               metadata.get("created"), generated.get("date"))
+                  if DAY.match(str(value or ""))), None)
     own_added = added.date().isoformat() if isinstance(added, datetime) else _text(added)
     if dated or own_added:
         facts["card_date"] = dated or own_added
