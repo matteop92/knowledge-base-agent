@@ -6,6 +6,7 @@ Read-only. Card facts (type, platform, people, dates) are derived at read time f
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any, Callable
 
@@ -34,6 +35,18 @@ QUOTE_TEXT_SQL = """select r.document_id, string_agg(b->>'raw_text', E'\\n\\n' o
       and coalesce(b->>'content_role', 'source')='source'
     group by r.document_id"""
 
+# Markdown markers the reader draws as structure, and images, which the reader leaves out (an image wrapped in a link
+# leaves an empty link behind, which goes too). Links, bold and italic stay; the page draws them as elements.
+MARKERS = {"heading": re.compile(r"^#{1,6}[ \t]+|[ \t]+#+[ \t]*$"),
+           "list_item": re.compile(r"^[ \t]*[-*+][ \t]+(?:\[[ xX]\][ \t]+)?"),
+           "block_quote": re.compile(r"^[ \t]*>[ \t]?", re.MULTILINE)}
+# A link target may hold one level of brackets (a Wikipedia file name); the page's link pattern reads it the same way.
+TARGET = r"\((?:[^()\s]|\([^()\s]*\))*(?:\s+\"[^\"]*\")?\)"
+IMAGE = re.compile(r"!\[[^\]]*\]" + TARGET + r"|!\[\[[^\]|]+\.(?:png|jpe?g|gif|webp|svg|bmp|avif)(?:\|[^\]]*)?\]\]",
+                   re.IGNORECASE)
+EMPTY_LINK = re.compile(r"\[\s*\]" + TARGET)
+EMBED = re.compile(r"!(?=\[\[)")  # an embedded note that is not an image reads as a plain wiki link
+
 ACTIVE_SQL = """select 1 from knowledge.active_runs a
     join knowledge.runs r on r.run_id=a.run_id
     join knowledge.corpus_state s on s.profile_id=a.profile_id
@@ -41,7 +54,7 @@ ACTIVE_SQL = """select 1 from knowledge.active_runs a
 
 
 def _block_text(block: dict[str, Any]) -> str:
-    """The block's text without its markers (a speaker label, a highlight header) when it has a content span."""
+    """The block's text without its markers (a speaker label, a highlight header, `##`, `- `, `>`) or images."""
     text = str(block.get("raw_text") or "")
     span, content = block.get("span"), block.get("content_span")
     if isinstance(span, dict) and isinstance(content, dict):
@@ -49,7 +62,10 @@ def _block_text(block: dict[str, Any]) -> str:
         end = int(content.get("end_char", 0)) - int(span.get("start_char", 0))
         if 0 <= start < end <= len(text):
             text = text[start:end]
-    return text.strip()
+    marker = MARKERS.get(block.get("kind"))
+    if marker:
+        text = marker.sub("", text.strip())
+    return EMBED.sub("", EMPTY_LINK.sub("", IMAGE.sub("", text))).strip()
 
 
 def reading_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:

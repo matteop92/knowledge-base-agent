@@ -59,6 +59,7 @@ class El {
 }
 
 const documentStub = { activeElement: null, listeners: {}, createElement: (tag) => new El(tag),
+  createTextNode: (text) => Object.assign(new El("#text"), { _text: String(text) }),
   createDocumentFragment: () => Object.assign(new El("#fragment"), { fragment: true }),
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }, querySelector: () => null, querySelectorAll: () => [] };
 
@@ -253,6 +254,19 @@ const scenarios = {
     return { labels, pushes: app.calls.pushes.length, reader: app.els["source-reader"].hidden, list: app.els["sources"].hidden,
       title: text(app.els["reader-title"]), focus: documentStub.activeElement === app.els["reader-title"], counters: /\bof \d+|next|previous/i.test(markup),
       apis: app.calls.apis };
+  },
+  async readerMarkdown() {
+    const detail = { source_url: null, body: [
+      { kind: "paragraph", text: "Read [Opus 5.5](https://e.org/o) and [this](javascript:alert(1)) by **Ada** in *[[Note|a note]]*, 2 * 3 * 4." },
+      { kind: "heading", text: "A [linked](https://e.org/h) heading", heading_path: ["A"] },
+      { kind: "list_item", text: "1. First" }, { kind: "list_item", text: "Plain" }] };
+    const app = boot({ sources: mixed(), detail }); app.screen.show(); await app.flush();
+    links(app)[5].click(); await app.flush();
+    const body = app.els["reader-body"];
+    const anchors = body.querySelectorAll("a").map((a) => [a.textContent, a.href, a.target, a.rel]);
+    return { anchors, strong: text(body.querySelector("strong")), em: text(body.querySelector("em")),
+      paragraph: text(body.querySelector("p")), heading: text(body.querySelector("h2")),
+      items: body.querySelectorAll("li").map((li) => [text(li), li.classList.contains("is-numbered")]) };
   },
   async readerLoadingAndFailure() {
     const app = boot({ sources: mixed(), detailStatus: 404 }); app.screen.show(); await app.flush();

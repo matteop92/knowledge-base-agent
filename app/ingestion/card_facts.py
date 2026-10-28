@@ -66,9 +66,6 @@ def card_facts(metadata: dict, relative_path: str, added: datetime | str | None 
     guests = list(dict.fromkeys(_names(metadata.get("guests")) + _names(frontmatter.get("guest"))))
 
     flagged = (_text(frontmatter.get("type")) or _text(frontmatter.get("source_type")) or "").lower() == "podcast"
-    if platform == "youtube" and not channel and len(authors) == 1 and _text(frontmatter.get("author")):
-        # The capture writes the channel into `author`; it is the publisher, not a speaker.
-        channel, authors = authors[0], []
     if channel:
         authors = [name for name in authors if name.casefold() != channel.casefold()]
     if show:

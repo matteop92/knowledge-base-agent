@@ -731,9 +731,11 @@ a.open-obsidian:hover { color: var(--ink); }
 .reader-col { max-width: 680px; margin: 0 auto; }
 .reader-title { margin: 16px 0 0; font-family: var(--serif); font-weight: 480; font-size: 40px; line-height: 1.08; letter-spacing: -0.026em; overflow-wrap: anywhere; }
 .reader-title:focus { outline: none; }
-.reader-col .s-voices { margin-top: 14px; }
+/* The byline and the tags share one line and wrap together when it runs out. */
+.reader-byline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 14px; }
+.reader-byline:not(:has(> :not([hidden]))) { display: none; }
+.reader-col .s-voices, .reader-col .s-tags { margin: 0; }
 .reader-col .s-voices.is-plain { font-size: 14px; letter-spacing: 0; text-transform: none; font-weight: 400; color: var(--ink-soft); }
-.reader-col .s-tags { margin-top: 16px; }
 .reader-lead { margin: 36px 0 0; font-family: var(--serif); font-style: italic; font-size: 18.5px; line-height: 1.55; color: var(--ink-soft); }
 .reader-inshort { display: none; }
 .reader-rule { width: 28px; height: 1px; margin: 36px 0; border: 0; background: var(--accent); }
@@ -748,8 +750,11 @@ a.open-obsidian:hover { color: var(--ink); }
 h3.r-heading { font-size: 18.5px; }
 .r-list { margin: 0; padding-left: 22px; }
 .r-list .r-text { margin-top: 6px; }
+.r-list .is-numbered { list-style: none; margin-left: -22px; }
 .r-quote { margin: 0; padding-left: 18px; box-shadow: inset 2px 0 0 var(--handle); font-family: var(--serif); font-style: italic; font-size: 18.5px; line-height: 1.6; }
 .r-text.r-quote-big { font-size: 26px; line-height: 1.4; }
+.r-link { color: inherit; text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 3px; }
+.r-link:hover { color: var(--accent); }
 .reader-original { margin: 28px 0 0; font-size: 14px; }
 .reader-askbox { display: none; }
 
@@ -860,8 +865,8 @@ h3.r-heading { font-size: 18.5px; }
   .reader-obsidian span, .reader-ask { display: none; }
   .reader-scroll { padding: 22px 20px calc(110px + env(safe-area-inset-bottom)); }
   .reader-title { font-size: 32px; line-height: 1.1; letter-spacing: -0.02em; }
-  .reader-col .s-voices { margin-top: 10px; }
-  .reader-col .s-tags, .reader-lead, .reader-rule { display: none; }
+  .reader-byline { margin-top: 10px; }
+  .reader-lead, .reader-rule { display: none; }
   .reader-inshort { display: block; margin-top: 20px; padding: 14px 16px; border-radius: 12px; background: var(--ground); }
   .reader-inshort p { margin: 4px 0 0; font-size: 14px; }
   .reader-body { margin-top: 24px; gap: 18px; }
