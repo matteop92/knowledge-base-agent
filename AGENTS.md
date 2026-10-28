@@ -6,14 +6,14 @@ Read [README.md](README.md) for the overview, then [docs/architecture.md](docs/a
 
 ## Where to find things
 
-- `app/ingestion/`: source capture, parsing, chunking, eval mapping, enrichment, summaries, embeddings, and preview CLI.
+- `app/ingestion/`: source capture, parsing, chunking, eval mapping, enrichment, summaries, embeddings, card facts for the Sources page (`card_facts.py`), and preview CLI.
 - `app/ingestion/vault_allowlist.py`: removes everything outside the allowed folders from the server's vault copy (download-only mode; in two-way mode only folders the sync tool's skip list names exactly).
 - `app/ingestion/vault_sync.py` and `app/ingestion/properties.py`: incremental indexing of selected vault folders and the tag classifier (the `knowledge.tags` table holds the live tag list; `config/tags.yaml` is its seed).
 - `app/models/`: model interface, opt-in OpenRouter adapter, and pinned private routes and prices (`routes.py`).
 - `app/storage/`: private Postgres loading, publication, retirement, search and the spend ledger.
 - `app/agent/`: the answer harness, its command-line tool, and the shared route and cost checks (`endpoints.py`).
 - `app/capture/`: captured text, `.md` files, screenshots and YouTube links become new notes in the `Knowledge` folders (new files only).
-- `app/api/` and `app/web/`: the FastAPI server (with `scheduler.py`, the background index pass, and `tags.py`, the suggested-tags store behind Settings) and the installable web app; `Dockerfile` and `deploy/` package them for Railway.
+- `app/api/` and `app/web/`: the FastAPI server (with `scheduler.py`, the background index pass, `tags.py`, the suggested-tags store behind Settings, and `sources.py`, the Sources page's list and reading payload) and the installable web app (`sources.js` the Sources page, `source-filter.js` its matching and suggestions); `Dockerfile` and `deploy/` package them for Railway.
 - `prompts/`: versioned prompts in use, with a changelog in `prompts/README.md`.
 - `evals/`: checked source-span questions, the frozen answer checklist and the trial scripts; see [evals/README.md](evals/README.md).
 - `tests/`: run `python -m unittest discover -s tests/<suite> -p 'test_*.py'` for each of `ingestion`, `models`, `storage`, `agent`, `api`, `capture` and `evals`. Database tests need a fresh disposable `KNOWLEDGE_TEST_DATABASE_URL` per suite.

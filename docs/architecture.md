@@ -102,6 +102,7 @@ Every transcript passage carries its speaker, read from the run's parsed blocks 
 - **Answers**: run as background jobs the page polls, with cited excerpts that link back to the original note (with its author), a thumbs-down note and a daily spend cap. The page draws lists, bold and italic from the answer text as elements, never as HTML; a source cited from several passages numbers them 1.1, 1.2 and so on.
 - **Capture**: pasted text, `.md` files, screenshots and YouTube links become new notes in the `Knowledge` folders (`app/capture/`). New files only; nothing is ever edited or overwritten.
 - **Sync**: the server keeps a copy of the `Knowledge` folder through Obsidian Sync and indexes new, edited and deleted notes every five minutes (`app/api/scheduler.py`, `deploy/`).
+- **Sources**: browse every indexed source (`GET /api/sources`, light rows built from the stored run metadata by `app/ingestion/card_facts.py`; nothing is written back to the vault). One search bar holds the filters as tokens (type, tag, person, date added, title) and the page filters and counts in the browser (`app/web/source-filter.js`); the list shows the first 60 cards. On a phone the filters sit behind one button: a summary sheet (date and type inline) with a searchable page each for People and Tags, so hundreds of names stay findable. A card opens a reading page (`GET /api/sources/{id}`, the stored blocks of the active run); a book opens in Obsidian instead. Every link to the vault reads "Open in Obsidian" with the same gem mark. "Ask about this" starts a new question limited to that source: the request carries `source_id`, the router is skipped, and the search never widens past that source.
 - **Settings**: approve or block the tags the classifier proposes.
 
 Hosting is described in [deploy.md](deploy.md).
@@ -116,5 +117,6 @@ Hosting is described in [deploy.md](deploy.md).
 | Question routing | Live: every question is routed catalog, narrowed or plain. The router set scores 65 of 67 (one plain question about a named article goes narrowed) and the 26 approved catalog questions pass 3 of 3. |
 | Feedback evals | `evals/export_feedback.py` and `evals/feedback_eval.py` turn thumbs-down turns into checked evals. The two seed evals fail on the saved answers. Live, the latest-note eval passes every run and the Tim Ferriss eval passes 3 of 5 on v13 with the speaker written in the passage (2 of them cite a guest passage); the retry that lifts it to 4 of 5 is off because it adds about 40 s. |
 | Web app and capture | Live, with follow-up memory and capture from the phone. |
+| Sources page | Built: list with token search and filters, reading page, scoped "Ask about this". A note with `type: quote` shows as a Quote card. |
 | Vault sync | Live; the server's sync is two-way so captured notes reach the owner's devices. |
 | Later ideas | Cross-source connections and questions about the whole vault; neither has been built. See [decisions.md](decisions.md). |

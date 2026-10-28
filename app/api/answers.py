@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import Any, Callable, Protocol
 from urllib.parse import quote
@@ -56,7 +56,8 @@ class AnswerEngine(Protocol):
 
     def worst_case_usd(self) -> Decimal: ...
 
-    def answer(self, question: str, prior: list[PriorTurn] | None = None) -> AnswerOutcome: ...
+    def answer(self, question: str, prior: list[PriorTurn] | None = None, *,
+               source_id: str | None = None) -> AnswerOutcome: ...
 
 
 class OpenRouterAnswerEngine:
@@ -89,7 +90,10 @@ class OpenRouterAnswerEngine:
         """Every question makes one router call."""
         return Decimal(str(DECISION_CALL_WORST_USD)) if self.settings.question_router else Decimal(0)
 
-    def answer(self, question: str, prior: list[PriorTurn] | None = None) -> AnswerOutcome:
+    def answer(self, question: str, prior: list[PriorTurn] | None = None, *,
+               source_id: str | None = None) -> AnswerOutcome:
+        """Answer a question. With `source_id` the user chose one source: search only it, never widen, and
+        skip the question router (it could pick a different scope)."""
         from app.agent.harness import answer_question
         from app.agent.memory import build_memory
         from app.models.client import ModelSpec
@@ -104,10 +108,11 @@ class OpenRouterAnswerEngine:
                                               "require_parameters": True}
         # The rewrite, the router call and a possible re-embed when a narrowed search widens each get their own
         # request so the answer keeps its full allowance.
+        routed_question = answer.question_router and source_id is None
         client = OpenRouterClient(allow_live=True, request_budget=answer.request_budget + (1 if prior else 0)
-                                  + (2 if answer.question_router else 0),
+                                  + (2 if routed_question else 0),
                                   estimated_input_token_budget=answer.input_byte_budget
-                                  + (DECISION_INPUT_BYTES if answer.question_router else 0),
+                                  + (DECISION_INPUT_BYTES if routed_question else 0),
                                   conservative_input_budget=True, provider=private_route,
                                   model_providers=model_providers, timeout_seconds=WEB_REQUEST_TIMEOUT_SECONDS)
         routes, embedding_model, rewrite_prices = None, None, {}
@@ -127,12 +132,18 @@ class OpenRouterAnswerEngine:
                 retriever = DatabaseRetriever(conn, client, provider_tag=answer.embedding_provider_tag,
                                               max_embedding_usd_per_million=answer.max_embedding_usd_per_million)
                 memory, query, decision = None, None, RouteDecision()
+                if prior and source_id is not None:
+                    # Passages carried from other sources must not be cited under a one-source scope.
+                    prior = [replace(turn, passages={ref: item for ref, item in turn.passages.items()
+                                                     if item.document_id == source_id}) for turn in prior]
                 if prior:
                     memory = build_memory(prior, active=active_revisions(conn, prior))
                     query = rewrite_followup(client, question, memory.turns, rewrite_prices)
                 routing_started = time.monotonic()
+                if source_id is not None:
+                    retriever.narrow([source_id], strict=True)
                 # A follow-up is routed on its rewritten query; with no rewrite it goes plain without a call.
-                if answer.question_router and (query or not prior):
+                if routed_question and (query or not prior):
                     routed, decision, sources = route_question(client, conn, query or question, retriever)
                     if routed is not None:
                         return AnswerOutcome(routed, self._cost(client, routes, answer.model, embedding_model,
@@ -148,7 +159,10 @@ class OpenRouterAnswerEngine:
                                          limits=self.limits, reasoning_effort=answer.reasoning_effort,
                                          memory=memory, search_query=query, prompt_version=answer.prompt_version,
                                          attribution_retry=answer.attribution_retry)
-                if answer.question_router:
+                if source_id is not None:
+                    line = f"Searched 1 source: {source_title(conn, source_id)}."
+                    result = result.model_copy(update={"answer": f"{line}\n\n{result.answer}"})
+                elif answer.question_router:
                     # Time spent deciding the route is part of the answer's wait.
                     update = {"elapsed_seconds": time.monotonic() - routing_started, "routing": decision.record()}
                     if decision.route == "narrowed":
@@ -173,6 +187,16 @@ class OpenRouterAnswerEngine:
         measured, known = measured_usd(client, routes, model=model, embedding_model=embedding_model,
                                        extra_prices=extra_prices)
         return float(measured if known else self.worst_case_usd())
+
+
+def source_title(conn, document_id: str) -> str:
+    """The title of one active source, for the scope line of a scoped answer."""
+    row = conn.execute(f"""select d.relative_path, {LABEL_METADATA}
+        from knowledge.active_runs a join knowledge.runs r on r.run_id=a.run_id
+        join knowledge.documents d on d.document_id=r.document_id
+        join knowledge.corpus_state s on s.profile_id=a.profile_id
+        where r.document_id=%s""", (document_id,)).fetchone()
+    return source_label(row[1], row[0])[0] if row else "the chosen source"
 
 
 def rewrite_followup(client, question: str, recent: list[dict[str, str]],
@@ -294,11 +318,11 @@ class AnswerJobs:
             self._record_spend(turn_id, float(self.engine.worst_case_usd()))
         return len(expired)
 
-    def start(self, conversation_id: str | None, question: str) -> tuple[str, str]:
+    def start(self, conversation_id: str | None, question: str, source_id: str | None = None) -> tuple[str, str]:
         with self._start_lock:
             self.check_cap()
             conversation_id, turn_id = self.store.start_turn(conversation_id, question)
-        thread = threading.Thread(target=self._run, args=(conversation_id, turn_id, question), daemon=True,
+        thread = threading.Thread(target=self._run, args=(conversation_id, turn_id, question, source_id), daemon=True,
                                   name=f"answer-{turn_id}")
         self._threads = [item for item in self._threads if item.is_alive()] + [thread]
         thread.start()
@@ -332,14 +356,16 @@ class AnswerJobs:
         except Exception as exc:  # noqa: BLE001 - never leave the turn running because the ledger failed
             log.error("spend not recorded turn=%s cost_usd=%.6f error=%s", turn_id, cost, type(exc).__name__)
 
-    def _run(self, conversation_id: str, turn_id: str, question: str) -> None:
+    def _run(self, conversation_id: str, turn_id: str, question: str, source_id: str | None = None) -> None:
         started = time.monotonic()
         cost = 0.0
         status, receipt, error = "failed", None, "the answer could not be completed; try again"
         try:
             prior = [prior_turn_from_receipt(asked, receipt)
                      for asked, receipt in self.store.prior_turns(conversation_id, turn_id, PRIOR_TURNS)]
-            outcome = self.engine.answer(question, prior)
+            # A scoped turn passes its source; engines written before scoped asks keep their two arguments.
+            outcome = (self.engine.answer(question, prior, source_id=source_id) if source_id
+                       else self.engine.answer(question, prior))
             cost = outcome.cost_usd
             status, error = turn_status(outcome.result)
             receipt = {**build_receipt(outcome.result, self._labels(outcome.result), self.settings.vault_name),

@@ -389,15 +389,16 @@ class DatabaseRetriever:
         # A narrowed question searches only these documents; None is the whole vault.
         self.scope: list[str] | None = None
         self.widened = False  # the scope matched nothing, so the whole vault was searched instead
+        self.strict = False  # the user chose the scope: an empty scope or search never widens
         self._searched = False
         # One query per chunk: every passage of a chunk comes from its first read. The caller's
         # repeatable-read transaction keeps the cached text identical to a fresh read.
         self._chunks: dict[tuple[str, str, str, str], dict] = {}
 
-    def narrow(self, document_ids: list[str]) -> None:
-        """Search only these documents. An empty scope widens at once."""
-        self.scope = list(document_ids)
-        if not self.scope:
+    def narrow(self, document_ids: list[str], *, strict: bool = False) -> None:
+        """Search only these documents. An empty scope widens at once, unless `strict`: then it finds nothing."""
+        self.scope, self.strict = list(document_ids), strict
+        if not self.scope and not strict:
             self.scope, self.widened = None, True
 
     def search(self, query: str) -> list[FusedHit]:
@@ -408,7 +409,7 @@ class DatabaseRetriever:
 
         first, self._searched = not self._searched, True
         found = run()
-        if first and self.scope is not None and not found:
+        if first and self.scope is not None and not found and not self.strict:
             self.scope, self.widened = None, True
             found = run()
         return found

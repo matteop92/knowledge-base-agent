@@ -381,7 +381,9 @@
     } else if (job.vault_path) {
       const open = document.createElement("a");
       open.href = obsidianLink(job.vault_path);
-      open.textContent = "See in Obsidian";
+      open.className = "open-obsidian";
+      open.textContent = "Open in Obsidian";
+      open.prepend(icon("obsidian"));
       meta.append(open);
     }
     if (KINDS[job.kind]) {

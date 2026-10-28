@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, Callable, Literal
@@ -20,6 +21,7 @@ from app.api.auth import COOKIE_NAME, AuthError, RateLimiter, Session, SessionSt
 from app.api.conversations import ConversationError, ConversationStore
 from app.api.scheduler import IndexScheduler, vault_settings_from_env
 from app.api.settings import Settings
+from app.api.sources import SourceStore
 from app.api.tags import TagStore
 from app.capture.notes import CaptureError, draft_from_markdown, draft_from_text
 from app.capture.screenshot import MAX_DATA_URL_CHARS
@@ -49,6 +51,8 @@ class VerifyRequest(CodeRequest):
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
+    # Limit the answer to this one source (the Sources page's "Ask about this").
+    source_id: str | None = Field(default=None, max_length=64)
 
 
 class FeedbackRequest(BaseModel):
@@ -89,6 +93,7 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
                                  max_usd_per_pass=float(settings.index_max_usd_per_pass))
     app.state.indexer = indexer
     tags = TagStore(connect, settings.vault_name)
+    sources = SourceStore(connect, settings.vault_name)
     captures = CaptureJobs(connect, settings, classifier, indexer, extractor=extractor, transcriber=transcriber)
     app.state.captures = captures
 
@@ -154,6 +159,17 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
             # Renewal must reach the browser too, or the cookie still expires 30 days after sign-in.
             set_session_cookie(response, token)
         return current
+
+    def scope(body: AskRequest) -> str | None:
+        if body.source_id is None:
+            return None
+        try:
+            document_id = str(uuid.UUID(body.source_id))
+        except ValueError:
+            raise ConversationError(400, "that source is not in the index") from None
+        if not sources.is_active(document_id):
+            raise ConversationError(400, "that source is not in the index")
+        return document_id
 
     def client_key(request: Request) -> str:
         # The proxy appends the real address last; earlier entries are whatever the client sent.
@@ -235,12 +251,12 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
 
     @app.post("/api/conversations", status_code=202)
     def new_conversation(body: AskRequest, _: Session = Depends(session)):
-        conversation_id, turn_id = jobs.start(None, body.question)
+        conversation_id, turn_id = jobs.start(None, body.question, scope(body))
         return {"conversation_id": conversation_id, "turn_id": turn_id}
 
     @app.post("/api/conversations/{conversation_id}/turns", status_code=202)
     def ask(conversation_id: str, body: AskRequest, _: Session = Depends(session)):
-        conversation_id, turn_id = jobs.start(_uuid(conversation_id), body.question)
+        conversation_id, turn_id = jobs.start(_uuid(conversation_id), body.question, scope(body))
         return {"conversation_id": conversation_id, "turn_id": turn_id}
 
     @app.get("/api/turns/{turn_id}")
@@ -291,6 +307,14 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
     def list_tags(_: Session = Depends(session)):
         return {"suggested": tags.suggestions(), "approved": tags.approved()}
 
+    @app.get("/api/sources")
+    def list_sources(_: Session = Depends(session)):
+        return sources.list()
+
+    @app.get("/api/sources/{document_id}")
+    def source_detail(document_id: str, _: Session = Depends(session)):
+        return sources.detail(document_id)
+
     @app.get("/api/starters")
     def starters(_: Session = Depends(session)):
         return {"starters": tags.starters()}
@@ -332,8 +356,6 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
 
 
 def _uuid(value: str) -> str:
-    import uuid
-
     try:
         return str(uuid.UUID(value))
     except ValueError:
