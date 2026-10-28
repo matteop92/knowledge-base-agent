@@ -127,7 +127,7 @@ def run_evals(entries: list[dict], *, answer: Answer, route: Route, repeats: int
                 outcome, routing = CheckResult(False, f"error: {type(exc).__name__}"), None
             spent += Decimal(str(cost))
             results[entry["id"]].append({"repeat": repeat, "passed": outcome.passed, "detail": outcome.detail,
-                                         "cost_usd": cost})
+                                         "exercised": outcome.exercised, "cost_usd": cost})
             if save:
                 save(entry["id"], repeat, receipt or {"routing": routing})
     evals = {}
@@ -137,6 +137,7 @@ def run_evals(entries: list[dict], *, answer: Answer, route: Route, repeats: int
         evals[entry["id"]] = {"kind": entry["check"]["kind"], "runs": len(runs), "passes": passes,
                               "pass_rate": round(passes / len(runs), 3) if runs else None,
                               "all_runs_pass": bool(runs) and passes == len(runs) == repeats,
+                              "unexercised_passes": sum(item["passed"] and not item["exercised"] for item in runs),
                               "details": [item["detail"] for item in runs if not item["passed"]]}
     return {"spent_usd": str(spent), "max_usd": str(max_usd), "complete": not incomplete, "repeats": repeats,
             "skipped_unapproved": len(entries) - len(approved), "evals": evals,

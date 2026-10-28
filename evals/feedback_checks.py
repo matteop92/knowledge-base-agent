@@ -24,6 +24,7 @@ ROUTES = ("plain", "narrowed", "catalog")
 class CheckResult:
     passed: bool
     detail: str
+    exercised: bool = True  # False when the check had nothing to examine, so a pass says little
 
 
 def validate_check(check: Any) -> dict:
@@ -113,5 +114,6 @@ def check_attribution(check: dict, receipt: dict, lookup: Lookup | None = None) 
                 failures.append(f"{ref} was said by {speaker}, but the sentence names {', '.join(named)}: {sentence[:120]}")
     if failures:
         return CheckResult(False, "; ".join(failures))
-    return CheckResult(True, f"{examined} passage(s) by other speakers, none credited to the wrong person"
-                       if examined else "no sentence cites another speaker of the transcript")
+    if not examined:
+        return CheckResult(True, "not exercised: no sentence cites another speaker of the transcript", exercised=False)
+    return CheckResult(True, f"{examined} passage(s) by other speakers, none credited to the wrong person")

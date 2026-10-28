@@ -76,6 +76,13 @@ class AttributionCheckTests(unittest.TestCase):
         self.assertTrue(check_attribution(ATTRIBUTION, receipt(
             "Niels Hoven, on Tim's show, notes that platforms hire slowly [E1.2].", **guest)).passed)
 
+    def test_a_pass_that_examined_nothing_is_marked_not_exercised(self):
+        host_only = check_attribution(ATTRIBUTION, receipt("Tim notes that platforms hire slowly [E1.2].",
+                                                          **{"E1.2": cited("Tim Ferriss")}))
+        self.assertEqual((host_only.passed, host_only.exercised), (True, False))
+        guest = check_attribution(ATTRIBUTION, receipt("He cites X as a platform [E1.2].", **{"E1.2": cited("Niels Hoven")}))
+        self.assertEqual((guest.passed, guest.exercised), (True, True))
+
     def test_passages_of_other_documents_are_ignored(self):
         other = {"E2.0": cited("Niels Hoven", ref_doc="Knowledge/Articles/other.md", document_id="doc-2")}
         self.assertTrue(check_attribution(ATTRIBUTION, receipt("Tim says so [E2.0].", **other)).passed)

@@ -237,6 +237,9 @@ class OpenRouterClient:
             return data
         raise ModelClientError("OpenRouter rate limit retries exhausted")
 
+    # A routing call that has not answered by now is dropped and the question goes the plain way.
+    DECISION_TIMEOUT_SECONDS = 15.0
+
     def decide(self, payload: dict[str, Any], *, worst_case_usd: float) -> dict[str, Any]:
         """Post one decision request to `/systemone`; the call is booked at its reported dollar cost.
 
@@ -251,7 +254,7 @@ class OpenRouterClient:
         started = time.perf_counter()
         booked = worst_case_usd
         try:
-            with request.urlopen(http_request, timeout=self._timeout()) as response:
+            with request.urlopen(http_request, timeout=min(self._timeout(), self.DECISION_TIMEOUT_SECONDS)) as response:
                 data = json.load(response)
             if not isinstance(data, dict) or isinstance(data.get("error"), dict):
                 raise ModelClientError("OpenRouter decision call returned an error")

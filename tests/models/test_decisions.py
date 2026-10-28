@@ -85,6 +85,29 @@ class DecisionTests(unittest.TestCase):
                 result, _, _ = self.run_decide(post)
                 self.assertIsNone(result)
 
+    def test_the_decision_call_has_its_own_short_time_limit(self):
+        seen = []
+
+        def urlopen(http_request, timeout=None):
+            if http_request.full_url.endswith("/endpoints/zdr"):
+                return reply(ZDR)
+            seen.append(timeout)
+            return reply(answer(cost=0.00001))
+
+        with patch("app.models.openrouter.request.urlopen", urlopen):
+            decide(client(), {"question": "q"}, QUESTIONS)
+        self.assertEqual(seen, [OpenRouterClient.DECISION_TIMEOUT_SECONDS])
+
+    def test_probabilities_outside_zero_to_one_are_refused(self):
+        for name, value in ("above one", 1.5), ("below zero", -0.1), ("text", "0.9"), ("bool", True):
+            broken = answer()
+            broken["answers"]["by_date"] = {"type": "noul", "noul": value}
+            with self.subTest(name):
+                self.assertIsNone(self.run_decide(broken)[0])
+        wrong = answer()
+        wrong["answers"]["route"]["probabilities"] = {"plain": 0.02, "catalog": 2}
+        self.assertIsNone(self.run_decide(wrong)[0])
+
     def test_reported_cost_is_added_as_dollars_and_a_missing_one_is_booked_at_the_worst_case(self):
         _, _, reported = self.run_decide(answer(cost=0.00005))
         _, _, missing = self.run_decide(answer())

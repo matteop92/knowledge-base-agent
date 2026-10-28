@@ -12,6 +12,11 @@ class PeriodTests(unittest.TestCase):
         self.assertEqual((period.start, period.end), ("2026-10-01", "2026-10-31"))
         self.assertEqual(period.label, "from October 2026")
 
+    def test_a_month_that_has_not_happened_yet_this_year_is_last_years(self):
+        period = read_period("what did I read in December", TODAY)
+        self.assertEqual((period.start, period.end, period.label), ("2025-12-01", "2025-12-31", "from December 2025"))
+        self.assertEqual(read_period("what did I read in December 2026", TODAY).start, "2026-12-01")
+
     def test_year_and_month_with_year(self):
         self.assertEqual((read_period("sources from 2025", TODAY).start, read_period("2025", TODAY).end),
                          ("2025-01-01", "2025-12-31"))

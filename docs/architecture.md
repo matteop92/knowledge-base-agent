@@ -111,10 +111,10 @@ Hosting is described in [deploy.md](deploy.md).
 | Area | State |
 | --- | --- |
 | Ingestion and chunking | Working for transcripts, notes, articles, highlights and book exports. |
-| Storage and search | Working locally and on the hosted database (33 notes in the `Knowledge` folder, 257 chunks). |
+| Storage and search | Working locally and on the hosted database (48 notes in the `Knowledge` folder). |
 | Answer agent | Prompt v13 is the accepted baseline (78.8% of scored checks on the frozen checklist). Answers take about 37 s at the median and 92 s at p95; catalog questions about 8 s. Prompts v15 and v16 (speaker rule) stay opt-in: on the 85-check list v15 scored 88.7% against 94.0% for v13, mostly on coverage. |
 | Question routing | Live: every question is routed catalog, narrowed or plain. The router set scores 65 of 67 (one plain question about a named article goes narrowed) and the 26 approved catalog questions pass 3 of 3. |
-| Feedback evals | `evals/export_feedback.py` and `evals/feedback_eval.py` turn thumbs-down turns into checked evals. The two seed evals fail on the saved answers. Live, the latest-note eval passes every run and the Tim Ferriss eval passes 3 of 5 on v13 with the speaker written in the passage; the retry that lifts it to 4 of 5 is off because it adds about 40 s. |
+| Feedback evals | `evals/export_feedback.py` and `evals/feedback_eval.py` turn thumbs-down turns into checked evals. The two seed evals fail on the saved answers. Live, the latest-note eval passes every run and the Tim Ferriss eval passes 3 of 5 on v13 with the speaker written in the passage (2 of them cite a guest passage); the retry that lifts it to 4 of 5 is off because it adds about 40 s. |
 | Web app and capture | Live, with follow-up memory and capture from the phone. |
 | Vault sync | Live; the server's sync is two-way so captured notes reach the owner's devices. |
 | Later ideas | Cross-source connections and questions about the whole vault; neither has been built. See [decisions.md](decisions.md). |

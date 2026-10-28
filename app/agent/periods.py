@@ -53,7 +53,8 @@ def read_period(question: str, today: date | None = None) -> Period | None:
     year_match = re.search(r"\b((?:19|20)\d{2})\b", question)
     month = _month(question)
     if month:
-        year = int(year_match.group(1)) if year_match else today.year
+        # A month named without a year is the most recent one, never a month still to come.
+        year = int(year_match.group(1)) if year_match else (today.year if month <= today.month else today.year - 1)
         start, end = _month_range(year, month)
         return Period(start.isoformat(), end.isoformat(), field, f"from {calendar.month_name[month]} {year}")
     if year_match:

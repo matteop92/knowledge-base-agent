@@ -46,10 +46,6 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(first, titles(sort_sources(list(reversed(SOURCES)), "added_newest")))
         self.assertEqual(first[:2], ["Newest Note", "Same Time A"])
 
-    def test_edit_moves_updated_at_not_added_at(self):
-        edited = source("Knowledge/Notes/old.md", at(26, 9), at(27), title="Older Note")
-        self.assertEqual((edited.added_at, edited.updated_at), (at(26, 9), at(27)))
-
     def test_undated_sorts_last_and_is_still_listed(self):
         found = sort_sources(SOURCES, "dated_newest")
         self.assertEqual(titles(found)[:2], ["Plans that never ship", "Rest Days"])

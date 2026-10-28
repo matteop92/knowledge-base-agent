@@ -10,7 +10,8 @@ its first passage.
 
 Properties follow the search labels (`app.storage.search.source_label`): the file's own
 frontmatter wins and generated properties fill only what it leaves out. A source's type is
-its generated type, or else its folder (Articles, Transcripts, Books, Book Highlights, Notes).
+its own type or source_type property, else its folder (Articles, Transcripts, Books, Book Highlights, Notes),
+else the classifier's guess.
 """
 
 from __future__ import annotations
