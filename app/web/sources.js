@@ -28,6 +28,38 @@
     return node;
   };
   const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+
+  // Source text with Markdown links, [[wiki links]], **bold** and *italic* drawn as elements, never as HTML. A link opens
+  // in a new tab only when it is http(s); any other target keeps just its label. Emphasis opens and closes against a
+  // non-space, so "2 * 3 * 4" keeps its asterisks.
+  const INLINE = /(\[[^\]]+\]\((?:[^()\s]|\([^()\s]*\))+(?:\s+"[^"]*")?\)|\[\[[^\]]+\]\]|\*\*(?=\S)[^*]+?(?<=\S)\*\*|\*(?=\S)[^*]+?(?<=\S)\*)/;
+  function inline(tag, cls, text) {
+    const node = h(tag, cls);
+    appendInline(node, String(text || ""));
+    return node;
+  }
+  function appendInline(parent, text) {
+    for (const run of text.split(INLINE)) {
+      if (!run) continue;
+      const link = /^\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)(?:\s+"[^"]*")?\)$/.exec(run);
+      const wiki = /^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(run);
+      const emphasis = /^(\*\*?)([^*]+)\1$/.exec(run);
+      if (link && /^https?:\/\//i.test(link[2])) {
+        const anchor = h("a", "r-link");
+        anchor.href = link[2]; anchor.target = "_blank"; anchor.rel = "noopener noreferrer";
+        appendInline(anchor, link[1]);
+        parent.append(anchor);
+      } else if (link) {
+        appendInline(parent, link[1]);
+      } else if (wiki) {
+        parent.append(document.createTextNode((wiki[2] || wiki[1]).trim()));
+      } else if (emphasis) {
+        parent.append(inline(emphasis[1] === "**" ? "strong" : "em", "", emphasis[2]));
+      } else {
+        parent.append(document.createTextNode(run));
+      }
+    }
+  }
   const now = () => new Date();
 
   function formatDate(iso) {
@@ -823,24 +855,25 @@
       if (block.kind === "speaker_turn") {
         const turn = h("div", "r-turn");
         turn.append(h("span", guests.includes(block.speaker) ? "r-speaker is-guest" : "r-speaker", block.speaker || ""),
-          h("p", "r-text", block.text));
+          inline("p", "r-text", block.text));
         fragment.append(turn);
       } else if (block.kind === "highlight") {
         const item = h("div", "r-highlight");
-        item.append(h("p", "r-text", block.text));
+        item.append(inline("p", "r-text", block.text));
         if (block.page_reference) item.append(h("span", "r-loc", block.page_reference));
-        if (block.personal_note) item.append(h("p", "r-note", block.personal_note));
+        if (block.personal_note) item.append(inline("p", "r-note", block.personal_note));
         fragment.append(item);
       } else if (block.kind === "heading") {
         const depth = (block.heading_path || []).length;
-        fragment.append(h(depth > 2 ? "h3" : "h2", "r-heading", block.text));
+        fragment.append(inline(depth > 2 ? "h3" : "h2", "r-heading", block.text));
       } else if (block.kind === "list_item") {
         if (!list) { list = h("ul", "r-list"); fragment.append(list); }
-        list.append(h("li", "r-text", block.text));
+        // A numbered item keeps its own number as text, so it drops the bullet.
+        list.append(inline("li", /^\d+[.)]\s/.test(block.text) ? "r-text is-numbered" : "r-text", block.text));
       } else if (block.kind === "block_quote") {
-        fragment.append(h("blockquote", "r-quote", block.text));
+        fragment.append(inline("blockquote", "r-quote", block.text));
       } else if (block.kind !== "asset_reference") {
-        fragment.append(h("p", source.type === "quote" ? "r-text r-quote-big" : "r-text", block.text));
+        fragment.append(inline("p", source.type === "quote" ? "r-text r-quote-big" : "r-text", block.text));
       }
     }
     return fragment;

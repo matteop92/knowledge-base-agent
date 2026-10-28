@@ -35,11 +35,14 @@ class PlatformTests(unittest.TestCase):
 
 
 class PeopleTests(unittest.TestCase):
-    def test_a_youtube_capture_names_the_channel_not_a_person(self) -> None:
-        found = facts({"authors": ["Channel Name"], "frontmatter": {"author": "Channel Name"},
-                       "source_url": "https://youtu.be/x"})
-        self.assertEqual(found["source_name"], "Channel Name")
-        self.assertEqual(found["authors"], [])
+    def test_a_youtube_author_is_a_person_even_when_it_is_the_channel(self) -> None:
+        for frontmatter in ({"author": "Channel Name", "source": "YouTube"}, {"author": "Channel Name", "platform": "Youtube"}):
+            found = facts({"authors": ["Channel Name"], "frontmatter": frontmatter, "source_url": "https://youtu.be/x"})
+            self.assertEqual((found["authors"], found["source_name"]), (["Channel Name"], "YouTube"))
+
+    def test_an_explicit_channel_is_the_source_name_and_not_repeated_as_a_person(self) -> None:
+        found = facts({"authors": ["Show", "Ben Hart"], "frontmatter": {"channel": "Show"}, "source_url": "https://youtu.be/x"})
+        self.assertEqual((found["authors"], found["source_name"]), (["Ben Hart"], "Show"))
 
     def test_guest_from_frontmatter_and_author_kept(self) -> None:
         found = facts({"authors": ["Ben Hart"], "frontmatter": {"guest": "[[Ada Stone]]"}})

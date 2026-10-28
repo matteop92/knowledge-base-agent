@@ -152,6 +152,20 @@ class ReaderTests(unittest.TestCase):
         self.assertEqual(out["buttons"], ["Retry", "Back to Sources"])
         self.assertEqual(out["reloaded"], 2)  # the list refreshes after a 404
 
+    def test_links_bold_and_italic_are_elements_and_only_web_links_are_anchors(self) -> None:
+        out = run("readerMarkdown")
+        self.assertEqual(out["anchors"], [["Opus 5.5", "https://e.org/o", "_blank", "noopener noreferrer"],
+                                          ["linked", "https://e.org/h", "_blank", "noopener noreferrer"]])
+        self.assertEqual((out["strong"], out["em"]), ("Ada", "a note"))
+        self.assertEqual(out["paragraph"], "Read Opus 5.5 and this by Ada in a note, 2 * 3 * 4.")
+        self.assertEqual(out["heading"], "A linked heading")
+        self.assertEqual(out["items"], [["1. First", True], ["Plain", False]])  # a numbered item shows no bullet
+
+    def test_tags_sit_on_the_byline_line_and_phones_no_longer_hide_them(self) -> None:
+        page = (WEB / "index.html").read_text(encoding="utf-8")
+        self.assertRegex(page, r'class="reader-byline">\s*<p id="reader-voices"[^>]*></p>\s*<ul id="reader-tags"')
+        self.assertNotRegex((WEB / "styles.css").read_text(encoding="utf-8"), r"\.reader-col \.s-tags[^{]*\{[^}]*display: none")
+
     def test_highlights_show_their_location_and_the_note_under_the_highlight(self) -> None:
         self.assertEqual(run("readerHighlights"), {"loc": "Page 12", "note": "Try it."})
 

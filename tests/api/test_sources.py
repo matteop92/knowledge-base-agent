@@ -151,6 +151,20 @@ class DetailTests(unittest.TestCase):
     def test_reading_blocks_skip_separators_and_empty_text(self) -> None:
         self.assertEqual(reading_blocks([block(0, "separator", "---"), block(1, "paragraph", "  ")]), [])
 
+    def test_reading_blocks_drop_markdown_markers_and_images_but_keep_links(self) -> None:
+        blocks = [block(0, "heading", "## How it worked ##\n"), block(1, "list_item", "- [ ] First *step*"),
+                  block(2, "block_quote", "> One\n> two"), block(3, "paragraph", "[![Ad](https://x.org/a.png)](https://x.org/)"),
+                  block(4, "paragraph", "See ![logo](a.png) [Opus](https://e.org/o?(a)) now."),
+                  block(5, "list_item", "1. Numbered stays")]
+        self.assertEqual([item["text"] for item in reading_blocks(blocks)],
+                         ["How it worked", "First *step*", "One\ntwo", "See  [Opus](https://e.org/o?(a)) now.",
+                          "1. Numbered stays"])
+
+    def test_obsidian_image_embeds_and_image_links_with_brackets_go_but_embedded_notes_stay(self) -> None:
+        blocks = [block(0, "paragraph", "![[Shot 1.PNG|300]] caption"), block(1, "paragraph", "![[Other note]] here"),
+                  block(2, "paragraph", '![a](https://w.org/F_(x).jpg "t") after'), block(3, "paragraph", "![[only.png]]")]
+        self.assertEqual([item["text"] for item in reading_blocks(blocks)], ["caption", "[[Other note]] here", "after"])
+
 
 @unittest.skipUnless(TestClient, "needs fastapi")
 class RouteTests(unittest.TestCase):
