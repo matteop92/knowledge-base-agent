@@ -414,6 +414,52 @@ class QuestionRouteTests(unittest.TestCase):
         _, client, _ = self.run_engine(None, None)
         self.assertEqual(client["request_budget"], base + 2)
 
+    def scoped(self, prior=None, rewrite=None):
+        """One scoped engine call; returns the router mock."""
+        from contextlib import ExitStack
+        from unittest import mock
+        from app.api.answers import OpenRouterAnswerEngine
+
+        engine = OpenRouterAnswerEngine(settings(), connect=mock.MagicMock())
+        self.clients = []
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch("app.models.openrouter.OpenRouterClient",
+                                           side_effect=lambda **kwargs: self.clients.append(kwargs) or mock.MagicMock()))
+            stack.enter_context(mock.patch("app.storage.retrieval.selected_embedding_spec",
+                                           return_value=(None, mock.MagicMock())))
+            stack.enter_context(mock.patch("app.api.answers.check_answer_routes"))
+            retriever_class = stack.enter_context(mock.patch("app.storage.retrieval.DatabaseRetriever"))
+            stack.enter_context(mock.patch("app.agent.memory.build_memory"))
+            stack.enter_context(mock.patch("app.api.answers.active_revisions", return_value=set()))
+            stack.enter_context(mock.patch("app.api.answers.rewrite_followup", return_value=rewrite))
+            stack.enter_context(mock.patch("app.api.answers.source_title", return_value="Pear notes"))
+            routed = stack.enter_context(mock.patch("app.api.answers.route_question"))
+            stack.enter_context(mock.patch.object(engine, "_cost", return_value=0.0))
+            asked = stack.enter_context(mock.patch("app.agent.harness.answer_question"))
+            asked.return_value.answer = "The pear is ripe."
+            asked.return_value.model_copy.side_effect = lambda update: update
+            self.outcome = engine.answer("is it ripe?", prior, source_id="doc-1")
+        self.retriever = retriever_class.return_value
+        return routed
+
+    def test_a_scoped_question_searches_only_that_source_strictly_and_never_calls_the_router(self) -> None:
+        routed = self.scoped()
+        self.retriever.narrow.assert_called_once_with(["doc-1"], strict=True)
+        routed.assert_not_called()
+
+    def test_a_scoped_answer_opens_with_the_scope_line_naming_the_source(self) -> None:
+        self.scoped()
+        self.assertEqual(self.outcome.result["answer"], "Searched 1 source: Pear notes.\n\nThe pear is ripe.")
+
+    def test_a_scoped_question_does_not_reserve_the_router_budget(self) -> None:
+        from app.api.settings import AnswerSettings
+
+        base = AnswerSettings().request_budget
+        self.scoped()
+        self.assertEqual(self.clients[0]["request_budget"], base)
+        self.scoped(prior=[object()], rewrite="q")
+        self.assertEqual(self.clients[0]["request_budget"], base + 1)
+
 
 if __name__ == "__main__":
     unittest.main()
