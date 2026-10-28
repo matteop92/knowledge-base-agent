@@ -266,19 +266,23 @@
   const MENU_PICK = { types: "type", tags: "tag", people: "person" };
   const MENU_EMPTY = "Nothing to filter by";
 
-  // The marker at the left of a row: an empty ring, filled green with a check once chosen (a dot for a single choice).
-  function marker(radio) {
-    const mark = h("span", radio ? "smenu-mark is-radio" : "smenu-mark");
-    if (!radio) mark.append(icon("check"));
+  // The marker at the left of a row: Phosphor's circle, and its check-circle in green once chosen.
+  function marker() {
+    const mark = h("span", "smenu-mark");
+    const off = icon("circle");
+    off.classList.add("mark-off");
+    const on = icon("checkcircle");
+    on.classList.add("mark-on");
+    mark.append(off, on);
     return mark;
   }
 
-  function menuRow(row, onPick, radio) {
+  function menuRow(row, onPick) {
     const button = h("button", "smenu-row");
     button.type = "button";
     button.setAttribute("aria-pressed", row.selected ? "true" : "false");
     if (row.selected) button.classList.add("is-selected");
-    button.append(marker(radio), h("span", "smenu-name", row.label), h("span", "smenu-count", String(row.count)));
+    button.append(marker(), h("span", "smenu-name", row.label), h("span", "smenu-count", String(row.count)));
     button.addEventListener("click", onPick);
     return button;
   }
@@ -298,7 +302,7 @@
           setFilter({ ...view.filter, date: row.key === "any" ? null : { preset: row.key } });
           const fresh = $("sources-menu-panel").querySelector(".smenu-list");
           if (fresh && fresh.children[position]) fresh.children[position].focus({ preventScroll: true });
-        }, true);
+        });
         list.append(button);
       }
       panel.append(list);
