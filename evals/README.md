@@ -14,7 +14,7 @@ The score is Recall@K: how many of the 51 required passages appear in the top K 
 | Full-text search | 28 | 40 | 44 |
 | Both, merged by rank | 39 | 44 | 47 |
 
-Run it with `python -m evals.retrieval_trial` (a dry run checks the labels against the stored sources).
+Run it with `python -m evals.retrieval_trial` (a dry run checks the labels against the stored sources). It searches the whole index; `--only-labelled` searches just the six labelled files, which reproduces the table above.
 
 **Answers.** `answer_questions_v4_restructured.yaml` is the frozen answer checklist: 85 yes/no checks across eight questions, grouped into coverage (does the answer include the point), grounding (is the claim supported by the cited source) and example. It also lists, per question, a relevance scope, so points outside the question count against the answer. 179 source passages are verified against the source hashes. Prompt `answer_agent_v13` scores **63 of 80 scored checks (78.8%)**, with 3 points outside scope. The pass bar was 70%.
 

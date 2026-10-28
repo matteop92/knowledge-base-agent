@@ -1,32 +1,32 @@
-document_id: 8b05b784-fe85-5616-a0c7-4fe54dca5c9a
-source_sha256: b67d63ea2e37918a9d9073e103d3ec505eaff776324f2c18c5cac941e4d75146
+document_id: c1cd085e-5b9d-5b59-967c-6f3bb0f1c429
+source_sha256: 88dad8ada6eb450126439a38d495efe001ba886e07bde562e87328bc4d99b7b2
 source_title: How to make decisions with partial information
 questions:
 - id: overanalysis_cost
   question: Why does the note say overanalysis can be worse than laziness?
   expected: supported
   must_find:
-  - start_char: 186
-    end_char: 330
+  - start_char: 211
+    end_char: 355
     quote: Overanalysis has been my life story. It can be far worse than laziness, as overanalysis leads
       to the same lack of action but ALSO self-loathing.
 - id: decision_deadline
   question: What is the first step suggested for overcoming paralysis by analysis?
   expected: supported
   must_find:
-  - start_char: 499
-    end_char: 539
+  - start_char: 524
+    end_char: 564
     quote: Step one is set deadlines for decisions.
-  - start_char: 758
-    end_char: 886
+  - start_char: 783
+    end_char: 911
     quote: So I set deadlines. By X point in time, I must make a go or no-go decision, no matter how much
       or how little information I have.
 - id: small_experiments
   question: How does the writer make a go decision feel less risky?
   expected: supported
   must_find:
-  - start_char: 887
-    end_char: 1035
+  - start_char: 912
+    end_char: 1060
     quote: Furthermore, I try and figure out small, short-term, low-risk experiments I can run as "go"
       decisions, so that I don't perceive action as high-risk.
 - id: deadline_date

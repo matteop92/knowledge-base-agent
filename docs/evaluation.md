@@ -14,6 +14,16 @@ Recall is the number of the 51 required passages that appear in the top K result
 | Full-text search | 28 | 40 | 44 |
 | Both, merged by rank | 39 | 44 | 47 |
 
+The table searches only the six labelled files (`--only-labelled`), the corpus the labels were first measured on; re-measured on 2026-10-28 it gives the same numbers. The index now holds 48 notes, so searching all of them puts 42 unlabelled notes in competition:
+
+| Method, whole index | Top 5 | Top 10 | Top 20 |
+| --- | --- | --- | --- |
+| Vector search | 36 | 42 | 45 |
+| Full-text search | 23 | 28 | 35 |
+| Both, merged by rank | 37 | 40 | 46 |
+
+Full-text search loses most with more notes (40 down to 28 at K=10); merged search gives up 4 passages at K=10. The labels were pointed at the files' current IDs; three files had changed (spans moved by 18, 25 and -6 characters) and every quote still matches the stored text.
+
 - Vector search is strong on this set, and keyword search misses paraphrases. Merging did not add coverage here; it is kept because keyword search handles exact names and phrases that a vector can blur.
 - The embedding model, `perplexity/pplx-embed-v1-0.6b`, was chosen over `baai/bge-m3` in a six-file trial (42 against 40 of 51 passages at K=10). Indexing the corpus cost a fraction of a cent.
 - Chunking: structural chunks reached 47 of 51 at K=20, fixed 800-token chunks 45. Adding a generated context sentence to each chunk lost one passage.
@@ -63,7 +73,7 @@ Run again on 2026-10-28, the used order scored 65 of 67 on the frozen set (one p
 | v13, speaker also written at the start of the passage text (used) | 3 of 5 |
 | v15, speaker also written at the start of the passage text | 3 of 5 |
 
-About 2 in 5 answers still credit the wrong person, so the 3-of-3 bar is not met. The failing sentences are mostly summary lines ("each recommendation is drawn from Tim's remarks") that cite a guest's passage. Five runs per setting is too few to separate v13 from v15. The retrieval trial still cannot run: its labels point at document IDs from an earlier vault layout (five of six files are in the index unchanged under new IDs; the Tim Ferriss file has changed). The 85-check list pins the same old IDs, so a local script maps the answers onto the pinned sources before grading.
+About 2 in 5 answers still credit the wrong person, so the 3-of-3 bar is not met. The failing sentences are mostly summary lines ("each recommendation is drawn from Tim's remarks") that cite a guest's passage. Five runs per setting is too few to separate v13 from v15. The retrieval labels now point at the current IDs (see Search). The 85-check list still pins the old IDs, so a local script maps the answers onto the pinned sources before grading.
 
 **85-check list, v13 against v15.** Three runs of the eight questions per prompt with the speaker written in the passage text, graded by the model grader (`gpt-5-mini`, medium reasoning), which scores above a person and was not confirmed by one. Three of the 48 grader replies were malformed and graded again.
 

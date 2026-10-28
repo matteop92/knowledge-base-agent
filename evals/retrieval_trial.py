@@ -60,13 +60,16 @@ def checked_questions(conn, eval_dir: Path) -> list[dict]:
                 ):
                     raise StorageError("retrieval label does not match stored original text")
             questions.append({**question, "document_id": document_id, "source_sha256": sha})
-    if not questions or documents != set(active):
-        raise StorageError("retrieval labels must cover the selected corpus")
+    # The index holds more notes than the labelled files, so the labels name a subset of it.
+    if not questions:
+        raise StorageError("no retrieval labels found")
     return questions
 
 
 def run(conn, client, *, provider_tag: str, price_ceiling: Decimal, max_usd: Decimal,
-        eval_dir: Path, live: bool, report: dict) -> None:
+        eval_dir: Path, live: bool, report: dict, only_labelled: bool = False) -> None:
+    """`only_labelled` searches just the labelled files, the corpus these labels were first measured on;
+    otherwise the search runs over every note in the index."""
     sid, spec = selected_embedding_spec(conn)
     questions = checked_questions(conn, eval_dir)
     byte_bound = sum(len(q["question"].encode("utf-8")) for q in questions)
@@ -92,9 +95,11 @@ def run(conn, client, *, provider_tag: str, price_ceiling: Decimal, max_usd: Dec
     report["estimated_usd_upper_bound"] = float(Decimal(embedded.usage.input_tokens) * price_ceiling / 1_000_000)
     if Decimal(embedded.usage.input_tokens) * price_ceiling / 1_000_000 > max_usd:
         raise StorageError("reported embedding spend exceeds ceiling")
+    scope = sorted({q["document_id"] for q in questions}) if only_labelled else None
+    report["scope"] = "labelled files" if only_labelled else "whole index"
     for question, vector in zip(questions, embedded.vectors):
-        vector_hits = search_vector(conn, vector, spec_id=sid, metric=spec.distance_metric, k=20)
-        text_hits = search_text(conn, question["question"], k=20)
+        vector_hits = search_vector(conn, vector, spec_id=sid, metric=spec.distance_metric, k=20, document_ids=scope)
+        text_hits = search_text(conn, question["question"], k=20, document_ids=scope)
         fused = fuse_hits(vector_hits, text_hits)
         channels = {"vector": vector_hits, "text": text_hits, "fused": [item.hit for item in fused]}
         report["results"].append({"document_id": question["document_id"], "question_id": question["id"],
@@ -123,6 +128,8 @@ def main() -> int:
     parser.add_argument("--max-usd", type=Decimal, required=True)
     parser.add_argument("--eval-dir", type=Path, default=Path("evals"))
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--only-labelled", action="store_true",
+                        help="search only the labelled files instead of the whole index")
     args = parser.parse_args()
     path = args.report.resolve()
     if not path.is_relative_to(Path(".local").resolve()) or path.exists():
@@ -137,7 +144,8 @@ def main() -> int:
         with connect_runtime() as conn, conn.transaction():
             conn.execute("set transaction isolation level repeatable read read only")
             run(conn, client, provider_tag=args.provider_tag, price_ceiling=args.max_embedding_price,
-                max_usd=args.max_usd, eval_dir=args.eval_dir, live=args.live, report=report)
+                max_usd=args.max_usd, eval_dir=args.eval_dir, live=args.live, report=report,
+                only_labelled=args.only_labelled)
     except (Exception, KeyboardInterrupt) as exc:
         report.update(status="failed", error_type=type(exc).__name__)
     finally:
