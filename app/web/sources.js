@@ -9,7 +9,7 @@
   const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const KICKERS = { book: "Book", highlights: "Highlights", post: "Post", note: "Note", transcript: "Transcript",
     article: "Article", quote: "Quote" };
-  const MARKS = { linkedin: "linkedin", x: "xlogo", youtube: "youtube", podcast: "mic", website: "globe" };
+  const MARKS = { linkedin: "linkedin", x: "xlogo", youtube: "youtube", reddit: "reddit", podcast: "mic", website: "globe" };
   const MENUS = [["types", "Type"], ["tags", "Tags"], ["people", "People"], ["dates", "Date added"]];
   const ASK_HINTS = { transcript: "Ask about this episode…", article: "Ask about this article…",
     highlights: "Ask about these highlights…", note: "Ask about this note…", post: "Ask about this post…",
@@ -80,6 +80,18 @@
     return KICKERS[source.type] || "Note";
   };
 
+  const PLATFORM_NAMES = { linkedin: "LinkedIn", x: "X", youtube: "YouTube", reddit: "Reddit" };
+
+  // The dot, the platform mark and (unless it only repeats the platform's own name) the source name.
+  function appendSource(parent, source) {
+    if (!source.platform || !source.source_name) return;
+    parent.append(h("span", "dot"));
+    const mark = icon(MARKS[source.platform] || "globe");
+    mark.classList.add("s-mark");
+    parent.append(mark);
+    if (source.source_name !== PLATFORM_NAMES[source.platform]) parent.append(h("span", "s-source", source.source_name));
+  }
+
   const isPodcast = (source) => source.platform === "podcast";
 
   // AUTHOR × GUEST for a podcast; the author alone when there is no guest. Empty when nobody is named.
@@ -97,12 +109,7 @@
     const line = h("div", "s-topline");
     const left = h("span", "s-topleft");
     left.append(h("span", "s-type", kicker(source)));
-    if (source.platform && source.source_name) {
-      left.append(h("span", "dot"));
-      const mark = icon(MARKS[source.platform] || "globe");
-      mark.classList.add("s-mark");
-      left.append(mark, h("span", "s-source", source.source_name));
-    }
+    appendSource(left, source);
     line.append(left);
     if (!small && source.date) line.append(h("span", "s-date", formatDate(source.date)));
     return line;
@@ -184,12 +191,7 @@
     const text = h("span", "s-row-text");
     const line = h("span", "s-topline s-topline-row");
     line.append(h("span", "s-type", kicker(source)));
-    if (source.platform && source.source_name) {
-      line.append(h("span", "dot"));
-      const mark = icon(MARKS[source.platform] || "globe");
-      mark.classList.add("s-mark");
-      line.append(mark, h("span", "s-source", source.source_name));
-    }
+    appendSource(line, source);
     text.append(line, h("span", "s-title", source.title));
     if (isPodcast(source) && voices(source)) text.append(h("span", "s-voices", voices(source)));
     else if (byline(source)) text.append(h("span", "s-sub", byline(source)));
@@ -508,7 +510,6 @@
 
   async function load() {
     const mine = ++view.loadSeq;
-    if (!view.loaded) notice("Loading your sources…");
     try {
       const data = await api("GET", "/api/sources");
       if (mine !== view.loadSeq) return;
@@ -815,12 +816,7 @@
     line.replaceChildren();
     const left = h("span", "s-topleft");
     left.append(h("span", "s-type", kicker(source)));
-    if (source.platform && source.source_name) {
-      left.append(h("span", "dot"));
-      const mark = icon(MARKS[source.platform] || "globe");
-      mark.classList.add("s-mark");
-      left.append(mark, h("span", "s-source", source.source_name));
-    }
+    appendSource(left, source);
     line.append(left);
     if (source.date) line.append(h("span", "s-date", formatDate(source.date)));
     $("reader-title").textContent = source.title;
@@ -980,7 +976,7 @@
   }
 
   function askAbout(source, question) {
-    closeReader();
+    dropReader();  // not closeReader(): its deferred showList() would put the list back over the Ask page
     newQuestion();
     setScope({ id: source.id, title: source.title });
     if (question) ask(question);
@@ -992,15 +988,19 @@
     return undefined;
   }
 
+  // Closes the reader at once, with no transition and without showing the list.
+  function dropReader() {
+    if (!reader.open) return;
+    reader.open = false;
+    reader.seq += 1;
+    $("source-reader").hidden = true;
+    $("app").removeAttribute("data-reader");
+    reader.gen += 1;
+    if (reader.pushed) { reader.closing = true; history.back(); }
+  }
+
   function leave() {
-    if (reader.open) {
-      reader.open = false;
-      reader.seq += 1;
-      $("source-reader").hidden = true;
-      $("app").removeAttribute("data-reader");
-      reader.gen += 1;
-      if (reader.pushed) { reader.closing = true; history.back(); }
-    }
+    dropReader();
     closeMenu(false);
     closeSuggest();
   }

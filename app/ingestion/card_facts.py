@@ -15,9 +15,9 @@ from app.agent.properties import _names, source_type
 
 CARD_TYPES = ("book", "highlights", "post", "note", "transcript", "article", "quote")
 PLATFORM_HOSTS = {"linkedin.com": "linkedin", "x.com": "x", "twitter.com": "x",
-                  "youtube.com": "youtube", "youtu.be": "youtube"}
+                  "youtube.com": "youtube", "youtu.be": "youtube", "reddit.com": "reddit", "redd.it": "reddit"}
 PLATFORM_WORDS = {"linkedin": "linkedin", "x": "x", "twitter": "x", "x.com": "x", "youtube": "youtube",
-                  "website": "website", "web": "website", "podcast": "podcast"}
+                  "reddit": "reddit", "website": "website", "web": "website", "podcast": "podcast"}
 DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
 PERSON_TYPES = ("post", "note", "transcript")
 
@@ -81,7 +81,7 @@ def card_facts(metadata: dict, relative_path: str, added: datetime | str | None 
         name = show or channel or (host if kind == "article" or platform == "website" else None)
         if name is None and platform == "podcast":
             name = "Podcast"
-        name = name or {"linkedin": "LinkedIn", "x": "X", "youtube": "YouTube"}.get(platform, host)
+        name = name or {"linkedin": "LinkedIn", "x": "X", "youtube": "YouTube", "reddit": "Reddit"}.get(platform, host)
         if name:
             facts["source_name"] = name
     elif kind == "article" and host:
