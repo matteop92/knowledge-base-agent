@@ -1,0 +1,6 @@
+# One tag, one name. Each line maps an old tag to the tag that replaces it. A note that carries the old tag shows
+# and counts under the new one, and the classifier never uses the old one. Notes are not edited.
+ai-pilots: ai
+self-development: personal-growth
+product-management: product
+writing-style: writing

@@ -22,11 +22,13 @@ import yaml
 
 from app.ingestion.contracts import ParsedDocument
 from app.models.client import ModelClient, ModelSpec, ModelUsage
+from app.ingestion.card_facts import PLATFORM_WORDS
 from app.models.routes import price_usd
+from app.tag_aliases import aliases
 
 
 log = logging.getLogger("knowledge.properties")
-PROMPT_VERSION = "properties_v3"
+PROMPT_VERSION = "properties_v4"
 PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / f"{PROMPT_VERSION}.md"
 DEFAULT_MODEL = "openai/gpt-6-luna"
 MODEL_VERSION = "accepted-2026-10-17"
@@ -54,6 +56,8 @@ class TagList:
     definitions: tuple[tuple[str, str], ...] = ()
     # Tags the user rejected: never applied and never suggested again.
     blocked: tuple[str, ...] = ()
+    # Slugs of names found in the notes (publications, shows, channels, authors, guests): never tags.
+    entities: tuple[str, ...] = ()
 
     @classmethod
     def load(cls, path: Path = TAGS_PATH) -> TagList | None:
@@ -85,8 +89,30 @@ class TagList:
             return base
         approved = [row for row in rows if row[1] == "approved"]
         blocked = tuple(row[0] for row in rows if row[1] == "blocked")
-        return cls(tags=tuple(row[0] for row in approved), source_types=base.source_types, approved=base.approved,
-                   definitions=tuple((row[0], row[2]) for row in approved if row[2]), blocked=blocked)
+        # Whatever the owner writes in a note's own tags is allowed too; a tag that is not a topic is left out.
+        try:
+            entities = entity_names(conn)
+            written = [tag for tag in note_tags(conn) if tag not in blocked and tag not in aliases() and TAG.match(tag)
+                       and _is_topic(tag, [], base.source_types, entities)]
+        except psycopg.Error as exc:
+            log.warning("note tags unavailable error=%s", type(exc).__name__)
+            entities, written = (), []
+        names = tuple(dict.fromkeys([row[0] for row in approved if row[0] not in aliases()] + written))
+        return cls(tags=names, source_types=base.source_types, approved=base.approved,
+                   definitions=tuple((row[0], row[2]) for row in approved if row[2]), blocked=blocked, entities=entities)
+
+
+NOTE_TAGS_SQL = """select distinct lower(btrim(tag)) from knowledge.corpus_state state
+    join knowledge.active_runs a on a.profile_id=state.profile_id
+    join knowledge.runs r on r.run_id=a.run_id,
+    jsonb_array_elements_text(case when jsonb_typeof(r.parsed->'metadata'->'tags')='array'
+        then r.parsed->'metadata'->'tags' else '[]'::jsonb end) tag
+    order by 1"""
+
+
+def note_tags(conn) -> list[str]:
+    """Every tag the owner has written in a note's own tags, lower case."""
+    return [row[0] for row in conn.execute(NOTE_TAGS_SQL).fetchall() if row[0]]
 
 
 def _seed_tags(conn, base: TagList) -> None:
@@ -194,6 +220,38 @@ def worst_case_usd(parsed: ParsedDocument, tag_list: TagList, model: ModelSpec |
     return price_usd(model.model_id, input_bytes, output_tokens)
 
 
+# A tag says what a note is about. Never a tag: the kind of source, the platform it came from, or a name (a publication,
+# show, channel, author or guest). Names come from the notes themselves (ENTITY_NAMES_SQL), so nothing is listed by hand.
+def _slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.casefold()).strip("-")
+
+
+SOURCE_KIND_WORDS = {"article", "articles", "book", "books", "book-notes", "book-highlights", "highlights", "kindle-highlights",
+                     "note", "notes", "podcast", "podcasts", "post", "posts", "quote", "quotes", "social", "social-post",
+                     "social-media", "transcript", "transcripts", "video", "videos", "newsletter"}
+PLATFORM_SLUGS = {_slug(word) for word in (*PLATFORM_WORDS, *PLATFORM_WORDS.values())}
+ENTITY_NAMES_SQL = """select distinct name from (
+    select r.parsed->'metadata'->'frontmatter'->>key as name
+        from knowledge.active_runs a join knowledge.runs r on r.run_id=a.run_id,
+        unnest(array['publication', 'show', 'channel', 'guest']) key
+    union all
+    select jsonb_array_elements_text(case when jsonb_typeof(r.parsed->'metadata'->key)='array'
+            then r.parsed->'metadata'->key else '[]'::jsonb end)
+        from knowledge.active_runs a join knowledge.runs r on r.run_id=a.run_id, unnest(array['authors', 'guests']) key
+    ) names where name is not null and btrim(name) <> '' """
+
+
+def entity_names(conn) -> tuple[str, ...]:
+    """Publications, shows, channels, authors and guests found in the notes, as slugs."""
+    return tuple(sorted({_slug(row[0]) for row in conn.execute(ENTITY_NAMES_SQL).fetchall()} - {""}))
+
+
+def _is_topic(tag: str, people: list[str], source_types: tuple[str, ...], entities: tuple[str, ...] = ()) -> bool:
+    slug = _slug(tag)
+    named = {_slug(name) for name in people} | set(entities)
+    return slug not in SOURCE_KIND_WORDS | PLATFORM_SLUGS | {_slug(kind) for kind in source_types} | named
+
+
 def _clean_reply(data: dict[str, Any], tag_list: TagList) -> tuple[dict[str, Any], str | None]:
     if not isinstance(data, dict) or any(name not in data for name in FIELDS):
         raise PropertiesError("properties reply is missing fields")
@@ -214,9 +272,11 @@ def _clean_reply(data: dict[str, Any], tag_list: TagList) -> tuple[dict[str, Any
             proposed = None
     tags = list(dict.fromkeys(tags))[:MAX_TAGS if tag_list.tags else MAX_SUGGESTED_TAGS]
     tags = [tag for tag in tags if tag not in tag_list.blocked]
-    if proposed is not None and (not TAG.match(proposed) or proposed in tag_list.blocked):
-        proposed = None
     people = [str(name).strip() for name in data["people"] if isinstance(name, str) and name.strip()][:10]
+    if proposed is not None and (not TAG.match(proposed) or proposed in tag_list.blocked
+                                 or proposed in aliases()
+                                 or not _is_topic(proposed, people, tag_list.source_types, tag_list.entities)):
+        proposed = None
     when = data["date"]
     if when is not None:
         try:

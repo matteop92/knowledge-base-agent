@@ -43,6 +43,16 @@ class SourceFilterTests(unittest.TestCase):
         }));""")
         self.assertEqual(out, {"tags": [3, 4], "people": [2, 5], "types": [3, 4, 5], "titles": [5]})
 
+    def test_source_matches_any_named_source_and_is_suggested_by_name(self) -> None:
+        out = run("""const S = [{ id: 1, type: "article", title: "A", source_name: "Every", tags: [] },
+            { id: 2, type: "note", title: "B", source_name: "Every", tags: [] }, { id: 3, type: "note", title: "C", tags: [] }];
+          const state = f.addToken(f.empty(), { kind: "source", value: "Every" });
+          const groups = f.suggest("eve", f.empty(), S, NOW);
+          console.log(JSON.stringify({ ids: f.filtered(S, state, NOW).map((s) => s.id), tokens: f.tokens(state).map((t) => t.key),
+            group: groups.filter((g) => g.kind === "source").map((g) => g.items.map((i) => [i.label, i.count])),
+            removed: f.removeToken(state, f.tokens(state)[0]).sources }));""")
+        self.assertEqual(out, {"ids": [1, 2], "tokens": ["Source"], "group": [[["Every", 2]]], "removed": []})
+
     def test_people_covers_guests_and_authors(self) -> None:
         out = run("""console.log(JSON.stringify(ids(make({ people: ["Ada Stone"] }))));""")
         self.assertEqual(out, [1, 2])

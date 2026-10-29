@@ -166,6 +166,11 @@ class ReaderTests(unittest.TestCase):
         self.assertRegex(page, r'class="reader-byline">\s*<p id="reader-voices"[^>]*></p>\s*<ul id="reader-tags"')
         self.assertNotRegex((WEB / "styles.css").read_text(encoding="utf-8"), r"\.reader-col \.s-tags[^{]*\{[^}]*display: none")
 
+    def test_a_card_shows_three_tags_at_most_and_a_filtered_tag_comes_first(self) -> None:
+        out = run("cardTagCap")
+        self.assertEqual(out["before"], ["a", "b", "c"])
+        self.assertEqual(out["filtered"], ["e", "a", "b"])
+
     def test_highlights_show_their_location_and_the_note_under_the_highlight(self) -> None:
         self.assertEqual(run("readerHighlights"), {"loc": "Page 12", "note": "Try it."})
 

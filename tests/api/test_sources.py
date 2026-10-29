@@ -151,6 +151,10 @@ class DetailTests(unittest.TestCase):
     def test_reading_blocks_skip_separators_and_empty_text(self) -> None:
         self.assertEqual(reading_blocks([block(0, "separator", "---"), block(1, "paragraph", "  ")]), [])
 
+    def test_reading_blocks_leave_out_the_front_matter_heading_but_not_other_headings(self) -> None:
+        blocks = [block(0, "heading", "## Front Matter"), block(1, "heading", "## Chapter 1"), block(2, "paragraph", "Front Matter")]
+        self.assertEqual([item["text"] for item in reading_blocks(blocks)], ["Chapter 1", "Front Matter"])
+
     def test_reading_blocks_drop_markdown_markers_and_images_but_keep_links(self) -> None:
         blocks = [block(0, "heading", "## How it worked ##\n"), block(1, "list_item", "- [ ] First *step*"),
                   block(2, "block_quote", "> One\n> two"), block(3, "paragraph", "[![Ad](https://x.org/a.png)](https://x.org/)"),

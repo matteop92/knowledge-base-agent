@@ -96,6 +96,16 @@ class ClassifierTests(unittest.TestCase):
         result = classify_properties(parse("# Garden\n\nText.\n"), TAGS, client)
         self.assertEqual((result.properties["tags"], result.proposed_tag), (["leadership"], "gardening"))
 
+    def test_a_proposal_may_not_name_a_source_type_a_platform_or_a_person(self) -> None:
+        note = parse("# X" + chr(10) + chr(10) + "Text." + chr(10))
+        names = TagList(tags=TAGS.tags, approved=True, entities=("every", "lenny-s-podcast", "tim-ferriss"))
+        for proposal in ("podcast", "Social_Post", "linkedin", "every", "Lenny's Podcast", "tim_ferriss", "derek-sivers",
+                         "Derek Sivers", "article", "self-development"):
+            client = FakeClassifierClient(reply(tags=["leadership"], proposed_tag=proposal))
+            self.assertIsNone(classify_properties(note, names, client).proposed_tag, proposal)
+        client = FakeClassifierClient(reply(tags=["leadership"], proposed_tag="gardening"))
+        self.assertEqual(classify_properties(note, TAGS, client).proposed_tag, "gardening")
+
     def test_an_invalid_reply_is_an_error(self) -> None:
         with self.assertRaises(PropertiesError):
             classify_properties(parse("# X\n\nText.\n"), TAGS, FakeClassifierClient({"tags": []}))
@@ -166,7 +176,7 @@ class FakeTagsConnection:
     """Just enough of knowledge.tags for the loader: rows are (name, status, rule) in insert order."""
 
     def __init__(self, rows=None, fail=False):
-        self.rows, self.fail, self.inserts = list(rows or []), fail, 0
+        self.rows, self.fail, self.inserts, self.written, self.names = list(rows or []), fail, 0, [], []
 
     @contextmanager
     def transaction(self):
@@ -179,6 +189,10 @@ class FakeTagsConnection:
         result = self
         if sql.startswith("select pg_advisory"):
             self.result = [(None,)]
+        elif sql.startswith("select distinct name"):
+            self.result = [(name,) for name in self.names]
+        elif sql.startswith("select distinct lower"):
+            self.result = [(tag,) for tag in self.written]
         elif sql.startswith("select count"):
             self.result = [(len(self.rows),)]
         elif sql.startswith("select name"):
@@ -217,6 +231,18 @@ class TagTableTests(unittest.TestCase):
         conn = FakeTagsConnection([("ai", "approved", None), ("decision-making", "approved", None), ("case-study", "blocked", None)])
         tags = TagList.load_from_database(conn, self.path)
         self.assertEqual((tags.tags, tags.blocked, conn.inserts), (("ai", "decision-making"), ("case-study",), 0))
+
+    def test_tags_the_owner_wrote_in_notes_are_allowed_unless_blocked_or_not_a_topic(self) -> None:
+        conn = FakeTagsConnection([("ai", "approved", None), ("technology", "blocked", None)])
+        conn.written = ["ai", "self-compassion", "podcast", "technology", "book-notes", "Bad Tag!", "tim_ferriss"]
+        conn.names = ["Tim Ferriss", "Every"]  # a person or publication named in the notes is never a topic
+        tags = TagList.load_from_database(conn, self.path)
+        self.assertEqual((tags.tags, tags.entities), (("ai", "self-compassion"), ("every", "tim-ferriss")))
+
+    def test_a_merged_tag_is_never_offered_to_the_classifier(self) -> None:
+        conn = FakeTagsConnection([("ai", "approved", None), ("ai-pilots", "approved", None)])
+        conn.written = ["self-development", "personal-growth"]
+        self.assertEqual(TagList.load_from_database(conn, self.path).tags, ("ai", "personal-growth"))
 
     def test_an_unreachable_table_falls_back_to_the_file(self) -> None:
         tags = TagList.load_from_database(FakeTagsConnection(fail=True), self.path)

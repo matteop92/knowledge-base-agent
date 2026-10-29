@@ -12,6 +12,24 @@ def facts(metadata=None, path="Knowledge/Notes/Item.md", added=None):
     return card_facts(metadata or {}, path, added)
 
 
+class PublicationTests(unittest.TestCase):
+    def test_publication_names_the_source_of_a_note_with_no_url(self) -> None:
+        found = facts({"frontmatter": {"publication": "Every"}})
+        self.assertEqual(found["source_name"], "Every")
+        self.assertNotIn("platform", found)
+
+    def test_publication_wins_over_the_article_host(self) -> None:
+        found = facts({"frontmatter": {"publication": "Every"}, "source_url": "https://every.to/a"}, "Knowledge/Articles/A.md")
+        self.assertEqual((found["platform"], found["source_name"]), ("website", "Every"))
+
+    def test_publication_outranks_a_show_or_channel(self) -> None:
+        found = facts({"frontmatter": {"publication": "Every", "channel": "Some channel", "platform": "YouTube"}})
+        self.assertEqual((found["platform"], found["source_name"]), ("youtube", "Every"))
+
+    def test_reddit_is_a_platform(self) -> None:
+        self.assertEqual(facts({"source_url": "https://www.reddit.com/r/a/comments/x"})["platform"], "reddit")
+
+
 class PlatformTests(unittest.TestCase):
     def test_platform_field_without_a_url(self) -> None:
         self.assertEqual(facts({"frontmatter": {"platform": "LinkedIn"}})["platform"], "linkedin")

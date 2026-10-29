@@ -10,10 +10,11 @@
   const DAY = 86400000;
   const MAX_PER_GROUP = 3;
 
-  const empty = () => ({ titles: [], types: [], tags: [], people: [], date: null });
+  const empty = () => ({ titles: [], types: [], tags: [], people: [], sources: [], date: null });
   const norm = (text) => String(text).trim().toLowerCase();
   const peopleOf = (source) => [...new Set([...(source.authors || []), ...(source.guests || [])])];
   const tagsOf = (source) => source.tags || [];
+  const sourceOf = (source) => (source.source_name ? [source.source_name] : []);
   const pad = (number) => String(number).padStart(2, "0");
 
   function isoDay(ms) {
@@ -34,6 +35,7 @@
     if (skip !== "types" && state.types.length && !state.types.includes(source.type)) return false;
     if (skip !== "tags" && !state.tags.every((tag) => tagsOf(source).includes(tag))) return false;
     if (skip !== "people" && state.people.length && !peopleOf(source).some((name) => state.people.includes(name))) return false;
+    if (skip !== "sources" && state.sources.length && !sourceOf(source).some((name) => state.sources.includes(name))) return false;
     if (skip !== "date" && !dateMatches(source.added, state.date, now)) return false;
     if (skip !== "titles" && !state.titles.every((title) => norm(source.title).includes(norm(title)))) return false;
     return true;
@@ -73,30 +75,35 @@
     return date.from ? `from ${date.from}` : `until ${date.to}`;
   }
 
+  const copy = (state) => ({ ...state, titles: [...state.titles], types: [...state.types], tags: [...state.tags],
+    people: [...state.people], sources: [...state.sources] });
+  const listsOf = (next) => ({ type: next.types, tag: next.tags, person: next.people, source: next.sources, title: next.titles });
+
   function addToken(state, item) {
-    const next = { ...state, titles: [...state.titles], types: [...state.types], tags: [...state.tags], people: [...state.people] };
-    const list = { type: next.types, tag: next.tags, person: next.people, title: next.titles }[item.kind];
+    const next = copy(state);
+    const list = listsOf(next)[item.kind];
     if (item.kind === "date") next.date = item.value;
     else if (!list.includes(item.value)) list.push(item.value);
     return next;
   }
 
-  // The tokens in the order the bar draws them: Type, Tag, Person, Added, Title.
+  // The tokens in the order the bar draws them: Type, Tag, Person, Source, Added, Title.
   function tokens(state) {
     return [
       ...state.types.map((value) => ({ kind: "type", key: "Type", value, text: (TYPE_LABELS[value] || value).toLowerCase() })),
       ...state.tags.map((value) => ({ kind: "tag", key: "Tag", value, text: value })),
       ...state.people.map((value) => ({ kind: "person", key: "Person", value, text: value })),
+      ...state.sources.map((value) => ({ kind: "source", key: "Source", value, text: value })),
       ...(state.date ? [{ kind: "date", key: "Added", value: state.date, text: dateText(state.date) }] : []),
       ...state.titles.map((value) => ({ kind: "title", key: "Title", value, text: `“${value}”` })),
     ];
   }
 
   function removeToken(state, token) {
-    const next = { ...state, titles: [...state.titles], types: [...state.types], tags: [...state.tags], people: [...state.people] };
+    const next = copy(state);
     if (token.kind === "date") next.date = null;
     else {
-      const list = { type: next.types, tag: next.tags, person: next.people, title: next.titles }[token.kind];
+      const list = listsOf(next)[token.kind];
       list.splice(list.indexOf(token.value), 1);
     }
     return next;
@@ -125,6 +132,8 @@
     if (types.length) groups.push({ kind: "type", heading: "Type", items: types });
     const people = pick(sources.flatMap(peopleOf), state.people, "person");
     if (people.length) groups.push({ kind: "person", heading: "People", items: people });
+    const named = pick(sources.flatMap(sourceOf), state.sources, "source");
+    if (named.length) groups.push({ kind: "source", heading: "Sources", items: named });
     const tags = pick(sources.flatMap(tagsOf), state.tags, "tag");
     if (tags.length) groups.push({ kind: "tag", heading: "Tags", items: tags });
     const dates = [];

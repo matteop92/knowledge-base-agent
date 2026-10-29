@@ -69,11 +69,13 @@ def _block_text(block: dict[str, Any]) -> str:
 
 
 def reading_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Blocks as the reader draws them. A personal note rides on the highlight before it."""
+    """Blocks as the reader draws them. A personal note rides on the highlight before it; the "Front Matter" heading is left out."""
     result: list[dict[str, Any]] = []
     for block in blocks:
         text = _block_text(block)
         if not text or block.get("kind") == "separator":
+            continue
+        if block.get("kind") == "heading" and text.casefold() == "front matter":  # every book highlights export opens with it
             continue
         note = block.get("content_role") == "personal_note"
         previous = result[-1] if result else None

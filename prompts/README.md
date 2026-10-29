@@ -15,7 +15,7 @@ This folder holds only the versions in use. Older versions were removed; the cha
 | `answer_agent_v15.md`, `answer_agent_v16.md` | `app/agent/harness.py` (opt-in `prompt_version`) | v13 and v14 plus one rule: credit a statement only to the speaker field of the passage cited for it, name guests as guests, and name other speakers when answering what a person would say. Not the default until the speaker rule passes its trials. |
 | `followup_rewrite_v1.md` | `app/agent/memory.py` | Rewrites a follow-up into a stand-alone search query for the first search. |
 | `question_router_v1.json` | `app/agent/router.py` | The question wording sent to TypeSafe Jev in one call per question: route (catalog, narrowed or plain, with plain listed first), what the question narrows by (type, folder, period, newest source) and what a catalog question filters and sorts by. A versioned spec rather than a prompt, so it is JSON; receipts record its version and hash. |
-| `properties_v3.md` | `app/ingestion/properties.py` | Classifies a note: source type and one to three tags from the approved list. |
+| `properties_v4.md` | `app/ingestion/properties.py` | Classifies a note: source type and one to three tags from the approved list. |
 | `screenshot_extract_v1.md` | `app/capture/screenshot.py` | Reads text and structure out of a screenshot. |
 | `youtube_transcript_v1.md` | `app/capture/youtube.py` | Turns a video transcript into a clean note. |
 | `youtube_speakers_v1.md` | `app/capture/captions.py` | Labels speakers when a transcript comes from captions. |
@@ -47,6 +47,7 @@ The notes below come from the commit that introduced each version.
 - v1: fills missing type, tags, people, date and description from an approved tag list.
 - v2: each tag gets a one-line definition, and a note gets at most three tags.
 - v3: a note's own list tags are hints beside the approved ones, seven approved tags added, and the tag "technology" blocked.
+- v4: a proposed tag may not name a source type, a platform or publication, or a person; the code also drops such a proposal, checking against the publications, shows, channels, authors and guests found in the notes. Notes tagged by v3 keep their results (`PROPERTIES_VERSIONS` in `vault_sync.py`); new and edited notes use v4.
 
 **Chunk context**
 - v1: one-sentence context for each chunk. v2: capped at 60 words, no invented facts, speaker attribution kept (used by the chunking trial).
