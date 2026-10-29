@@ -148,6 +148,14 @@ const scenarios = {
     const pills = (c) => c.querySelectorAll(".s-pill").map((p) => [p.textContent, p.classList.contains("is-filter")]);
     return { post: pills(cards(app)[0]), article: pills(cards(app)[1]), results: text(app.els["sources-result"]) };
   },
+  async cardTagCap() {
+    const app = boot({ sources: [row(1, "note", "Many tags", { tags: ["a", "b", "c", "d", "e"] })] }); app.screen.show(); await app.flush();
+    const input = app.els["sources-input"]; input.value = "e"; input.dispatch("input");
+    const before = cards(app)[0].querySelectorAll(".s-pill").map((p) => p.textContent);
+    const tag = app.els["sources-suggest"].children.find((c) => c.classList.contains("ssuggest-row") && text(c).startsWith("e"));
+    tag.click(); await app.flush();
+    return { before, filtered: cards(app)[0].querySelectorAll(".s-pill").map((p) => p.textContent) };
+  },
   async cap() {
     const many = Array.from({ length: 80 }, (_, i) => row(i, "note", `Note ${i}`, { tags: ["t"] }));
     const app = boot({ sources: many }); app.screen.show(); await app.flush();

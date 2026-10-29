@@ -62,6 +62,7 @@ def card_facts(metadata: dict, relative_path: str, added: datetime | str | None 
     show = _text(frontmatter.get("show")) or (_text(frontmatter.get("podcast")) if
                                                  isinstance(frontmatter.get("podcast"), str) else None)
     channel = _text(frontmatter.get("channel"))
+    publication = _text(frontmatter.get("publication"))
     authors = _names(metadata.get("authors"))
     guests = list(dict.fromkeys(_names(metadata.get("guests")) + _names(frontmatter.get("guest"))))
 
@@ -78,7 +79,7 @@ def card_facts(metadata: dict, relative_path: str, added: datetime | str | None 
         platform = None
     if platform:
         facts["platform"] = platform
-        name = show or channel or (host if kind == "article" or platform == "website" else None)
+        name = publication or show or channel or (host if kind == "article" or platform == "website" else None)
         if name is None and platform == "podcast":
             name = "Podcast"
         name = name or {"linkedin": "LinkedIn", "x": "X", "youtube": "YouTube", "reddit": "Reddit"}.get(platform, host)
@@ -86,6 +87,8 @@ def card_facts(metadata: dict, relative_path: str, added: datetime | str | None 
             facts["source_name"] = name
     elif kind == "article" and host:
         facts["source_name"] = host
+    if publication and not platform:
+        facts["source_name"] = publication
 
     dated = next((str(value)[:10] for value in (metadata.get("published"), metadata.get("date"),
                                                metadata.get("created"), generated.get("date"))

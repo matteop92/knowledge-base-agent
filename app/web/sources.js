@@ -84,13 +84,17 @@
 
   // The dot, the platform mark and (unless it only repeats the platform's own name) the source name.
   function appendSource(parent, source) {
-    if (!source.platform || !source.source_name) return;
+    if (!source.source_name) return;
     parent.append(h("span", "dot"));
-    const mark = icon(MARKS[source.platform] || "globe");
-    mark.classList.add("s-mark");
-    parent.append(mark);
+    if (source.platform) {
+      const mark = icon(MARKS[source.platform] || "globe");
+      mark.classList.add("s-mark");
+      parent.append(mark);
+    }
     if (source.source_name !== PLATFORM_NAMES[source.platform]) parent.append(h("span", "s-source", source.source_name));
   }
+
+  const MAX_CARD_TAGS = 3;
 
   const isPodcast = (source) => source.platform === "podcast";
 
@@ -117,7 +121,10 @@
 
   function pills(source, onlyActive) {
     const active = view.filter.tags;
-    const tags = onlyActive ? (source.tags || []).filter((tag) => active.includes(tag)) : source.tags || [];
+    const all = source.tags || [];
+    // A card shows three tags at most (the reader shows them all); a tag being filtered on comes first.
+    const tags = onlyActive ? all.filter((tag) => active.includes(tag))
+      : [...all.filter((tag) => active.includes(tag)), ...all.filter((tag) => !active.includes(tag))].slice(0, MAX_CARD_TAGS);
     if (!tags.length) return null;
     const list = h("ul", "s-tags");
     for (const tag of tags) {
@@ -253,7 +260,7 @@
     chips.hidden = !tokens.length;
     $("sources-clear").hidden = !tokens.length;
     $("sources-input").placeholder = tokens.length ? "Add another filter" : phone.matches ? "Title, person, tag or type"
-      : "Search titles, people, tags or types";
+      : "Search titles, people, sources, tags or types";
     const badge = $("sources-badge");
     badge.hidden = !tokens.length;
     badge.textContent = String(tokens.length);
@@ -408,7 +415,7 @@
         row.setAttribute("role", "option");
         const position = index;
         row.setAttribute("aria-selected", position === view.active ? "true" : "false");
-        const symbol = icon({ type: "stack", person: "person", tag: "tag", date: "calendar", title: "search" }[group.kind]);
+        const symbol = icon({ type: "stack", person: "person", source: "globe", tag: "tag", date: "calendar", title: "search" }[group.kind]);
         symbol.classList.add("ssuggest-icon");
         row.append(symbol, h("span", "ssuggest-label", item.label), h("span", "ssuggest-count", String(item.count)));
         row.addEventListener("mousedown", (event) => event.preventDefault());
@@ -891,7 +898,6 @@
 
   async function loadDetail(source) {
     const mine = ++reader.seq;
-    readerNotice("Loading…");
     try {
       const detail = await api("GET", `/api/sources/${encodeURIComponent(source.id)}`);
       if (mine !== reader.seq || !reader.open) return;
