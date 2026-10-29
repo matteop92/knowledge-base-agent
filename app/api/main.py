@@ -305,7 +305,8 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
 
     @app.get("/api/tags")
     def list_tags(_: Session = Depends(session)):
-        return {"suggested": tags.suggestions(), "approved": tags.approved()}
+        in_use = tags.in_use()
+        return {"suggested": tags.suggestions(), "approved": [tag["name"] for tag in in_use], "in_use": in_use}
 
     @app.get("/api/sources")
     def list_sources(_: Session = Depends(session)):

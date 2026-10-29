@@ -673,7 +673,7 @@ class StaticRouteTests(unittest.TestCase):
                 self.assertIn(needle, page)
         self.assertIn('"GET", "/api/starters"', (WEB / "app.js").read_text(encoding="utf-8"))
         self.assertIn(".approved", (WEB / "capture.js").read_text(encoding="utf-8"))
-        self.assertIn("data.approved", (WEB / "settings.js").read_text(encoding="utf-8"))
+        self.assertIn("data.in_use", (WEB / "settings.js").read_text(encoding="utf-8"))
 
     def test_text_uses_only_the_agreed_type_scale(self) -> None:
         css = (WEB / "styles.css").read_text(encoding="utf-8")

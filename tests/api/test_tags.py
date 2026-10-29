@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 from contextlib import contextmanager
 
 from app.api.conversations import ConversationError
@@ -24,7 +26,7 @@ class FakeConnection:
     def __init__(self, suggestions=(), tag_rows=(), known=True, seed_empty=False):
         self.suggestions, self.tag_rows, self.known = list(suggestions), list(tag_rows), known
         self.seed_empty, self.seeded = seed_empty, False
-        self.approved, self.recent = [], []
+        self.approved, self.recent, self.blocked = [], [], []
         self.writes: list[tuple] = []
 
     @contextmanager
@@ -37,6 +39,8 @@ class FakeConnection:
             return FakeResult(self.suggestions)
         if sql.startswith("select name from knowledge.tags where status='approved'"):
             return FakeResult([(name,) for name in self.approved])
+        if sql.startswith("select name from knowledge.tags where status='blocked'"):
+            return FakeResult([(name,) for name in self.blocked])
         if sql.startswith("select d.relative_path"):
             return FakeResult(self.recent)
         if sql.startswith("select count"):
@@ -66,10 +70,11 @@ def row(tag, document_id, path, metadata=None, properties=None):
 
 
 class TagStoreTests(unittest.TestCase):
-    def test_approved_tags_come_back_as_names_in_list_order(self) -> None:
+    def test_approved_tags_come_back_as_names_with_the_most_used_first(self) -> None:
         conn = FakeConnection()
         conn.approved = ["leadership", "ai-pilots"]
-        self.assertEqual(store(conn).approved(), ["leadership", "ai-pilots"])
+        with patch("app.api.tags.load_sources", return_value=[]),                 patch("app.api.tags.to_sources", return_value=[SimpleNamespace(tags=["ai-pilots"])]):
+            self.assertEqual(store(conn).approved(), ["ai-pilots", "leadership"])
 
     def test_starters_turn_this_weeks_notes_into_questions(self) -> None:
         conn = FakeConnection()
@@ -130,6 +135,30 @@ class TagStoreTests(unittest.TestCase):
             store(conn).decide("never-proposed", "approved")
         self.assertEqual(caught.exception.status, 404)
         self.assertEqual(conn.writes, [])
+
+
+class InUseTests(unittest.TestCase):
+    def test_one_list_holds_approved_tags_and_every_tag_written_in_notes_most_used_first(self) -> None:
+        conn = FakeConnection()
+        conn.approved = ["ai", "housing"]
+        conn.blocked = ["technology"]
+        sources = [SimpleNamespace(tags=["ai", "podcast", "podcast"]), SimpleNamespace(tags=["podcast", "joe-hudson"]),
+                   SimpleNamespace(tags=["joe-hudson", "technology"])]
+        with patch("app.api.tags.load_sources", return_value=[]), patch("app.api.tags.to_sources", return_value=sources):
+            found = store(conn).in_use()
+        self.assertEqual(found, [{"name": "joe-hudson", "count": 2}, {"name": "podcast", "count": 2},
+                                 {"name": "ai", "count": 1}, {"name": "housing", "count": 0}])
+
+
+class AliasTests(unittest.TestCase):
+    def test_merge_maps_old_names_keeps_order_and_drops_repeats(self) -> None:
+        from app.tag_aliases import merge
+        self.assertEqual(merge(["Self-Development", "ai", "ai-pilots", "personal-growth"]), ["personal-growth", "ai"])
+
+    def test_a_merged_tag_counts_and_shows_under_its_new_name(self) -> None:
+        from app.storage.search import source_label
+        _, _, tags = source_label({"tags": ["self-development", "personal-growth"], "generated": {"tags": ["ai-pilots", "ai"]}}, "a.md")
+        self.assertEqual(tags, ["personal-growth", "ai"])
 
 
 if __name__ == "__main__":

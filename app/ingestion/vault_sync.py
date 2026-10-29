@@ -354,13 +354,18 @@ def _live_client(prepared: list[PreparedFile], backfill: list[ParsedDocument], t
         structured=set(properties))
 
 
+# Stored results from these versions count as current: v4 only added a rule about which tags may be proposed, so notes
+# tagged by v3 keep their tags and only new and edited notes use v4. Leave an old version out to have it redone.
+PROPERTIES_VERSIONS = ("properties_v3", PROPERTIES_VERSION)
+
+
 def _needs_properties(conn, profile_id: str, skip: set[str]) -> list[ParsedDocument]:
     """Active files with no current properties: loaded before the tag list was approved, or tagged by an older prompt."""
     rows = conn.execute("""select r.parsed from knowledge.active_runs a
         join knowledge.runs r on r.run_id=a.run_id
         left join knowledge.document_properties p on p.document_id=r.document_id and p.source_sha256=r.source_sha256
-        where a.profile_id=%s and (p.document_id is null or p.prompt_version <> %s)
-        order by r.document_id""", (profile_id, PROPERTIES_VERSION)).fetchall()
+        where a.profile_id=%s and (p.document_id is null or p.prompt_version <> all(%s))
+        order by r.document_id""", (profile_id, list(PROPERTIES_VERSIONS))).fetchall()
     # Stored as JSON, so parse it in JSON mode (dates arrive as ISO strings).
     parsed = [ParsedDocument.model_validate_json(json.dumps(row[0])) for row in rows]
     return [item for item in parsed if item.document_id not in skip and missing_fields(item)]

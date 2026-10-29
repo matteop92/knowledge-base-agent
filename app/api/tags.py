@@ -9,9 +9,11 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from app.api.answers import obsidian_link
+from app.agent.properties import to_sources
 from app.api.conversations import ConversationError
 from app.ingestion.properties import TAG, ensure_tags_seeded
-from app.storage.search import source_label
+from app.tag_aliases import aliases
+from app.storage.search import load_sources, source_label
 
 SUGGESTIONS_SQL = """select p.proposed_tag, r.document_id, d.relative_path, r.parsed->'metadata', p.properties
     from knowledge.corpus_state state
@@ -72,9 +74,23 @@ class TagStore:
         return [{"name": name, "count": len(notes), "notes": notes} for name, notes in ordered]
 
     def approved(self) -> list[str]:
+        return [tag["name"] for tag in self.in_use()]
+
+    def in_use(self) -> list[dict[str, Any]]:
+        """The one tag list: approved tags plus every tag on a note, with how many notes carry each (0 if none yet).
+
+        The agent may use any of them; it can only suggest new ones, which wait in Settings for approval."""
         with self.connect() as conn:
             ensure_tags_seeded(conn)
-            return [row[0] for row in conn.execute(APPROVED_SQL).fetchall()]
+            names = {row[0] for row in conn.execute(APPROVED_SQL).fetchall() if row[0] not in aliases()}
+            sources = to_sources(load_sources(conn))
+            blocked = {row[0] for row in conn.execute("select name from knowledge.tags where status='blocked'").fetchall()}
+        counts = {name: 0 for name in names}
+        for source in sources:
+            for tag in set(source.tags):
+                if tag not in blocked:
+                    counts[tag] = counts.get(tag, 0) + 1
+        return [{"name": name, "count": count} for name, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))]
 
     def starters(self) -> list[dict[str, str]]:
         """Up to three questions, one per note added or changed this week."""

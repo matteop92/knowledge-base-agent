@@ -9,6 +9,7 @@ from pathlib import PurePosixPath
 import psycopg
 
 from app.storage import StorageError
+from app.tag_aliases import merge
 from app.storage.records import SearchHit
 
 MAX_K = 100
@@ -86,7 +87,7 @@ def source_label(metadata: object, relative_path: str) -> tuple[str, list[str], 
     # Generated properties fill only what the file does not set itself.
     # List tags sit next to the file's own tags; other generated fields only fill gaps.
     return (str(title), people or _names(generated.get("people")),
-            list(dict.fromkeys(tags + _names(generated.get("tags")))))
+            merge(list(dict.fromkeys(tags + _names(generated.get("tags"))))))
 
 
 def source_author(metadata: object, relative_path: str) -> str:
