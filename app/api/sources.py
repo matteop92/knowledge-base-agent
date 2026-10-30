@@ -46,6 +46,7 @@ IMAGE = re.compile(r"!\[[^\]]*\]" + TARGET + r"|!\[\[[^\]|]+\.(?:png|jpe?g|gif|w
                    re.IGNORECASE)
 EMPTY_LINK = re.compile(r"\[\s*\]" + TARGET)
 EMBED = re.compile(r"!(?=\[\[)")  # an embedded note that is not an image reads as a plain wiki link
+IMAGE_ALT = re.compile(r"!\[([^\]]*)\]")
 
 ACTIVE_SQL = """select 1 from knowledge.active_runs a
     join knowledge.runs r on r.run_id=a.run_id
@@ -89,12 +90,25 @@ def _table_rows(raw_text: str) -> list[list[str]]:
     return [_table_cells(line) for line in lines[:1] + lines[2:] if line.strip()]
 
 
+def https_target(target: Any) -> str | None:
+    """A stored image target as a bare https URL, or None. The parser keeps a title (`"t"`) and angle brackets attached."""
+    parts = str(target or "").split()
+    url = parts[0].removeprefix("<").removesuffix(">") if parts else ""
+    return url if url.startswith("https://") else None
+
+
 def reading_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Blocks as the reader draws them. A personal note rides on the highlight before it; the "Front Matter" heading is left out.
-    Fenced code (a diagram when the language is `mermaid`) and tables come out as blocks of their own."""
+    Fenced code (a diagram when the language is `mermaid`) and tables come out as blocks of their own. An image on its own
+    line comes out by index and alt text only; the page loads it through the image route, so its URL never leaves the server."""
     result: list[dict[str, Any]] = []
     for block in blocks:
         kind = block.get("kind")
+        if kind == "asset_reference":
+            if https_target(block.get("asset_target")):
+                alt = IMAGE_ALT.match(str(block.get("raw_text") or "").strip())
+                result.append({"kind": "image", "index": int(block.get("index", 0)), "alt": alt.group(1).strip() if alt else ""})
+            continue
         if kind == "code_block":
             # Without a content span the fence has no body (an empty fence, or an opener on the last line).
             code = _content(block).replace("\r\n", "\n").rstrip() if block.get("content_span") else ""
@@ -177,5 +191,6 @@ class SourceStore:
         source = to_source(document_id, str(run_id), sha, root_alias, relative_path, metadata, 0, None, added_at=added)
         header = self._header(source, metadata)
         header["source_url"] = metadata.get("source_url")
+        header["run_id"] = str(run_id)  # ties image URLs to this parse, so the browser cache never outlives a re-index
         header["body"] = reading_blocks(blocks if isinstance(blocks, list) else [])
         return header

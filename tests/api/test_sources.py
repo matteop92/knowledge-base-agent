@@ -174,6 +174,23 @@ class DetailTests(unittest.TestCase):
                   block(2, "paragraph", '![a](https://w.org/F_(x).jpg "t") after'), block(3, "paragraph", "![[only.png]]")]
         self.assertEqual([item["text"] for item in reading_blocks(blocks)], ["caption", "[[Other note]] here", "after"])
 
+    def test_a_standalone_https_image_becomes_an_image_block_without_its_url(self) -> None:
+        blocks = [block(0, "paragraph", "Before."),
+                  block(1, "asset_reference", "![A chart](https://x.test/a.png)\n", asset_target="https://x.test/a.png"),
+                  block(2, "asset_reference", '![](https://x.test/b.png "Title")', asset_target='https://x.test/b.png "Title"'),
+                  block(3, "asset_reference", "![c](<https://x.test/c.png>)", asset_target="<https://x.test/c.png>"),
+                  block(4, "asset_reference", "![d](http://x.test/d.png)", asset_target="http://x.test/d.png"),
+                  block(5, "asset_reference", "![e](e.png)", asset_target="e.png")]
+        body = reading_blocks(blocks)
+        self.assertEqual([item for item in body if item["kind"] == "image"],
+                         [{"kind": "image", "index": 1, "alt": "A chart"}, {"kind": "image", "index": 2, "alt": ""},
+                          {"kind": "image", "index": 3, "alt": "c"}])
+        self.assertEqual([item["kind"] for item in body], ["paragraph", "image", "image", "image"])
+        self.assertNotIn("x.test", str(body))
+
+    def test_the_detail_carries_the_active_run(self) -> None:
+        self.assertEqual(self.detail("note", {}, [block(0, "paragraph", "Body.")])["run_id"], "run-1")
+
 
 class CodeAndTableTests(unittest.TestCase):
     """Fenced code and tables, read from the real parser's blocks."""
