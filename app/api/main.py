@@ -318,7 +318,7 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
         return sources.detail(document_id)
 
     @app.get("/api/sources/{document_id}/images/{index}")
-    def source_image(document_id: str, index: int, request: Request, r: str = "", current: Session = Depends(session)):
+    def source_image(document_id: str, index: int, renewal: Response, r: str = "", _: Session = Depends(session)):
         target = sources.image_target(document_id, index, r)
         if not images.SLOTS.acquire(timeout=images.SLOT_WAIT_SECONDS):
             raise ConversationError(503, "too many images are loading; try again")
@@ -331,9 +331,9 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
             images.SLOTS.release()
         response = Response(body, media_type=kind, headers={"Cache-Control": "private, max-age=86400",
                                                              "Content-Disposition": "inline"})
-        if current.renewed:
-            # A returned Response drops headers the session dependency set, so the renewal is set here again.
-            set_session_cookie(response, request.cookies.get(COOKIE_NAME, ""))
+        # A returned Response drops headers the session dependency set on `renewal`, so its cookie is copied over.
+        for cookie in renewal.headers.getlist("set-cookie"):
+            response.headers.append("set-cookie", cookie)
         return response
 
     @app.get("/api/starters")
