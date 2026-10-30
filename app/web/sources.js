@@ -32,7 +32,7 @@
   // Source text with Markdown links, [[wiki links]], **bold** and *italic* drawn as elements, never as HTML. A link opens
   // in a new tab only when it is http(s); any other target keeps just its label. Emphasis opens and closes against a
   // non-space, so "2 * 3 * 4" keeps its asterisks.
-  const INLINE = /(\[[^\]]+\]\((?:[^()\s]|\([^()\s]*\))+(?:\s+"[^"]*")?\)|\[\[[^\]]+\]\]|\*\*(?=\S)[^*]+?(?<=\S)\*\*|\*(?=\S)[^*]+?(?<=\S)\*)/;
+  const INLINE = /(`[^`\n]+`|\[[^\]]+\]\((?:[^()\s]|\([^()\s]*\))+(?:\s+"[^"]*")?\)|\[\[[^\]]+\]\]|\*\*(?=\S)[^*]+?(?<=\S)\*\*|\*(?=\S)[^*]+?(?<=\S)\*)/;
   function inline(tag, cls, text) {
     const node = h(tag, cls);
     appendInline(node, String(text || ""));
@@ -44,7 +44,9 @@
       const link = /^\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)(?:\s+"[^"]*")?\)$/.exec(run);
       const wiki = /^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(run);
       const emphasis = /^(\*\*?)([^*]+)\1$/.exec(run);
-      if (link && /^https?:\/\//i.test(link[2])) {
+      if (/^`[^`\n]+`$/.test(run)) {
+        parent.append(h("code", "r-inline-code", run.slice(1, -1)));
+      } else if (link && /^https?:\/\//i.test(link[2])) {
         const anchor = h("a", "r-link");
         anchor.href = link[2]; anchor.target = "_blank"; anchor.rel = "noopener noreferrer";
         appendInline(anchor, link[1]);
@@ -849,6 +851,9 @@
     $("reader-body").replaceChildren();
   }
 
+  // Tables, code and diagrams come from reader-blocks.js.
+  const { codeBlock, diagram, table } = window.readerBlocks(h, inline);
+
   function drawBlocks(blocks, source) {
     const guests = source.guests || [];
     const fragment = document.createDocumentFragment();
@@ -873,6 +878,10 @@
         if (!list) { list = h("ul", "r-list"); fragment.append(list); }
         // A numbered item keeps its own number as text, so it drops the bullet.
         list.append(inline("li", /^\d+[.)]\s/.test(block.text) ? "r-text is-numbered" : "r-text", block.text));
+      } else if (block.kind === "code") {
+        fragment.append(block.language === "mermaid" ? diagram(block.text) : codeBlock(block.text));
+      } else if (block.kind === "table") {
+        fragment.append(table(block.rows || []));
       } else if (block.kind === "block_quote") {
         fragment.append(inline("blockquote", "r-quote", block.text));
       } else if (block.kind !== "asset_reference") {
