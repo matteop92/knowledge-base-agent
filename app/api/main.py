@@ -320,11 +320,15 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
     @app.get("/api/sources/{document_id}/images/{index}")
     def source_image(document_id: str, index: int, request: Request, r: str = "", current: Session = Depends(session)):
         target = sources.image_target(document_id, index, r)
+        if not images.SLOTS.acquire(timeout=images.SLOT_WAIT_SECONDS):
+            raise ConversationError(503, "too many images are loading; try again")
         try:
             kind, body = images.fetch(target)
         except images.ImageError as exc:
             log.info("source image not loaded: %s", exc)  # the message names the host only, never the URL
             raise ConversationError(502, "the image could not be loaded") from None
+        finally:
+            images.SLOTS.release()
         response = Response(body, media_type=kind, headers={"Cache-Control": "private, max-age=86400",
                                                              "Content-Disposition": "inline"})
         if current.renewed:

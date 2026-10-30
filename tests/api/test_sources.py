@@ -60,9 +60,11 @@ class Conn:
     def __init__(self, detail=None, active=True, image=None):
         self.detail, self.active, self.image = detail, active, image
         self.counted: list = []
+        self.params: list = []
 
     def execute(self, sql, params=()):
         sql = " ".join(sql.split())
+        self.params.append(params)
         if sql.startswith("select r.run_id, r.parsed"):
             return Result([self.image] if self.image else [])
         if "jsonb_array_elements" in sql:
@@ -283,8 +285,10 @@ class RouteTests(unittest.TestCase):
             response, fetch = self.image(f"/api/sources/{IDS['note']}/images/1?r=run-1", conn)
             self.assertEqual(response.status_code, 200, response.text)
             fetch.assert_called_once_with("https://x.test/a.png")
+            self.assertIn((1, IDS["note"]), conn.params)  # the block index, then the document
             self.assertEqual(response.headers["content-type"], "image/png")
             self.assertEqual(response.headers["cache-control"], "private, max-age=86400")
+            self.assertEqual(response.headers["content-disposition"], "inline")
             self.assertIn("img-src 'self' data:;", response.headers["content-security-policy"])
             self.assertNotIn("set-cookie", response.headers)
 
@@ -305,6 +309,16 @@ class RouteTests(unittest.TestCase):
                 response, fetch = self.image(path, conn)
                 self.assertEqual(response.status_code, 404, response.text)
                 fetch.assert_not_called()
+
+    def test_when_every_image_slot_is_busy_the_route_answers_503_without_fetching(self) -> None:
+        import threading
+        conn = Conn(image=("run-1", {"index": 1, "kind": "asset_reference", "asset_target": "https://x.test/a.png"}))
+        full = threading.BoundedSemaphore(1)
+        full.acquire()
+        with mock.patch("app.api.images.SLOTS", full), mock.patch("app.api.images.SLOT_WAIT_SECONDS", 0):
+            response, fetch = self.image(f"/api/sources/{IDS['note']}/images/1?r=run-1", conn)
+        self.assertEqual(response.status_code, 503)
+        fetch.assert_not_called()
 
     def test_a_renewed_session_reaches_the_browser_on_an_image_response(self) -> None:
         conn = Conn(image=("run-1", {"index": 1, "kind": "asset_reference", "asset_target": "https://x.test/a.png"}))
