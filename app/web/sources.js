@@ -32,7 +32,7 @@
   // Source text with Markdown links, [[wiki links]], **bold** and *italic* drawn as elements, never as HTML. A link opens
   // in a new tab only when it is http(s); any other target keeps just its label. Emphasis opens and closes against a
   // non-space, so "2 * 3 * 4" keeps its asterisks.
-  const INLINE = /(\[[^\]]+\]\((?:[^()\s]|\([^()\s]*\))+(?:\s+"[^"]*")?\)|\[\[[^\]]+\]\]|\*\*(?=\S)[^*]+?(?<=\S)\*\*|\*(?=\S)[^*]+?(?<=\S)\*)/;
+  const INLINE = /(`[^`\n]+`|\[[^\]]+\]\((?:[^()\s]|\([^()\s]*\))+(?:\s+"[^"]*")?\)|\[\[[^\]]+\]\]|\*\*(?=\S)[^*]+?(?<=\S)\*\*|\*(?=\S)[^*]+?(?<=\S)\*)/;
   function inline(tag, cls, text) {
     const node = h(tag, cls);
     appendInline(node, String(text || ""));
@@ -44,7 +44,9 @@
       const link = /^\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)(?:\s+"[^"]*")?\)$/.exec(run);
       const wiki = /^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(run);
       const emphasis = /^(\*\*?)([^*]+)\1$/.exec(run);
-      if (link && /^https?:\/\//i.test(link[2])) {
+      if (/^`[^`\n]+`$/.test(run)) {
+        parent.append(h("code", "r-inline-code", run.slice(1, -1)));
+      } else if (link && /^https?:\/\//i.test(link[2])) {
         const anchor = h("a", "r-link");
         anchor.href = link[2]; anchor.target = "_blank"; anchor.rel = "noopener noreferrer";
         appendInline(anchor, link[1]);
@@ -849,6 +851,73 @@
     $("reader-body").replaceChildren();
   }
 
+  // Tables and code are drawn as elements like everything else. A mermaid diagram is drawn by the vendored library,
+  // loaded the first time a source has one; its SVG is read as XML and adopted, never set as HTML. If the library or
+  // the diagram fails, the diagram's source is shown as code.
+  let mermaidReady = null;
+  let diagramSeq = 0;
+  function loadMermaid() {
+    if (!mermaidReady) {
+      mermaidReady = new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = "/static/vendor/mermaid.min.js";
+        script.onload = () => {
+          window.mermaid.initialize({ startOnLoad: false, securityLevel: "strict", htmlLabels: false, theme: "base",
+            flowchart: { htmlLabels: false, useMaxWidth: true }, fontFamily: "Geist, system-ui, sans-serif",
+            themeVariables: { fontSize: "14px", primaryColor: "#ece8df", primaryTextColor: "#1d1c1a",
+              primaryBorderColor: "#a8a398", lineColor: "#625e57", secondaryColor: "#dfeae5", tertiaryColor: "#fffdf8",
+              background: "#fffdf8", clusterBkg: "#f1eee6", clusterBorder: "#d9d4c9", edgeLabelBackground: "#fffdf8" } });
+          resolve(window.mermaid);
+        };
+        script.onerror = () => { mermaidReady = null; script.remove(); reject(new Error("mermaid did not load")); };
+        document.head.append(script);
+      });
+    }
+    return mermaidReady;
+  }
+
+  function codeBlock(text) {
+    const pre = h("pre", "r-code");
+    pre.append(h("code", "", text));
+    return pre;
+  }
+
+  function diagram(text) {
+    const figure = h("figure", "r-diagram");
+    figure.hidden = true;
+    const id = `diagram-${++diagramSeq}`;
+    loadMermaid().then((mermaid) => mermaid.render(id, text)).then(({ svg }) => {
+      const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
+      if (parsed.querySelector("parsererror")) throw new Error("diagram is not valid SVG");
+      figure.append(document.importNode(parsed.documentElement, true));
+      figure.hidden = false;
+    }).catch(() => {
+      document.getElementById(`d${id}`)?.remove();  // mermaid leaves its error drawing in the page
+      figure.replaceChildren(codeBlock(text));
+      figure.classList.add("is-source");
+      figure.hidden = false;
+    });
+    return figure;
+  }
+
+  function table(rows) {
+    const wrap = h("div", "r-table-wrap");
+    const grid = h("table", "r-table");
+    const head = h("thead");
+    const headRow = h("tr");
+    for (const cell of rows[0] || []) headRow.append(inline("th", "", cell));
+    head.append(headRow);
+    const body = h("tbody");
+    for (const cells of rows.slice(1)) {
+      const row = h("tr");
+      for (const cell of cells) row.append(inline("td", "", cell));
+      body.append(row);
+    }
+    grid.append(head, body);
+    wrap.append(grid);
+    return wrap;
+  }
+
   function drawBlocks(blocks, source) {
     const guests = source.guests || [];
     const fragment = document.createDocumentFragment();
@@ -873,6 +942,10 @@
         if (!list) { list = h("ul", "r-list"); fragment.append(list); }
         // A numbered item keeps its own number as text, so it drops the bullet.
         list.append(inline("li", /^\d+[.)]\s/.test(block.text) ? "r-text is-numbered" : "r-text", block.text));
+      } else if (block.kind === "code") {
+        fragment.append(block.language === "mermaid" ? diagram(block.text) : codeBlock(block.text));
+      } else if (block.kind === "table") {
+        fragment.append(table(block.rows || []));
       } else if (block.kind === "block_quote") {
         fragment.append(inline("blockquote", "r-quote", block.text));
       } else if (block.kind !== "asset_reference") {

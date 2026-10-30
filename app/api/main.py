@@ -31,7 +31,7 @@ from app.storage.spend import SpendCapError, spent_today
 
 WEB_DIR = Path(__file__).resolve().parents[1] / "web"
 SECURITY_HEADERS = {
-    "Content-Security-Policy": ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+    "Content-Security-Policy": ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
                                 "connect-src 'self'; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'; "
                                 "base-uri 'none'; form-action 'self'; object-src 'none'"),
     "X-Content-Type-Options": "nosniff",
