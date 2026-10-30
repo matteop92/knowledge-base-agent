@@ -27,7 +27,7 @@ flowchart TB
 
 Text offsets are Unicode character offsets in the decoded snapshot. Editing a file changes its hash and gives it a new run; the document ID stays the same. The tool that reads the vault never edits it.
 
-After the first load, `app/ingestion/vault_sync.py` keeps the index current. It indexes the vault's `Knowledge` folder incrementally by content hash, retires deleted files behind a guard (it refuses to retire more than 10% or 20 files at once), and classifies each note's type, tags, people, date and description (`properties.py`, using the live tag list: the approved rows of the `knowledge.tags` table plus every topic tag written in a note, minus blocked and merged ones; a proposal may not name a source type, a platform or a person). `config/tag_aliases.yaml` maps merged tags to their new name at read time, so cards, filters and counts show one name per tag.
+After the first load, `app/ingestion/vault_sync.py` keeps the index current. It indexes the vault's `Knowledge` folder incrementally by content hash, retires deleted files behind a guard (it refuses to retire more than 10% or 20 files at once), and classifies each note's type, tags, people, date and description (`properties.py`, using the live tag list: the approved rows of the `knowledge.tags` table plus every topic tag written in a note, minus blocked and merged ones; a proposal may not name a source type, a platform or a person). `config/tag_aliases.yaml` maps merged tags to their new name at read time, so cards, filters and counts show one name per tag. The content hash does not notice a parser change, so after one, `python -m app.ingestion.reparse_affected` (a dry run unless `--live --max-usd N` is given) parses every active note with the current parser and re-indexes only the notes whose blocks differ.
 
 **Not used in the live profile.** Chunk contexts, section and document summaries and evidence cards were all tried (see [decisions.md](decisions.md)). The selected profile needs none of them. Chunk-context code remains in `app/ingestion/enrichment.py`; the summary generators and evidence cards were removed, and only the stored `Summary` record stays so earlier runs still load.
 
@@ -111,7 +111,7 @@ Hosting is described in [deploy.md](deploy.md).
 
 | Area | State |
 | --- | --- |
-| Ingestion and chunking | Working for transcripts, notes, articles, highlights and book exports. |
+| Ingestion and chunking | Working for transcripts, notes, articles, highlights and book exports. Fenced code and tables are block kinds of their own (parser `markdown-structure-v2`). |
 | Storage and search | Working locally and on the hosted database (48 notes in the `Knowledge` folder). |
 | Answer agent | Prompt v13 is the accepted baseline (78.8% of scored checks on the frozen checklist). Answers take about 37 s at the median and 92 s at p95; catalog questions about 8 s. Prompts v15 and v16 (speaker rule) stay opt-in: on the 85-check list v15 scored 88.7% against 94.0% for v13, mostly on coverage. |
 | Question routing | Live: every question is routed catalog, narrowed or plain. The router set scores 65 of 67 (one plain question about a named article goes narrowed) and the 26 approved catalog questions pass 3 of 3. |
