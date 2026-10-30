@@ -754,7 +754,7 @@ h3.r-heading { font-size: 18.5px; }
 .r-quote { margin: 0; padding-left: 18px; box-shadow: inset 2px 0 0 var(--handle); font-family: var(--serif); font-style: italic; font-size: 18.5px; line-height: 1.6; }
 .r-text.r-quote-big { font-size: 26px; line-height: 1.4; }
 .r-inline-code, .r-code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
-.r-inline-code { padding: 1px 5px; border-radius: 5px; background: var(--chip); font-size: 0.86em; overflow-wrap: anywhere; }
+.r-inline-code { padding: 1px 5px; border-radius: 5px; background: var(--chip); font-size: 15px; overflow-wrap: anywhere; }
 .r-code { margin: 0; padding: 14px 16px; border-radius: 12px; background: var(--row-active); color: var(--ink); font-size: 13px; line-height: 1.55; overflow-x: auto; }
 .r-code code { font: inherit; }
 .r-diagram { margin: 0; padding: 18px; border-radius: 14px; background: var(--paper); box-shadow: var(--shadow-panel); overflow-x: auto; }
@@ -765,7 +765,7 @@ h3.r-heading { font-size: 18.5px; }
 .r-table th, .r-table td { padding: 10px 14px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--hairline-row); }
 .r-table th { font-size: 12.5px; font-weight: 500; color: var(--muted); white-space: nowrap; }
 .r-table tbody tr:last-child td { border-bottom: 0; }
-.r-table .r-inline-code { background: var(--chip); }
+.r-table .r-inline-code { font-size: 13px; }
 .r-link { color: inherit; text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 3px; }
 .r-link:hover { color: var(--accent); }
 .reader-original { margin: 28px 0 0; font-size: 14px; }

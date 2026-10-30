@@ -862,12 +862,17 @@
         const script = document.createElement("script");
         script.src = "/static/vendor/mermaid.min.js";
         script.onload = () => {
-          window.mermaid.initialize({ startOnLoad: false, securityLevel: "strict", htmlLabels: false, theme: "base",
-            flowchart: { htmlLabels: false, useMaxWidth: true }, fontFamily: "Geist, system-ui, sans-serif",
-            themeVariables: { fontSize: "14px", primaryColor: "#ece8df", primaryTextColor: "#1d1c1a",
-              primaryBorderColor: "#a8a398", lineColor: "#625e57", secondaryColor: "#dfeae5", tertiaryColor: "#fffdf8",
-              background: "#fffdf8", clusterBkg: "#f1eee6", clusterBorder: "#d9d4c9", edgeLabelBackground: "#fffdf8" } });
-          resolve(window.mermaid);
+          try {
+            window.mermaid.initialize({ startOnLoad: false, securityLevel: "strict", htmlLabels: false, theme: "base",
+              flowchart: { htmlLabels: false, useMaxWidth: true }, fontFamily: "Geist, system-ui, sans-serif",
+              themeVariables: { fontSize: "14px", primaryColor: "#ece8df", primaryTextColor: "#1d1c1a",
+                primaryBorderColor: "#a8a398", lineColor: "#625e57", secondaryColor: "#dfeae5", tertiaryColor: "#fffdf8",
+                background: "#fffdf8", clusterBkg: "#f1eee6", clusterBorder: "#d9d4c9", edgeLabelBackground: "#fffdf8" } });
+            resolve(window.mermaid);
+          } catch (error) {
+            mermaidReady = null;
+            reject(error);
+          }
         };
         script.onerror = () => { mermaidReady = null; script.remove(); reject(new Error("mermaid did not load")); };
         document.head.append(script);

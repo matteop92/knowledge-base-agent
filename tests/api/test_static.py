@@ -646,13 +646,20 @@ class StaticRouteTests(unittest.TestCase):
         page = self.client.get("/")
         self.assertEqual(page.status_code, 200)
         self.assertIn("text/html", page.headers["content-type"])
-        self.assertIn("script-src 'self'", page.headers["content-security-policy"])
-        manifest = self.client.get("/manifest.webmanifest")
+        policy = page.headers["content-security-policy"]
+        self.assertIn("script-src 'self'", policy)
+        self.assertEqual(re.search(r"script-src ([^;]*)", policy).group(1), "'self'")  # no inline or eval scripts
+        self.assertIn("style-src 'self' 'unsafe-inline'", policy)  # mermaid's SVG needs inline styles (docs/decisions.md)
+        manifest =self.client.get("/manifest.webmanifest")
         self.assertIn("application/manifest+json", manifest.headers["content-type"])
         worker = self.client.get("/sw.js")
         self.assertIn("javascript", worker.headers["content-type"])
         self.assertEqual(self.client.get("/static/app.js").status_code, 200)
         self.assertEqual(self.client.get("/static/icons/icon-192.png").status_code, 200)
+
+    def test_the_vendored_diagram_library_is_served_from_the_path_the_reader_loads(self) -> None:
+        self.assertIn('"/static/vendor/mermaid.min.js"', (WEB / "sources.js").read_text(encoding="utf-8"))
+        self.assertEqual(self.client.get("/static/vendor/mermaid.min.js").status_code, 200)
 
     def test_settings_opens_from_the_gear_and_lists_suggested_tags(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")

@@ -48,7 +48,7 @@ IMAGE = re.compile(r"!\[[^\]]*\]" + TARGET + r"|!\[\[[^\]|]+\.(?:png|jpe?g|gif|w
 EMPTY_LINK = re.compile(r"\[\s*\]" + TARGET)
 EMBED = re.compile(r"!(?=\[\[)")  # an embedded note that is not an image reads as a plain wiki link
 FENCE_OPEN = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})[ \t]*([\w+-]*)")
-TABLE_RULE = re.compile(r"^[ \t]*\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$")  # the `| --- | :-: |` row
+TABLE_RULE_CELL = re.compile(r":?-+:?")
 
 ACTIVE_SQL = """select 1 from knowledge.active_runs a
     join knowledge.runs r on r.run_id=a.run_id
@@ -86,7 +86,7 @@ def _fences(source_text: str) -> list[Fence]:
     for line in source_text.splitlines(keepends=True):
         if opened is None:
             match = FENCE_OPEN.match(line)
-            if match:
+            if match and not (match.group(1)[0] == "`" and "`" in line[match.end():]):  # "```x```" is inline code
                 opened, body = (offset, match.group(1), match.group(2)), []
         else:
             closing = line.strip()
@@ -133,6 +133,11 @@ def _around_fences(block: dict[str, Any], fences: list[Fence]) -> list[dict[str,
     return parts
 
 
+def _is_table_rule(line: str) -> bool:
+    """The `| --- | :-: |` row under a table header. Checked cell by cell so a hostile line cannot make a regex backtrack."""
+    return all(TABLE_RULE_CELL.fullmatch(cell.strip()) for cell in line.strip().strip("|").split("|"))
+
+
 def _table_cells(line: str) -> list[str]:
     cells = re.split(r"(?<!\\)\|", line.strip())
     if cells and not cells[0].strip():
@@ -149,7 +154,7 @@ def _around_tables(text: str) -> list[str | list[list[str]]]:
     plain: list[str] = []
     index = 0
     while index < len(lines):
-        if (index + 1 < len(lines) and lines[index].strip().startswith("|") and TABLE_RULE.match(lines[index + 1])):
+        if (index + 1 < len(lines) and lines[index].strip().startswith("|") and _is_table_rule(lines[index + 1])):
             stop = index + 2
             while stop < len(lines) and lines[stop].strip().startswith("|"):
                 stop += 1

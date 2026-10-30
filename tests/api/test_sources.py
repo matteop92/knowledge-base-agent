@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+import time
 import unittest
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -15,7 +16,7 @@ except ImportError:  # pragma: no cover
     TestClient = None
 
 from app.api.conversations import ConversationError
-from app.api.sources import SourceStore, reading_blocks
+from app.api.sources import SourceStore, _is_table_rule, reading_blocks
 from app.ingestion.markdown_parser import parse_markdown
 from app.ingestion.source_reader import capture_source
 from tests.api.test_api import EMAIL, FakeAuth, FakeEngine, settings
@@ -206,6 +207,24 @@ class CodeAndTableTests(unittest.TestCase):
         body = self.reading("Lead in:\n| Name | Note |\n| --- | :-: |\n| a | b \\| c |\n| d | e |\n\nAfter.\n")
         self.assertEqual([item["kind"] for item in body], ["paragraph", "table", "paragraph"])
         self.assertEqual(body[1]["rows"], [["Name", "Note"], ["a", "b | c"], ["d", "e"]])
+
+    def test_inline_triple_backticks_do_not_open_a_fence(self) -> None:
+        body = self.reading("Intro.\n\n```x``` is inline code\n\n## Real heading\n\nBody.\n")
+        self.assertEqual([item["kind"] for item in body], ["paragraph", "paragraph", "heading", "paragraph"])
+
+    def test_the_table_rule_check_is_linear_on_a_hostile_line(self) -> None:
+        started = time.monotonic()
+        self.assertFalse(_is_table_rule("-" + " " * 200_000 + "x"))
+        self.assertTrue(_is_table_rule(" | --- | :-: | -- | "))
+        self.assertLess(time.monotonic() - started, 1)
+
+    def test_detail_returns_code_blocks_from_the_stored_text(self) -> None:
+        text = "```mermaid\nflowchart TB\n```\n"
+        found = ("Knowledge/Notes/N.md", {"title": "N title"}, [block(0, "paragraph", text)], "run-1", "a" * 64,
+                 "primary", ADDED, text)
+        body = store(Conn(detail=found)).detail(IDS["note"])["body"]
+        self.assertEqual([(item["kind"], item["language"], item["text"]) for item in body],
+                         [("code", "mermaid", "flowchart TB")])
 
     def test_a_line_with_pipes_but_no_rule_row_stays_text(self) -> None:
         body = self.reading("| just | text |\n")
