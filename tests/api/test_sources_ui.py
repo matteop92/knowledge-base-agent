@@ -174,6 +174,15 @@ class ReaderTests(unittest.TestCase):
         self.assertEqual(out["fallback"], {"source": True, "hidden": False, "text": "flowchart TB\n  A --> B"})
         self.assertEqual(out["scriptsLeft"], 0)
 
+    def test_images_load_lazily_through_the_image_route_and_a_failed_one_leaves_its_alt_text(self) -> None:
+        out = run("readerImages")
+        self.assertEqual(len(out["srcs"]), 3)
+        for index, src in enumerate(out["srcs"], 1):
+            self.assertRegex(src, rf"^/api/sources/[^/?]+/images/{index}\?r=run-9$")
+        self.assertEqual((out["alts"], out["lazy"], out["loading"]), (["A chart", "", "Third"], ["lazy"] * 3, 3))
+        # Loaded: the image stays. Failed with no alt text: the figure goes. Failed with alt text: a caption replaces it.
+        self.assertEqual((out["figures"], out["stillLoading"], out["imgsLeft"], out["captions"]), (2, 0, 1, ["Third"]))
+
     def test_diagram_config_is_stripped_until_stable_and_a_too_long_diagram_is_shown_as_source(self) -> None:
         out = run("readerDiagramConfig")
         self.assertEqual(out["oversize"], {"source": True, "scripts": 0})

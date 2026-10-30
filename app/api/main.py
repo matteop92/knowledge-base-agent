@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from app.api import images
 from app.api.answers import AnswerEngine, AnswerJobs, OpenRouterAnswerEngine
 from app.api.capture import CaptureJobs, Classifier, Extractor, ScreenshotInput, YouTubeInput
 from app.api.auth import COOKIE_NAME, AuthError, RateLimiter, Session, SessionStore, SupabaseAuth
@@ -315,6 +316,25 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
     @app.get("/api/sources/{document_id}")
     def source_detail(document_id: str, _: Session = Depends(session)):
         return sources.detail(document_id)
+
+    @app.get("/api/sources/{document_id}/images/{index}")
+    def source_image(document_id: str, index: int, renewal: Response, r: str = "", _: Session = Depends(session)):
+        target = sources.image_target(document_id, index, r)
+        if not images.SLOTS.acquire(timeout=images.SLOT_WAIT_SECONDS):
+            raise ConversationError(503, "too many images are loading; try again")
+        try:
+            kind, body = images.fetch(target)
+        except images.ImageError as exc:
+            log.info("source image not loaded: %s", exc)  # the message names the host only, never the URL
+            raise ConversationError(502, "the image could not be loaded") from None
+        finally:
+            images.SLOTS.release()
+        response = Response(body, media_type=kind, headers={"Cache-Control": "private, max-age=86400",
+                                                             "Content-Disposition": "inline"})
+        # A returned Response drops headers the session dependency set on `renewal`, so its cookie is copied over.
+        for cookie in renewal.headers.getlist("set-cookie"):
+            response.headers.append("set-cookie", cookie)
+        return response
 
     @app.get("/api/starters")
     def starters(_: Session = Depends(session)):

@@ -760,6 +760,10 @@ h3.r-heading { font-size: 18.5px; }
 .r-diagram { margin: 0; padding: 18px; border-radius: 14px; background: var(--paper); box-shadow: var(--shadow-panel); overflow-x: auto; }
 .r-diagram svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
 .r-diagram.is-source { padding: 0; background: none; box-shadow: none; }
+.r-figure { margin: 0; }
+.r-figure.is-loading { min-height: 160px; border-radius: 12px; background: var(--row-active); }
+.r-image { display: block; max-width: 100%; height: auto; border-radius: 12px; }
+.r-caption { font-size: 12.5px; line-height: 1.5; color: var(--ink-soft); }
 .r-table-wrap { overflow-x: auto; border-radius: 12px; box-shadow: var(--shadow-panel); background: var(--paper); }
 .r-table { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.5; }
 .r-table th, .r-table td { padding: 10px 14px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--hairline-row); }

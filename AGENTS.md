@@ -13,7 +13,7 @@ Read [README.md](README.md) for the overview, then [docs/architecture.md](docs/a
 - `app/storage/`: private Postgres loading, publication, retirement, search and the spend ledger.
 - `app/agent/`: the answer harness, its command-line tool, and the shared route and cost checks (`endpoints.py`).
 - `app/capture/`: captured text, `.md` files, screenshots and YouTube links become new notes in the `Knowledge` folders (new files only).
-- `app/api/` and `app/web/`: the FastAPI server (with `scheduler.py`, the background index pass, `tags.py`, the suggested-tags store behind Settings, and `sources.py`, the Sources page's list and reading payload) and the installable web app (`sources.js` the Sources page, `source-filter.js` its matching and suggestions); `Dockerfile` and `deploy/` package them for Railway.
+- `app/api/` and `app/web/`: the FastAPI server (with `scheduler.py`, the background index pass, `tags.py`, the suggested-tags store behind Settings, `sources.py`, the Sources page's list and reading payload, and `images.py`, the guarded fetch behind the reader's images) and the installable web app (`sources.js` the Sources page, `source-filter.js` its matching and suggestions); `Dockerfile` and `deploy/` package them for Railway.
 - `prompts/`: versioned prompts in use, with a changelog in `prompts/README.md`.
 - `evals/`: checked source-span questions, the frozen answer checklist and the trial scripts; see [evals/README.md](evals/README.md).
 - `tests/`: run `python -m unittest discover -s tests/<suite> -p 'test_*.py'` for each of `ingestion`, `models`, `storage`, `agent`, `api`, `capture` and `evals`. Database tests need a fresh disposable `KNOWLEDGE_TEST_DATABASE_URL` per suite.

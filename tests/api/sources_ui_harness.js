@@ -298,6 +298,19 @@ const scenarios = {
       script: script.src, shownBefore, fallback: { source: figure.classList.contains("is-source"), hidden: figure.hidden,
         text: text(figure) }, scriptsLeft: documentStub.head.children.length };
   },
+  async readerImages() {
+    const detail = { source_url: null, run_id: "run-9", body: [
+      { kind: "image", index: 1, alt: "A chart" }, { kind: "image", index: 2, alt: "" }, { kind: "image", index: 3, alt: "Third" }] };
+    const app = boot({ sources: mixed(), detail }); app.screen.show(); await app.flush();
+    links(app)[5].click(); await app.flush();
+    const body = app.els["reader-body"];
+    const imgs = body.querySelectorAll("img");
+    const before = { srcs: imgs.map((img) => img.src), alts: imgs.map((img) => img.alt),
+      lazy: imgs.map((img) => img.loading), loading: body.querySelectorAll("figure.r-figure.is-loading").length };
+    imgs[0].dispatch("load"); imgs[1].dispatch("error"); imgs[2].dispatch("error");
+    return { ...before, figures: body.querySelectorAll("figure.r-figure").length, stillLoading: body.querySelectorAll("figure.is-loading").length,
+      imgsLeft: body.querySelectorAll("img").length, captions: body.querySelectorAll("figcaption.r-caption").map(text) };
+  },
   async readerDiagramConfig() {
     const open = async (text) => {
       documentStub.head = new El("head");
