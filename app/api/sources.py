@@ -48,6 +48,13 @@ EMPTY_LINK = re.compile(r"\[\s*\]" + TARGET)
 EMBED = re.compile(r"!(?=\[\[)")  # an embedded note that is not an image reads as a plain wiki link
 IMAGE_ALT = re.compile(r"!\[([^\]]*)\]")
 
+# One block of the active run, with that run's id, for the image route.
+IMAGE_SQL = """select r.run_id, r.parsed->'blocks'->%s
+    from knowledge.active_runs a
+    join knowledge.runs r on r.run_id=a.run_id
+    join knowledge.corpus_state s on s.profile_id=a.profile_id
+    where r.document_id=%s"""
+
 ACTIVE_SQL = """select 1 from knowledge.active_runs a
     join knowledge.runs r on r.run_id=a.run_id
     join knowledge.corpus_state s on s.profile_id=a.profile_id
@@ -176,6 +183,23 @@ class SourceStore:
             result.append(item)
         result.sort(key=lambda item: (item["added"] or "", item["title"].casefold()), reverse=True)
         return {"sources": result, "vault_name": self.vault_name}
+
+    def image_target(self, document_id: str, index: int, run_id: str) -> str:
+        """The saved https URL of an image block in the source's active run. A run other than the active one is not
+        found, so a browser cache keyed on an older parse never shows an image in the wrong place."""
+        try:
+            document_id = str(uuid.UUID(document_id))
+        except ValueError:
+            raise ConversationError(404, "image not found") from None
+        if not 0 <= index < 1_000_000:
+            raise ConversationError(404, "image not found")
+        with self.connect() as conn:
+            found = conn.execute(IMAGE_SQL, (index, document_id)).fetchone()
+        block = found[1] if found and str(found[0]) == run_id else None
+        target = https_target(block.get("asset_target")) if isinstance(block, dict) and block.get("kind") == "asset_reference" else None
+        if target is None:
+            raise ConversationError(404, "image not found")
+        return target
 
     def detail(self, document_id: str) -> dict[str, Any]:
         try:

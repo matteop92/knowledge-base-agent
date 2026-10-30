@@ -57,12 +57,14 @@ class Result:
 
 
 class Conn:
-    def __init__(self, detail=None, active=True):
-        self.detail, self.active = detail, active
+    def __init__(self, detail=None, active=True, image=None):
+        self.detail, self.active, self.image = detail, active, image
         self.counted: list = []
 
     def execute(self, sql, params=()):
         sql = " ".join(sql.split())
+        if sql.startswith("select r.run_id, r.parsed"):
+            return Result([self.image] if self.image else [])
         if "jsonb_array_elements" in sql:
             return Result([(IDS["quote"], "Be the change.")])
         if sql.startswith("select d.relative_path"):
@@ -267,6 +269,59 @@ class RouteTests(unittest.TestCase):
         client = self.client(Conn())
         self.assertEqual(client.get("/api/sources").status_code, 401)
         self.assertEqual(client.get(f"/api/sources/{IDS['note']}").status_code, 401)
+        self.assertEqual(client.get(f"/api/sources/{IDS['note']}/images/1?r=run-1").status_code, 401)
+
+    def image(self, path, conn, fetched=("image/png", b"\x89PNG\r\n\x1a\nbytes"), renewed=False):
+        fetch = mock.Mock(side_effect=fetched) if isinstance(fetched, Exception) else mock.Mock(return_value=fetched)
+        with mock.patch("app.api.auth.SessionStore.check", return_value=mock.MagicMock(renewed=renewed)), \
+                mock.patch("app.api.images.fetch", fetch):
+            return self.client(conn).get(path), fetch
+
+    def test_an_image_block_is_fetched_by_its_cleaned_url_and_cached_by_the_browser_only(self) -> None:
+        for target in ('https://x.test/a.png "Title"', "<https://x.test/a.png>"):
+            conn = Conn(image=("run-1", {"index": 1, "kind": "asset_reference", "asset_target": target}))
+            response, fetch = self.image(f"/api/sources/{IDS['note']}/images/1?r=run-1", conn)
+            self.assertEqual(response.status_code, 200, response.text)
+            fetch.assert_called_once_with("https://x.test/a.png")
+            self.assertEqual(response.headers["content-type"], "image/png")
+            self.assertEqual(response.headers["cache-control"], "private, max-age=86400")
+            self.assertIn("img-src 'self' data:;", response.headers["content-security-policy"])
+            self.assertNotIn("set-cookie", response.headers)
+
+    def test_anything_but_an_https_image_block_of_the_active_run_is_not_found_and_never_fetched(self) -> None:
+        image = {"index": 1, "kind": "asset_reference", "asset_target": "https://x.test/a.png"}
+        cases = [(f"/api/sources/not-an-id/images/1?r=run-1", Conn(image=("run-1", image))),
+                 (f"/api/sources/{IDS['note']}/images/-1?r=run-1", Conn(image=("run-1", image))),
+                 (f"/api/sources/{IDS['note']}/images/1?r=run-0", Conn(image=("run-1", image))),
+                 (f"/api/sources/{IDS['note']}/images/1", Conn(image=("run-1", image))),
+                 (f"/api/sources/{IDS['note']}/images/1?r=run-1", Conn(image=("run-1", None))),
+                 (f"/api/sources/{IDS['note']}/images/1?r=run-1", Conn()),
+                 (f"/api/sources/{IDS['note']}/images/1?r=run-1",
+                  Conn(image=("run-1", {**image, "kind": "paragraph"}))),
+                 (f"/api/sources/{IDS['note']}/images/1?r=run-1",
+                  Conn(image=("run-1", {**image, "asset_target": "http://x.test/a.png"})))]
+        for path, conn in cases:
+            with self.subTest(path=path, image=conn.image):
+                response, fetch = self.image(path, conn)
+                self.assertEqual(response.status_code, 404, response.text)
+                fetch.assert_not_called()
+
+    def test_a_renewed_session_reaches_the_browser_on_an_image_response(self) -> None:
+        conn = Conn(image=("run-1", {"index": 1, "kind": "asset_reference", "asset_target": "https://x.test/a.png"}))
+        response, _ = self.image(f"/api/sources/{IDS['note']}/images/1?r=run-1", conn, renewed=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("set-cookie", response.headers)
+
+    def test_a_failed_fetch_is_a_502_that_never_shows_the_url(self) -> None:
+        from app.api.images import ImageError
+        conn = Conn(image=("run-1", {"index": 1, "kind": "asset_reference",
+                                     "asset_target": "https://x.test/secret/a.png?token=abc"}))
+        with self.assertLogs("knowledge.api", level="INFO") as logs:
+            response, _ = self.image(f"/api/sources/{IDS['note']}/images/1?r=run-1", conn,
+                                     fetched=ImageError("x.test answered 404"))
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json(), {"error": "the image could not be loaded"})
+        self.assertNotIn("secret", " ".join(logs.output) + response.text)
 
     def test_a_scoped_ask_for_a_source_that_is_not_active_is_refused_before_any_turn_starts(self) -> None:
         for source_id, active in (("not-an-id", True), (IDS["note"], False)):
