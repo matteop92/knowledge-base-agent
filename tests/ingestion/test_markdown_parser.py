@@ -79,6 +79,26 @@ class MarkdownParserTests(unittest.TestCase):
                          "# a comment\r\n- not a list\r\nprint(1)\r\n")
         self.assertEqual(note.blocks[-2].heading_path, ["Title", "Setup", "After"])
 
+    def test_fence_variants_follow_the_commonmark_rules_for_closing_and_info_strings(self) -> None:
+        longer = self.parse("Notes/a.md", "````md\n```\ninner\n```\n````\n\nafter\n", "note")
+        self.assertEqual([block.kind for block in longer.blocks], ["code_block", "paragraph"])  # a shorter run does not close it
+        trailing = self.parse("Notes/b.md", "```\ncode\n``` not a close\nmore\n```\n\nafter\n", "note")
+        self.assertEqual([block.kind for block in trailing.blocks], ["code_block", "paragraph"])
+        self.assertIn("more", trailing.blocks[0].raw_text)  # a closer with text after it stays inside the fence
+        info = self.parse("Notes/c.md", "``` a`b\nnot code\n", "note")
+        self.assertEqual([block.kind for block in info.blocks], ["paragraph"])  # a backtick fence's info has no backtick
+        tilde = self.parse("Notes/d.md", "~~~\n```\nstill code\n~~~\n\nafter\n", "note")
+        self.assertEqual([block.kind for block in tilde.blocks], ["code_block", "paragraph"])
+
+    def test_an_empty_fence_has_no_content_span_and_a_header_only_table_is_a_table(self) -> None:
+        empty = self.parse("Notes/e.md", "Intro.\n\n```\n```\n\nAfter.\n", "note")
+        self.assertEqual([block.kind for block in empty.blocks], ["paragraph", "code_block", "paragraph"])
+        self.assertIsNone(empty.blocks[1].content_span)
+        table = self.parse("Notes/f.md", "| a | b |\n| --- | --- |\n\nafter\n", "note")
+        self.assertEqual([block.kind for block in table.blocks], ["table", "paragraph"])
+        plain = self.parse("Notes/g.md", "a | b\n--- | ---\n1 | 2\n", "note")
+        self.assertEqual([block.kind for block in plain.blocks], ["paragraph"])  # a table needs its leading pipes
+
     def test_unclosed_fence_runs_to_the_end_and_inline_backticks_are_not_a_fence(self) -> None:
         note = self.parse("Notes/open.md", "## A\n\n```x``` inline\n\n```text\n# not a heading\n", "note")
         self.assertEqual([block.kind for block in note.blocks], ["heading", "paragraph", "code_block"])

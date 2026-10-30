@@ -209,8 +209,10 @@ def plan_pass(settings: VaultSettings, scan: Scan, active: dict[str, tuple[str, 
     is retired: the way to re-index notes after a parser change, which the content hash alone never notices."""
     plan = PassPlan()
     if only is not None:
+        # A note edited since its stored run is left to the normal pass; only unchanged bytes are re-read here.
         plan.to_ingest = [(document_id, item) for document_id, item in scan.files.items()
-                          if document_id in only and document_id in active and not item.empty]
+                          if document_id in only and document_id in active and active[document_id][1] == item.sha256
+                          and not item.empty]
         plan.unchanged = len(scan.files) - len(plan.to_ingest)
         return plan
     for document_id, item in scan.files.items():

@@ -96,7 +96,8 @@ def reading_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for block in blocks:
         kind = block.get("kind")
         if kind == "code_block":
-            code = _content(block).replace("\r\n", "\n").rstrip()
+            # Without a content span the fence has no body (an empty fence, or an opener on the last line).
+            code = _content(block).replace("\r\n", "\n").rstrip() if block.get("content_span") else ""
             if code:
                 result.append({"kind": kind, "text": code, "language": str(block.get("language") or "").lower()})
             continue

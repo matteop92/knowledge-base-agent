@@ -208,6 +208,11 @@ class CodeAndTableTests(unittest.TestCase):
         self.assertEqual([item["kind"] for item in body], ["paragraph", "table", "paragraph"])
         self.assertEqual(body[1]["rows"], [["Name", "Note"], ["a", "b | c"], ["d", "e"]])
 
+    def test_a_fence_with_no_body_draws_nothing(self) -> None:
+        for text in ("Intro.\n\n```\n```\n\nAfter.\n", "Intro.\n\n```python\n"):
+            with self.subTest(text=text):
+                self.assertFalse([item for item in self.reading(text) if item["kind"] == "code_block"])
+
     def test_inline_triple_backticks_do_not_open_a_fence(self) -> None:
         body = self.reading("Intro.\n\n```x``` is inline code\n\n## Real heading\n\nBody.\n")
         self.assertEqual([item["kind"] for item in body], ["paragraph", "paragraph", "heading", "paragraph"])

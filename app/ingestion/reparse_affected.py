@@ -1,8 +1,7 @@
 """One-off: re-index only the notes the fence- and table-aware Markdown parser reads differently.
 
 `vault_sync` decides by content hash, so a parser change alone re-indexes nothing. This reads the stored source text of
-the active runs, keeps the notes that hold a fence line or a table, parses each with the current parser and compares its
-blocks with the stored ones. The default run is read-only and reports the count. `--live` then re-indexes just the
+the active runs, parses each with the current parser and compares its blocks with the stored ones. The default run is read-only and reports the count. `--live` then re-indexes just the
 notes whose blocks differ, through the normal load path (a new run with embeddings, under `--max-usd`).
 """
 
@@ -21,15 +20,14 @@ from app.ingestion.source_reader import capture_source
 from app.ingestion.vault_sync import VaultSyncError, run_pass, settings_from_env
 from app.storage.loader import connect_runtime
 
-# A coarse filter; the comparison below is the exact test. A fence line, or a `|` row followed by a `---` row.
-CANDIDATES_SQL = r"""select d.document_id, d.relative_path, d.root_alias, r.source_bytes,
+# Every active note is compared: a text prefilter for fences and tables would be a third copy of the parser's rules,
+# and a miss would skip an affected note without a trace.
+CANDIDATES_SQL = """select d.document_id, d.relative_path, d.root_alias, r.source_bytes,
         coalesce(r.parsed->'blocks', '[]'::jsonb)
     from knowledge.active_runs a
     join knowledge.runs r on r.run_id=a.run_id
     join knowledge.documents d on d.document_id=r.document_id
     join knowledge.corpus_state s on s.profile_id=a.profile_id
-    where r.source_text ~ '(^|\n)[ \t]*(```|~~~)'
-       or r.source_text ~ '(^|\n)[ \t]*\|[^\n]*\n[ \t]*\|?[ \t]*:?-+:?[ \t]*\|'
     order by d.relative_path"""
 ACTIVE_COUNT_SQL = """select count(*) from knowledge.active_runs a
     join knowledge.corpus_state s on s.profile_id=a.profile_id"""
@@ -57,8 +55,7 @@ def affected_documents(conn) -> dict[str, Any]:
     rows = conn.execute(CANDIDATES_SQL).fetchall()
     affected = [(document_id, relative_path) for document_id, relative_path, alias, source_bytes, blocks in rows
                 if read_differently(relative_path, alias, source_bytes, blocks)]
-    return {"active_notes": active, "with_fence_or_table": len(rows), "read_differently": len(affected),
-            "documents": affected}
+    return {"active_notes": active, "checked": len(rows), "read_differently": len(affected), "documents": affected}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -87,6 +84,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"reparse stopped: {exc}", file=sys.stderr)
         return 1
     print(json.dumps(report, indent=2, ensure_ascii=True))
+    done = report.get("pass") or {}
+    if args.live and (done.get("stopped") or done.get("ingest_failures")):
+        print("reparse incomplete: some affected notes were not re-indexed (see stopped / ingest_failures)", file=sys.stderr)
+        return 1
     return 0
 
 

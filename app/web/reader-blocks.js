@@ -41,13 +41,26 @@ window.readerBlocks = (h, inline) => {
 
   // A diagram can set its own config (a `%%{init: ...}%%` directive or a leading `---` frontmatter block), and its
   // `themeCSS` would restyle the whole page under our inline-style policy, so both are taken out before drawing.
-  const withoutConfig = (text) => text.replace(/%%\{[\s\S]*?\}%%/g, "").replace(/^\s*---[\s\S]*?\n---[ \t]*(?:\n|$)/, "");
+  // Taking one out can join the pieces around it into another, so this repeats until the text stops changing; a text
+  // that keeps changing, or one too long for the lazy patterns to scan quickly, is shown as source instead.
+  const MAX_DIAGRAM_CHARS = 50000;
+  function withoutConfig(text) {
+    let current = text;
+    for (let round = 0; round < 10; round++) {
+      const next = current.replace(/%%\{[\s\S]*?\}%%/g, "").replace(/^\s*---[\s\S]*?\n---[ \t]*(?:\n|$)/, "");
+      if (next === current) return current;
+      current = next;
+    }
+    return null;
+  }
 
   function diagram(text) {
     const figure = h("figure", "r-diagram");
     figure.hidden = true;
     const id = `diagram-${++diagramSeq}`;
-    loadMermaid().then((mermaid) => mermaid.render(id, withoutConfig(text))).then(({ svg }) => {
+    const cleaned = text.length > MAX_DIAGRAM_CHARS ? null : withoutConfig(text);
+    const drawn = cleaned === null ? Promise.reject(new Error("diagram config")) : loadMermaid().then((mermaid) => mermaid.render(id, cleaned));
+    drawn.then(({ svg }) => {
       const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
       if (parsed.querySelector("parsererror")) throw new Error("diagram is not valid SVG");
       figure.append(document.importNode(parsed.documentElement, true));

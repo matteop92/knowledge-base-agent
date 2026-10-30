@@ -174,6 +174,11 @@ class ReaderTests(unittest.TestCase):
         self.assertEqual(out["fallback"], {"source": True, "hidden": False, "text": "flowchart TB\n  A --> B"})
         self.assertEqual(out["scriptsLeft"], 0)
 
+    def test_diagram_config_is_stripped_until_stable_and_a_too_long_diagram_is_shown_as_source(self) -> None:
+        out = run("readerDiagramConfig")
+        self.assertEqual(out["oversize"], {"source": True, "scripts": 0})
+        self.assertEqual(out["sent"], ["\nflowchart TB\n  A --> B"])  # the joined directive is gone too
+
     def test_tags_sit_on_the_byline_line_and_phones_no_longer_hide_them(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")
         self.assertRegex(page, r'class="reader-byline">\s*<p id="reader-voices"[^>]*></p>\s*<ul id="reader-tags"')

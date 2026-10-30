@@ -298,6 +298,25 @@ const scenarios = {
       script: script.src, shownBefore, fallback: { source: figure.classList.contains("is-source"), hidden: figure.hidden,
         text: text(figure) }, scriptsLeft: documentStub.head.children.length };
   },
+  async readerDiagramConfig() {
+    const open = async (text) => {
+      documentStub.head = new El("head");
+      const app = boot({ sources: mixed(), detail: { source_url: null, body: [{ kind: "code_block", language: "mermaid", text }] } });
+      app.screen.show(); await app.flush();
+      links(app)[5].click(); await app.flush();
+      return app;
+    };
+    // Too long: shown as source at once and the library is never loaded.
+    const long = await open("flowchart TB\n" + "  A --> B\n".repeat(6000));
+    const oversize = { source: long.els["reader-body"].querySelector("figure").classList.contains("is-source"),
+      scripts: documentStub.head.children.length };
+    // Removing one directive joins the text around it into another; the library must get neither.
+    const joined = await open('%%%%{x}%%{init: {"themeCSS": "svg{position:fixed}"}}%%\nflowchart TB\n  A --> B');
+    const sent = [];
+    joined.context.window.mermaid = { initialize() {}, render: async (id, text) => { sent.push(text); throw new Error("stop"); } };
+    documentStub.head.children[0].onload(); await joined.flush();
+    return { oversize, sent };
+  },
   async readerLoadingAndFailure() {
     const app = boot({ sources: mixed(), detailStatus: 404 }); app.screen.show(); await app.flush();
     links(app)[3].click(); await app.flush();
