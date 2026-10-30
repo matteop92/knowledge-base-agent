@@ -204,8 +204,17 @@ def _top_folder(relative_path: str) -> str:
 
 
 def plan_pass(settings: VaultSettings, scan: Scan, active: dict[str, tuple[str, str]],
-              failures: FailureLog) -> PassPlan:
+              failures: FailureLog, only: frozenset[str] | None = None) -> PassPlan:
+    """With `only`, just those active documents are re-ingested as they are (a new run of unchanged bytes) and nothing
+    is retired: the way to re-index notes after a parser change, which the content hash alone never notices."""
     plan = PassPlan()
+    if only is not None:
+        # A note edited since its stored run is left to the normal pass; only unchanged bytes are re-read here.
+        plan.to_ingest = [(document_id, item) for document_id, item in scan.files.items()
+                          if document_id in only and document_id in active and active[document_id][1] == item.sha256
+                          and not item.empty]
+        plan.unchanged = len(scan.files) - len(plan.to_ingest)
+        return plan
     for document_id, item in scan.files.items():
         current = active.get(document_id)
         if item.empty:
@@ -425,7 +434,8 @@ def _by_folder(prepared: list[PreparedFile]) -> dict[str, dict[str, Any]]:
 
 def run_pass(settings: VaultSettings, *, conn=None, live: bool = False, max_usd: float | None = None,
              allow_mass_retire: bool = False, client=None, bulk_load: bool = False,
-             tag_list: TagList | None = None, retire: bool = True) -> dict[str, Any]:
+             tag_list: TagList | None = None, retire: bool = True,
+             only: frozenset[str] | None = None) -> dict[str, Any]:
     """One indexing pass. Without `live` it parses and estimates only.
 
     Properties are generated only with an approved tag list; the estimate always includes them.
@@ -451,7 +461,7 @@ def run_pass(settings: VaultSettings, *, conn=None, live: bool = False, max_usd:
         scan = scan_vault(settings)
         active = active_documents(conn, profile_id, settings.root_alias) if conn is not None else {}
         failures = FailureLog(settings.state_dir / "failures.json")
-        plan = plan_pass(settings, scan, active, failures)
+        plan = plan_pass(settings, scan, active, failures, only)
         report.update(profile_id=profile_id, files_seen=len(scan.files), active_before=len(active),
                       unchanged=plan.unchanged, to_ingest=len(plan.to_ingest),
                       skipped_empty=len(plan.skipped_empty), skipped_failed=len(plan.skipped_failed),

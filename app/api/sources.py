@@ -53,8 +53,8 @@ ACTIVE_SQL = """select 1 from knowledge.active_runs a
     where r.document_id=%s"""
 
 
-def _block_text(block: dict[str, Any]) -> str:
-    """The block's text without its markers (a speaker label, a highlight header, `##`, `- `, `>`) or images."""
+def _content(block: dict[str, Any]) -> str:
+    """The block's raw text, cut to its content span (the code between a fence's lines, the words after a speaker label)."""
     text = str(block.get("raw_text") or "")
     span, content = block.get("span"), block.get("content_span")
     if isinstance(span, dict) and isinstance(content, dict):
@@ -62,27 +62,59 @@ def _block_text(block: dict[str, Any]) -> str:
         end = int(content.get("end_char", 0)) - int(span.get("start_char", 0))
         if 0 <= start < end <= len(text):
             text = text[start:end]
+    return text
+
+
+def _block_text(block: dict[str, Any]) -> str:
+    """The block's text without its markers (a speaker label, a highlight header, `##`, `- `, `>`) or images."""
+    text = _content(block)
     marker = MARKERS.get(block.get("kind"))
     if marker:
         text = marker.sub("", text.strip())
     return EMBED.sub("", EMPTY_LINK.sub("", IMAGE.sub("", text))).strip()
 
 
+def _table_cells(line: str) -> list[str]:
+    cells = re.split(r"(?<!\\)\|", line.strip())
+    if cells and not cells[0].strip():
+        cells = cells[1:]
+    if cells and not cells[-1].strip():
+        cells = cells[:-1]
+    return [cell.replace("\\|", "|").strip() for cell in cells]
+
+
+def _table_rows(raw_text: str) -> list[list[str]]:
+    """A table block as rows of cells: the header, then the body rows (the `---` row is dropped)."""
+    lines = raw_text.splitlines()
+    return [_table_cells(line) for line in lines[:1] + lines[2:] if line.strip()]
+
+
 def reading_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Blocks as the reader draws them. A personal note rides on the highlight before it; the "Front Matter" heading is left out."""
+    """Blocks as the reader draws them. A personal note rides on the highlight before it; the "Front Matter" heading is left out.
+    Fenced code (a diagram when the language is `mermaid`) and tables come out as blocks of their own."""
     result: list[dict[str, Any]] = []
     for block in blocks:
-        text = _block_text(block)
-        if not text or block.get("kind") == "separator":
+        kind = block.get("kind")
+        if kind == "code_block":
+            # Without a content span the fence has no body (an empty fence, or an opener on the last line).
+            code = _content(block).replace("\r\n", "\n").rstrip() if block.get("content_span") else ""
+            if code:
+                result.append({"kind": kind, "text": code, "language": str(block.get("language") or "").lower()})
             continue
-        if block.get("kind") == "heading" and text.casefold() == "front matter":  # every book highlights export opens with it
+        if kind == "table":
+            result.append({"kind": kind, "text": "", "rows": _table_rows(str(block.get("raw_text") or ""))})
+            continue
+        text = _block_text(block)
+        if not text or kind == "separator":
+            continue
+        if kind == "heading" and text.casefold() == "front matter":  # every book highlights export opens with it
             continue
         note = block.get("content_role") == "personal_note"
         previous = result[-1] if result else None
         if note and previous and previous["kind"] == "highlight" and previous["personal_note"] is None:
             previous["personal_note"] = text
             continue
-        result.append({"kind": block.get("kind"), "text": text, "speaker": block.get("speaker"),
+        result.append({"kind": kind, "text": text, "speaker": block.get("speaker"),
                        "page_reference": block.get("page_reference"), "heading_path": block.get("heading_path"),
                        "personal_note": text if note else None})
     return result

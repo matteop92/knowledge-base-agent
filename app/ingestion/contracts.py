@@ -85,13 +85,14 @@ class DocumentBlock(StrictRecord):
     index: int = Field(ge=0)
     kind: Literal[
         "speaker_turn", "paragraph", "heading", "highlight", "list_item",
-        "block_quote", "tip", "asset_reference", "separator",
+        "block_quote", "tip", "asset_reference", "separator", "code_block", "table",
     ]
     span: SourceSpan
     raw_text: str = Field(min_length=1)
     content_span: SourceSpan | None = None
     heading_path: list[str] | None = None
     speaker: str | None = None
+    language: str | None = None
     page_reference: str | None = None
     content_role: Literal["source", "personal_note"] = "source"
     group_id: str | None = None

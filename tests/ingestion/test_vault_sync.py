@@ -107,6 +107,23 @@ class FolderAndScanTests(unittest.TestCase):
         self.assertEqual(len(plan.retire_missing), 30)
         self.assertIn("would be retired", plan.guard)
 
+    def test_plan_with_only_re_ingests_just_those_unchanged_notes_and_retires_nothing(self) -> None:
+        settings = VaultSettings(self.vault.root, "primary", parse_folders("Knowledge"), Path(self.temp.name) / "runs")
+        scan = Scan(files={"a": VaultFile("Knowledge/a.md", Path("a"), "sha-a", 3, False),
+                           "b": VaultFile("Knowledge/b.md", Path("b"), "sha-b", 3, False)}, missing_folders=[], duplicates=[])
+        active = {"a": ("Knowledge/a.md", "sha-a"), "b": ("Knowledge/b.md", "sha-b"), "gone": ("Knowledge/c.md", "sha-c")}
+        plan = plan_pass(settings, scan, active, FailureLog(Path(self.temp.name) / "f.json"), frozenset({"a"}))
+        self.assertEqual([document_id for document_id, _ in plan.to_ingest], ["a"])
+        self.assertEqual((plan.unchanged, plan.retire_missing, plan.guard), (1, [], None))
+
+    def test_plan_with_only_leaves_an_edited_note_to_the_normal_pass(self) -> None:
+        settings = VaultSettings(self.vault.root, "primary", parse_folders("Knowledge"), Path(self.temp.name) / "runs")
+        scan = Scan(files={"a": VaultFile("Knowledge/a.md", Path("a"), "sha-new", 3, False),
+                           "b": VaultFile("Knowledge/b.md", Path("b"), "sha-b", 0, True)}, missing_folders=[], duplicates=[])
+        active = {"a": ("Knowledge/a.md", "sha-old"), "b": ("Knowledge/b.md", "sha-b")}
+        plan = plan_pass(settings, scan, active, FailureLog(Path(self.temp.name) / "f.json"), frozenset({"a", "b", "ghost"}))
+        self.assertEqual((plan.to_ingest, plan.unchanged), ([], 2))  # edited, empty and unknown notes stay out
+
     def test_dry_run_parses_and_estimates_without_a_database_or_model(self) -> None:
         for name in ("a", "b", "c"):
             self.vault.write(f"Knowledge/Notes/{name}.md", f"# {name}\n\nThe {name} orchard is ripe.\n")

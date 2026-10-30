@@ -161,6 +161,24 @@ class ReaderTests(unittest.TestCase):
         self.assertEqual(out["heading"], "A linked heading")
         self.assertEqual(out["items"], [["1. First", True], ["Plain", False]])  # a numbered item shows no bullet
 
+    def test_tables_and_code_are_elements_and_a_diagram_that_cannot_load_shows_its_source(self) -> None:
+        out = run("readerCodeAndTables")
+        self.assertEqual(out["header"], ["Name", "Route"])
+        self.assertEqual(out["cells"], ["plain", "a | b", "short"])  # inline code and bold inside cells are drawn
+        self.assertEqual(out["inlineCode"], ["plain"])
+        self.assertEqual((out["strong"], out["rows"]), ("a", 3))
+        self.assertEqual(out["pre"], ["# not a heading\nprint(1)", "flowchart TB\n  A --> B"])
+        self.assertEqual(out["headings"], 0)  # a comment line in code is not a heading
+        self.assertEqual(out["script"], "/static/vendor/mermaid.min.js")
+        self.assertFalse(out["shownBefore"])  # nothing is drawn while the library loads
+        self.assertEqual(out["fallback"], {"source": True, "hidden": False, "text": "flowchart TB\n  A --> B"})
+        self.assertEqual(out["scriptsLeft"], 0)
+
+    def test_diagram_config_is_stripped_until_stable_and_a_too_long_diagram_is_shown_as_source(self) -> None:
+        out = run("readerDiagramConfig")
+        self.assertEqual(out["oversize"], {"source": True, "scripts": 0})
+        self.assertEqual(out["sent"], ["\nflowchart TB\n  A --> B"])  # the joined directive is gone too
+
     def test_tags_sit_on_the_byline_line_and_phones_no_longer_hide_them(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")
         self.assertRegex(page, r'class="reader-byline">\s*<p id="reader-voices"[^>]*></p>\s*<ul id="reader-tags"')

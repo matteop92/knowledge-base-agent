@@ -24,7 +24,7 @@ class ShellSourceTests(unittest.TestCase):
         self.assertIn('url.startsWith("obsidian://")', script)
 
     def test_capture_and_worker_scripts_never_insert_html(self) -> None:
-        for name in ("capture.js", "settings.js", "sources.js", "source-filter.js", "sw.js"):
+        for name in ("capture.js", "settings.js", "sources.js", "reader-blocks.js", "source-filter.js", "sw.js"):
             script = (WEB / name).read_text(encoding="utf-8")
             for unsafe in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
                 with self.subTest(name=name, unsafe=unsafe):
@@ -53,7 +53,7 @@ class ShellSourceTests(unittest.TestCase):
 
     def test_shell_cache_is_bumped_and_the_sidebar_choice_is_remembered(self) -> None:
         worker = (WEB / "sw.js").read_text(encoding="utf-8")
-        self.assertIn('const CACHE = "ka-shell-v22"', worker)
+        self.assertIn('const CACHE = "ka-shell-v24"', worker)
         # A deploy must reach an installed app: never answer from the browser's own HTTP cache.
         self.assertIn('fetch(event.request, { cache: "no-cache" })', worker)
         script = (WEB / "app.js").read_text(encoding="utf-8")
@@ -646,13 +646,22 @@ class StaticRouteTests(unittest.TestCase):
         page = self.client.get("/")
         self.assertEqual(page.status_code, 200)
         self.assertIn("text/html", page.headers["content-type"])
-        self.assertIn("script-src 'self'", page.headers["content-security-policy"])
-        manifest = self.client.get("/manifest.webmanifest")
+        policy = page.headers["content-security-policy"]
+        self.assertIn("script-src 'self'", policy)
+        self.assertEqual(re.search(r"script-src ([^;]*)", policy).group(1), "'self'")  # no inline or eval scripts
+        self.assertIn("style-src 'self' 'unsafe-inline'", policy)  # mermaid's SVG needs inline styles (docs/decisions.md)
+        manifest =self.client.get("/manifest.webmanifest")
         self.assertIn("application/manifest+json", manifest.headers["content-type"])
         worker = self.client.get("/sw.js")
         self.assertIn("javascript", worker.headers["content-type"])
         self.assertEqual(self.client.get("/static/app.js").status_code, 200)
         self.assertEqual(self.client.get("/static/icons/icon-192.png").status_code, 200)
+
+    def test_the_vendored_diagram_library_is_served_from_the_path_the_reader_loads(self) -> None:
+        self.assertIn('"/static/vendor/mermaid.min.js"', (WEB / "reader-blocks.js").read_text(encoding="utf-8"))
+        self.assertIn("/static/reader-blocks.js", (WEB / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("/static/reader-blocks.js", (WEB / "sw.js").read_text(encoding="utf-8"))
+        self.assertEqual(self.client.get("/static/vendor/mermaid.min.js").status_code, 200)
 
     def test_settings_opens_from_the_gear_and_lists_suggested_tags(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")

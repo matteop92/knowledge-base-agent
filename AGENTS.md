@@ -8,7 +8,7 @@ Read [README.md](README.md) for the overview, then [docs/architecture.md](docs/a
 
 - `app/ingestion/`: source capture, parsing, chunking, eval mapping, enrichment, summaries, embeddings, card facts for the Sources page (`card_facts.py`), and preview CLI.
 - `app/ingestion/vault_allowlist.py`: removes everything outside the allowed folders from the server's vault copy (download-only mode; in two-way mode only folders the sync tool's skip list names exactly).
-- `app/ingestion/vault_sync.py` and `app/ingestion/properties.py`: incremental indexing of selected vault folders and the tag classifier (the `knowledge.tags` table holds the live tag list; `config/tags.yaml` is its seed).
+- `app/ingestion/vault_sync.py` and `app/ingestion/properties.py`: incremental indexing of selected vault folders and the tag classifier (the `knowledge.tags` table holds the live tag list; `config/tags.yaml` is its seed). `reparse_affected.py` re-indexes only the notes a parser change reads differently (the content hash alone never notices one).
 - `app/models/`: model interface, opt-in OpenRouter adapter, and pinned private routes and prices (`routes.py`).
 - `app/storage/`: private Postgres loading, publication, retirement, search and the spend ledger.
 - `app/agent/`: the answer harness, its command-line tool, and the shared route and cost checks (`endpoints.py`).

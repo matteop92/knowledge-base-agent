@@ -1,5 +1,5 @@
 "use strict";
-// Runs app/web/sources.js and source-filter.js against a small fake DOM and prints what a scenario observed as JSON.
+// Runs app/web/sources.js, reader-blocks.js and source-filter.js against a small fake DOM and prints what a scenario observed as JSON.
 // Usage: node tests/api/sources_ui_harness.js <scenario>
 const fs = require("fs");
 const vm = require("vm");
@@ -34,6 +34,7 @@ class El {
   click() { return this.dispatch("click"); }
   focus() { documentStub.activeElement = this; }
   scrollIntoView() {}
+  remove() { if (this.parent) this.parent.children = this.parent.children.filter((c) => c !== this); }
   requestSubmit() { this.dispatch("submit"); }
   all() { return this.children.flatMap((c) => [c, ...c.all()]); }
   matches(compound) {
@@ -61,7 +62,7 @@ class El {
 const documentStub = { activeElement: null, listeners: {}, createElement: (tag) => new El(tag),
   createTextNode: (text) => Object.assign(new El("#text"), { _text: String(text) }),
   createDocumentFragment: () => Object.assign(new El("#fragment"), { fragment: true }),
-  addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }, querySelector: () => null, querySelectorAll: () => [] };
+  addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }, querySelector: () => null, querySelectorAll: () => [], getElementById: () => null, head: null };
 
 function boot({ phone = false, sources = [], detail = null, detailStatus = 200 } = {}) {
   const page = fs.readFileSync("app/web/index.html", "utf8");
@@ -98,7 +99,7 @@ function boot({ phone = false, sources = [], detail = null, detailStatus = 200 }
   context.globalThis = context;
   context.window.sourceFilter = undefined;
   vm.createContext(context);
-  for (const file of ["app/web/source-filter.js", "app/web/sources.js"]) vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
+  for (const file of ["app/web/source-filter.js", "app/web/reader-blocks.js", "app/web/sources.js"]) vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
   for (const fn of documentStub.listeners.DOMContentLoaded || []) fn();
   const flush = async () => { for (let i = 0; i < 6; i++) await new Promise((r) => setImmediate(r)); };
   return { els, calls, context, flush, screen: context.window.sourcesScreen, sheetState };
@@ -275,6 +276,46 @@ const scenarios = {
     return { anchors, strong: text(body.querySelector("strong")), em: text(body.querySelector("em")),
       paragraph: text(body.querySelector("p")), heading: text(body.querySelector("h2")),
       items: body.querySelectorAll("li").map((li) => [text(li), li.classList.contains("is-numbered")]) };
+  },
+  async readerCodeAndTables() {
+    documentStub.head = new El("head");
+    const detail = { source_url: null, body: [
+      { kind: "table", text: "", rows: [["Name", "Route"], ["`plain`", "**a** | b"], ["short"]] },
+      { kind: "code_block", language: "python", text: "# not a heading\nprint(1)" },
+      { kind: "code_block", language: "mermaid", text: "flowchart TB\n  A --> B" }] };
+    const app = boot({ sources: mixed(), detail }); app.screen.show(); await app.flush();
+    links(app)[5].click(); await app.flush();
+    const body = app.els["reader-body"];
+    const before = body.querySelector("figure");
+    const shownBefore = !before.hidden;
+    const script = documentStub.head.children[0];
+    script.onerror(); await app.flush();  // the library does not load: the diagram falls back to its source
+    const figure = body.querySelector("figure");
+    return { header: body.querySelectorAll("th").map(text), cells: body.querySelectorAll("td").map(text),
+      inlineCode: body.querySelectorAll("code").filter((c) => c.classList.contains("r-inline-code")).map(text),
+      strong: text(body.querySelector("strong")), rows: body.querySelectorAll("tr").length,
+      pre: body.querySelectorAll("pre").map(text), headings: body.querySelectorAll("h2").length,
+      script: script.src, shownBefore, fallback: { source: figure.classList.contains("is-source"), hidden: figure.hidden,
+        text: text(figure) }, scriptsLeft: documentStub.head.children.length };
+  },
+  async readerDiagramConfig() {
+    const open = async (text) => {
+      documentStub.head = new El("head");
+      const app = boot({ sources: mixed(), detail: { source_url: null, body: [{ kind: "code_block", language: "mermaid", text }] } });
+      app.screen.show(); await app.flush();
+      links(app)[5].click(); await app.flush();
+      return app;
+    };
+    // Too long: shown as source at once and the library is never loaded.
+    const long = await open("flowchart TB\n" + "  A --> B\n".repeat(6000));
+    const oversize = { source: long.els["reader-body"].querySelector("figure").classList.contains("is-source"),
+      scripts: documentStub.head.children.length };
+    // Removing one directive joins the text around it into another; the library must get neither.
+    const joined = await open('%%%%{x}%%{init: {"themeCSS": "svg{position:fixed}"}}%%\nflowchart TB\n  A --> B');
+    const sent = [];
+    joined.context.window.mermaid = { initialize() {}, render: async (id, text) => { sent.push(text); throw new Error("stop"); } };
+    documentStub.head.children[0].onload(); await joined.flush();
+    return { oversize, sent };
   },
   async readerLoadingAndFailure() {
     const app = boot({ sources: mixed(), detailStatus: 404 }); app.screen.show(); await app.flush();
