@@ -16,8 +16,8 @@ except ImportError:  # pragma: no cover
     TestClient = None
 
 from app.api.conversations import ConversationError
-from app.api.sources import SourceStore, _is_table_rule, reading_blocks
-from app.ingestion.markdown_parser import parse_markdown
+from app.api.sources import SourceStore, reading_blocks
+from app.ingestion.markdown_parser import _is_table_rule, parse_markdown
 from app.ingestion.source_reader import capture_source
 from tests.api.test_api import EMAIL, FakeAuth, FakeEngine, settings
 
@@ -122,7 +122,7 @@ def block(index, kind, text, **fields):
 class DetailTests(unittest.TestCase):
     def detail(self, name, metadata, blocks):
         found = ("Knowledge/Transcripts/T.md", {"title": "T title", **metadata}, blocks, "run-1", "a" * 64,
-                 "primary", ADDED, "")
+                 "primary", ADDED)
         return store(Conn(detail=found)).detail(IDS[name])
 
     def test_transcript_turns_keep_order_and_speakers(self) -> None:
@@ -176,7 +176,7 @@ class DetailTests(unittest.TestCase):
 
 
 class CodeAndTableTests(unittest.TestCase):
-    """Fenced code and tables, read from the real parser's blocks and the stored text."""
+    """Fenced code and tables, read from the real parser's blocks."""
 
     def reading(self, text):
         with tempfile.TemporaryDirectory() as temp:
@@ -184,23 +184,23 @@ class CodeAndTableTests(unittest.TestCase):
             root.mkdir()
             (root / "n.md").write_text(text, encoding="utf-8")
             document = parse_markdown(capture_source(root, "n.md", Path(temp) / "runs"), source_kind="note")
-        return reading_blocks([item.model_dump(mode="json") for item in document.blocks], document.source_text)
+        return reading_blocks([item.model_dump(mode="json") for item in document.blocks])
 
     def test_a_fence_becomes_one_code_block_and_its_lines_are_not_read_as_markdown(self) -> None:
         body = self.reading("Intro.\n\n```mermaid\nflowchart TB\n\n    A --> B\n```\n\n```python\n# not a heading\n- not a list\n```\n\nEnd.\n")
         self.assertEqual([(item["kind"], item.get("language")) for item in body],
-                         [("paragraph", None), ("code", "mermaid"), ("code", "python"), ("paragraph", None)])
+                         [("paragraph", None), ("code_block", "mermaid"), ("code_block", "python"), ("paragraph", None)])
         self.assertEqual(body[1]["text"], "flowchart TB\n\n    A --> B")
         self.assertEqual(body[2]["text"], "# not a heading\n- not a list")
 
     def test_text_touching_a_fence_stays_beside_it(self) -> None:
         body = self.reading("Before:\n```text\ncode\n```\nAfter.\n")
         self.assertEqual([(item["kind"], item["text"]) for item in body],
-                         [("paragraph", "Before:"), ("code", "code"), ("paragraph", "After.")])
+                         [("paragraph", "Before:"), ("code_block", "code"), ("paragraph", "After.")])
 
     def test_an_unclosed_fence_runs_to_the_end_of_the_note(self) -> None:
         body = self.reading("Intro.\n\n```mermaid\nflowchart TB\n    A --> B\n")
-        self.assertEqual([item["kind"] for item in body], ["paragraph", "code"])
+        self.assertEqual([item["kind"] for item in body], ["paragraph", "code_block"])
         self.assertIn("A --> B", body[1]["text"])
 
     def test_a_table_becomes_rows_and_unescapes_pipes(self) -> None:
@@ -218,13 +218,13 @@ class CodeAndTableTests(unittest.TestCase):
         self.assertTrue(_is_table_rule(" | --- | :-: | -- | "))
         self.assertLess(time.monotonic() - started, 1)
 
-    def test_detail_returns_code_blocks_from_the_stored_text(self) -> None:
+    def test_detail_returns_code_blocks(self) -> None:
         text = "```mermaid\nflowchart TB\n```\n"
-        found = ("Knowledge/Notes/N.md", {"title": "N title"}, [block(0, "paragraph", text)], "run-1", "a" * 64,
-                 "primary", ADDED, text)
+        found = ("Knowledge/Notes/N.md", {"title": "N title"}, [{**block(0, "code_block", text), "language": "Mermaid",
+                 "content_span": {"start_char": 11, "end_char": 24}}], "run-1", "a" * 64, "primary", ADDED)
         body = store(Conn(detail=found)).detail(IDS["note"])["body"]
         self.assertEqual([(item["kind"], item["language"], item["text"]) for item in body],
-                         [("code", "mermaid", "flowchart TB")])
+                         [("code_block", "mermaid", "flowchart TB")])
 
     def test_a_line_with_pipes_but_no_rule_row_stays_text(self) -> None:
         body = self.reading("| just | text |\n")

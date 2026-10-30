@@ -18,7 +18,7 @@ class MarkdownParserTests(unittest.TestCase):
     def parse(self, relative: str, text: str, kind: str = "generic"):
         path = self.root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+        path.write_bytes(text.encode("utf-8"))
         return parse_markdown(capture_source(self.root, relative, self.runtime), source_kind=kind)
 
     def test_note_without_heading_and_article_tips(self) -> None:
@@ -58,6 +58,32 @@ class MarkdownParserTests(unittest.TestCase):
         self.assertEqual(parsed.metadata.title, "interview")
         self.assertEqual(parsed.metadata.authors, ["Host"])
         self.assertEqual(parsed.metadata.guests, ["Luca Ferrari"])
+
+    def test_fences_and_tables_are_blocks_of_their_own_and_keep_heading_levels(self) -> None:
+        text = (
+            "# Title\n\n## Setup\n\nIntro:\n```python\n# a comment\n- not a list\nprint(1)\n```\n"
+            "Tail.\n\n### Deep\n\n~~~mermaid\nflowchart TB\n    A --> B\n~~~\n\n"
+            "Lead in:\n| Name | Note |\n| --- | :-: |\n| a | b |\n\n### After\n\nEnd.\n"
+        ).replace("\n", "\r\n")
+        note = self.parse("Notes/dspy.md", text, "note")
+        kinds = [(block.kind, block.language) for block in note.blocks]
+        self.assertEqual(kinds, [
+            ("heading", None), ("heading", None), ("paragraph", None), ("code_block", "python"), ("paragraph", None),
+            ("heading", None), ("code_block", "mermaid"), ("paragraph", None), ("table", None), ("heading", None),
+            ("paragraph", None)])
+        self.assertEqual([block.heading_path for block in note.blocks if block.kind == "heading"],
+                         [["Title"], ["Title", "Setup"], ["Title", "Setup", "Deep"], ["Title", "Setup", "After"]])
+        code = next(block for block in note.blocks if block.language == "python")
+        self.assertEqual(code.raw_text[code.content_span.start_char - code.span.start_char:
+                                       code.content_span.end_char - code.span.start_char],
+                         "# a comment\r\n- not a list\r\nprint(1)\r\n")
+        self.assertEqual(note.blocks[-2].heading_path, ["Title", "Setup", "After"])
+
+    def test_unclosed_fence_runs_to_the_end_and_inline_backticks_are_not_a_fence(self) -> None:
+        note = self.parse("Notes/open.md", "## A\n\n```x``` inline\n\n```text\n# not a heading\n", "note")
+        self.assertEqual([block.kind for block in note.blocks], ["heading", "paragraph", "code_block"])
+        self.assertIsNone(self.parse("Notes/pipes.md", "| just | text |\n", "note").blocks[0].language)
+        self.assertEqual(self.parse("Notes/pipes.md", "| just | text |\n", "note").blocks[0].kind, "paragraph")
 
 
 if __name__ == "__main__":

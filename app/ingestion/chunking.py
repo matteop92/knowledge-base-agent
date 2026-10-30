@@ -16,7 +16,7 @@ STRUCTURAL_VERSION = "structural-600-1000-v1"
 TOKEN = re.compile(r"\w+|[^\w\s]", re.UNICODE)
 ELIGIBLE_KINDS = {
     "speaker_turn", "paragraph", "heading", "highlight",
-    "list_item", "block_quote", "tip",
+    "list_item", "block_quote", "tip", "code_block", "table",
 }
 
 

@@ -40,6 +40,16 @@ class ChunkingTests(unittest.TestCase):
         fixed.validate_against(parsed)
         structural.validate_against(parsed)
 
+    def test_code_blocks_and_tables_stay_in_the_chunks(self) -> None:
+        text = ("## Setup\n\nIntro.\n\n```mermaid\nflowchart TB\n    A --> B\n```\n\n"
+                "| Name | Note |\n| --- | --- |\n| a | b |\n")
+        parsed = self.parse("Notes/n.md", text)
+        self.assertEqual([block.kind for block in parsed.blocks], ["heading", "paragraph", "code_block", "table"])
+        for chunks in (fixed_raw_chunks(parsed), structural_raw_chunks(parsed)):
+            joined = "".join(chunk.raw_text for chunk in chunks.chunks)
+            self.assertIn("A --> B", joined)
+            self.assertIn("| a | b |", joined)
+
     def test_short_note_and_highlight_note_relationship(self) -> None:
         note = self.parse("Notes/note.md", "## Thoughts\n\n" + "word " * 200)
         self.assertEqual(len(structural_raw_chunks(note).chunks), 1)

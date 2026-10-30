@@ -24,12 +24,14 @@ from app.ingestion.transcript_parser import (
 )
 
 
-PARSER_VERSION = "markdown-structure-v1"
+PARSER_VERSION = "markdown-structure-v2"
 HEADING = re.compile(r"^(#{1,6})[ \t]+(.+?)[ \t]*(?:\r?\n)?$")
 LIST_ITEM = re.compile(r"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+")
 TIP = re.compile(r"^\*\*(?:Tip|STEP)[ \t]*\d+:[^\r\n]*\*\*[ \t]*$", re.IGNORECASE)
 IMAGE = re.compile(r"!\[[^\]]*\]\((?P<target>[^)]+)\)")
 WRAPPER = re.compile(r"^(?:::|(?:\[\]\{#))")
+FENCE_OPEN = re.compile(r"^[ \t]*(?P<fence>`{3,}|~{3,})[ \t]*(?P<language>[^\s`]*)")
+TABLE_RULE_CELL = re.compile(r":?-+:?")
 HORIZONTAL_RULE = re.compile(r"^[ \t]*(?:---+|\*\*\*+|___+)[ \t]*$")
 HeadingStack = list[tuple[int, str]]
 
@@ -73,12 +75,42 @@ def _heading_title(raw: str) -> str:
     return title or raw.strip()
 
 
+def _fence_open(line: str) -> re.Match[str] | None:
+    """The opening line of a fenced code block. Three backticks around code on one line ("```x```") are inline code."""
+    match = FENCE_OPEN.match(line)
+    if match and match.group("fence")[0] == "`" and "`" in line[match.end():]:
+        return None
+    return match
+
+
+def _fence_end(lines: list[str], index: int, fence: str) -> tuple[int, int]:
+    """The line after the fence that closes the one opened at `index`, and where its code ends (the closing line, or
+    the end of the region when the fence is never closed)."""
+    for stop in range(index + 1, len(lines)):
+        closing = lines[stop].strip()
+        if closing.startswith(fence) and not closing.strip(fence[0]):
+            return stop + 1, stop
+    return len(lines), len(lines)
+
+
+def _is_table_rule(line: str) -> bool:
+    """The `| --- | :-: |` row under a table header. Checked cell by cell so a hostile line cannot make a regex backtrack."""
+    stripped = line.strip()
+    return "|" in stripped and all(TABLE_RULE_CELL.fullmatch(cell.strip()) for cell in stripped.strip("|").split("|"))
+
+
+def _table_starts(lines: list[str], index: int) -> bool:
+    return index + 1 < len(lines) and lines[index].strip().startswith("|") and _is_table_rule(lines[index + 1])
+
+
 def _line_kind(line: str, mode: str) -> str:
     stripped = line.strip()
     if not stripped:
         return "whitespace"
     if mode == "book" and WRAPPER.match(stripped):
         return "furniture"
+    if _fence_open(line):
+        return "code_block"
     if HEADING.match(line):
         return "heading"
     if HORIZONTAL_RULE.fullmatch(stripped):
@@ -144,10 +176,21 @@ def scan_region(
             index = stop
             continue
         stop = index + 1
-        if kind in ("paragraph", "block_quote", "list_item"):
+        language = content = None
+        if kind == "code_block":
+            opening = _fence_open(line)
+            stop, body_end = _fence_end(lines, index, opening.group("fence"))
+            language = opening.group("language") or None
+            if body_end > index + 1:
+                content = _line_span(source_text, positions[index + 1], positions[body_end])
+        elif kind == "paragraph" and _table_starts(lines, index):
+            kind = "table"
+            while stop < len(lines) and lines[stop].strip().startswith("|"):
+                stop += 1
+        elif kind in ("paragraph", "block_quote", "list_item"):
             while stop < len(lines):
                 next_kind = _line_kind(lines[stop], mode)
-                if next_kind == "whitespace":
+                if next_kind == "whitespace" or _table_starts(lines, stop):
                     break
                 if kind == "paragraph" and next_kind != "paragraph":
                     break
@@ -168,6 +211,8 @@ def scan_region(
                 kind=kind,
                 span=_line_span(source_text, positions[index], positions[stop]),
                 raw_text=source_text[positions[index]:positions[stop]],
+                content_span=content,
+                language=language,
                 heading_path=path,
                 content_role=content_role,
                 asset_target=IMAGE.fullmatch(stripped).group("target") if kind == "asset_reference" else None,

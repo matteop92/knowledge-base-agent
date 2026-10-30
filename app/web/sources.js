@@ -878,7 +878,7 @@
         if (!list) { list = h("ul", "r-list"); fragment.append(list); }
         // A numbered item keeps its own number as text, so it drops the bullet.
         list.append(inline("li", /^\d+[.)]\s/.test(block.text) ? "r-text is-numbered" : "r-text", block.text));
-      } else if (block.kind === "code") {
+      } else if (block.kind === "code_block") {
         fragment.append(block.language === "mermaid" ? diagram(block.text) : codeBlock(block.text));
       } else if (block.kind === "table") {
         fragment.append(table(block.rows || []));

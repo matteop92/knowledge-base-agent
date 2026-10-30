@@ -281,8 +281,8 @@ const scenarios = {
     documentStub.head = new El("head");
     const detail = { source_url: null, body: [
       { kind: "table", text: "", rows: [["Name", "Route"], ["`plain`", "**a** | b"], ["short"]] },
-      { kind: "code", language: "python", text: "# not a heading\nprint(1)" },
-      { kind: "code", language: "mermaid", text: "flowchart TB\n  A --> B" }] };
+      { kind: "code_block", language: "python", text: "# not a heading\nprint(1)" },
+      { kind: "code_block", language: "mermaid", text: "flowchart TB\n  A --> B" }] };
     const app = boot({ sources: mixed(), detail }); app.screen.show(); await app.flush();
     links(app)[5].click(); await app.flush();
     const body = app.els["reader-body"];
