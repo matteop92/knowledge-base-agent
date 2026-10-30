@@ -854,7 +854,26 @@
   // Tables, code and diagrams come from reader-blocks.js.
   const { codeBlock, diagram, table } = window.readerBlocks(h, inline);
 
-  function drawBlocks(blocks, source) {
+  // A note's image, loaded through the server (the page never loads other sites). It holds its place with a fill
+  // until it arrives; if it cannot load, its alt text stays as a caption, or nothing when there is none.
+  function image(block, source, runId) {
+    const figure = h("figure", "r-figure is-loading");
+    const img = h("img", "r-image");
+    img.alt = block.alt || "";
+    img.loading = "lazy";
+    img.decoding = "async";
+    img.addEventListener("load", () => figure.classList.remove("is-loading"));
+    img.addEventListener("error", () => {
+      if (!block.alt) { figure.remove(); return; }
+      figure.classList.remove("is-loading");
+      figure.replaceChildren(h("figcaption", "r-caption", block.alt));
+    });
+    img.src = `/api/sources/${encodeURIComponent(source.id)}/images/${block.index}?r=${encodeURIComponent(runId || "")}`;
+    figure.append(img);
+    return figure;
+  }
+
+  function drawBlocks(blocks, source, runId) {
     const guests = source.guests || [];
     const fragment = document.createDocumentFragment();
     let list = null;
@@ -884,6 +903,8 @@
         fragment.append(table(block.rows || []));
       } else if (block.kind === "block_quote") {
         fragment.append(inline("blockquote", "r-quote", block.text));
+      } else if (block.kind === "image") {
+        fragment.append(image(block, source, runId));
       } else if (block.kind !== "asset_reference") {
         fragment.append(inline("p", source.type === "quote" ? "r-text r-quote-big" : "r-text", block.text));
       }
@@ -911,7 +932,7 @@
       const detail = await api("GET", `/api/sources/${encodeURIComponent(source.id)}`);
       if (mine !== reader.seq || !reader.open) return;
       readerNotice("");
-      $("reader-body").replaceChildren(drawBlocks(detail.body || [], source));
+      $("reader-body").replaceChildren(drawBlocks(detail.body || [], source, detail.run_id));
       const url = String(detail.source_url || "");
       if (/^https?:\/\//.test(url) && (source.type === "post" || source.type === "article")) {
         $("reader-original-link").href = url;
