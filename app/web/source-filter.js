@@ -5,7 +5,7 @@
 (() => {
   const TYPE_LABELS = { highlights: "Book highlights", post: "Social posts", note: "Notes", transcript: "Transcripts",
     article: "Articles", quote: "Quotes", book: "Books" };
-  const PRESETS = [{ key: "week", label: "Past week", days: 7 }, { key: "month", label: "Past 30 days", days: 30 },
+  const PRESETS = [{ key: "today", label: "Today", days: 0 }, { key: "week", label: "Past week", days: 7 }, { key: "month", label: "Past 30 days", days: 30 },
     { key: "year", label: "Past year", days: 365 }];
   const DAY = 86400000;
   const MAX_PER_GROUP = 3;
@@ -138,8 +138,9 @@
     if (tags.length) groups.push({ kind: "tag", heading: "Tags", items: tags });
     const dates = [];
     if (/^(19|20)\d\d$/.test(query)) dates.push(item("date", { year: query }, `Added in ${query}`));
+    if (/^to(d(ay?)?)?$/.test(query)) dates.push(item("date", { preset: "today" }, "Added today"));
     if (/^(past|recent|last)\b/.test(query)) {
-      for (const preset of PRESETS) dates.push(item("date", { preset: preset.key }, `Added ${preset.label.toLowerCase()}`));
+      for (const preset of PRESETS.filter((entry) => entry.key !== "today")) dates.push(item("date", { preset: preset.key }, `Added ${preset.label.toLowerCase()}`));
     }
     const shown = dates.filter((entry) => entry.count > 0);
     if (shown.length) groups.push({ kind: "date", heading: "Date added", items: shown });
