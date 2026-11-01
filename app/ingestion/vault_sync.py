@@ -363,9 +363,10 @@ def _live_client(prepared: list[PreparedFile], backfill: list[ParsedDocument], t
         structured=set(properties))
 
 
-# Stored results from these versions count as current: v4 only added a rule about which tags may be proposed, so notes
-# tagged by v3 keep their tags and only new and edited notes use v4. Leave an old version out to have it redone.
-PROPERTIES_VERSIONS = ("properties_v3", PROPERTIES_VERSION)
+# Stored results from these versions count as current: v4 only added a rule about which tags may be proposed and v5 only
+# defines quote and social_post, so notes tagged by v3 or v4 keep their results and only new and edited notes use v5.
+# Leave an old version out to have it redone.
+PROPERTIES_VERSIONS = ("properties_v3", "properties_v4", PROPERTIES_VERSION)
 
 
 def _needs_properties(conn, profile_id: str, skip: set[str]) -> list[ParsedDocument]:

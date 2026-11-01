@@ -5,7 +5,7 @@
 (() => {
   const TYPE_LABELS = { highlights: "Book highlights", post: "Social posts", note: "Notes", transcript: "Transcripts",
     article: "Articles", quote: "Quotes", book: "Books" };
-  const PRESETS = [{ key: "week", label: "Past week", days: 7 }, { key: "month", label: "Past 30 days", days: 30 },
+  const PRESETS = [{ key: "today", label: "Last day", days: 1 }, { key: "week", label: "Past week", days: 7 }, { key: "month", label: "Past 30 days", days: 30 },
     { key: "year", label: "Past year", days: 365 }];
   const DAY = 86400000;
   const MAX_PER_GROUP = 3;
@@ -22,8 +22,11 @@
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
   }
 
-  function dateMatches(added, date, now) {
+  // "Last day" is the last 24 hours from the moment of asking (the viewer's clock), using the source's full timestamp (`added_at`).
+  function dateMatches(source, date, now) {
+    const added = source.added;
     if (!date) return true;
+    if (date.preset === "today") return !!source.added_at && +now - Date.parse(source.added_at) <= DAY;
     if (!added) return false;
     if (date.preset) return added >= isoDay(+now - PRESETS.find((item) => item.key === date.preset).days * DAY);
     if (date.year) return added.startsWith(date.year);
@@ -36,7 +39,7 @@
     if (skip !== "tags" && !state.tags.every((tag) => tagsOf(source).includes(tag))) return false;
     if (skip !== "people" && state.people.length && !peopleOf(source).some((name) => state.people.includes(name))) return false;
     if (skip !== "sources" && state.sources.length && !sourceOf(source).some((name) => state.sources.includes(name))) return false;
-    if (skip !== "date" && !dateMatches(source.added, state.date, now)) return false;
+    if (skip !== "date" && !dateMatches(source, state.date, now)) return false;
     if (skip !== "titles" && !state.titles.every((title) => norm(source.title).includes(norm(title)))) return false;
     return true;
   }
@@ -62,7 +65,7 @@
       people: tally(filtered(sources, state, now, "people"), peopleOf, state.people, (v) => v),
       dates: [{ key: "any", label: "Any time", count: dates.length, selected: !state.date },
         ...PRESETS.map((item) => ({ key: item.key, label: item.label,
-          count: dates.filter((s) => dateMatches(s.added, { preset: item.key }, now)).length,
+          count: dates.filter((s) => dateMatches(s, { preset: item.key }, now)).length,
           selected: !!state.date && state.date.preset === item.key }))],
     };
   }
@@ -138,6 +141,7 @@
     if (tags.length) groups.push({ kind: "tag", heading: "Tags", items: tags });
     const dates = [];
     if (/^(19|20)\d\d$/.test(query)) dates.push(item("date", { year: query }, `Added in ${query}`));
+    if (/^to(d(ay?)?)?$/.test(query)) dates.push(item("date", { preset: "today" }, "Added last day"));
     if (/^(past|recent|last)\b/.test(query)) {
       for (const preset of PRESETS) dates.push(item("date", { preset: preset.key }, `Added ${preset.label.toLowerCase()}`));
     }

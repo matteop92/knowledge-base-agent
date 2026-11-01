@@ -61,6 +61,18 @@ class ClassifierTests(unittest.TestCase):
                                              "people": ["Derek Sivers"], "date": "2024-05-01",
                                              "description": "A note about leading teams.", "language": "en"})
 
+    def test_social_posts_and_quotes_get_no_generated_description(self) -> None:
+        for kind in ("social_post", "quote"):
+            result = classify_properties(parse("# Short\n\nA line.\n"), TAGS,
+                                         FakeClassifierClient(reply(source_type=kind)))
+            self.assertEqual(result.properties["source_type"], kind)
+            self.assertNotIn("description", result.properties)
+
+    def test_own_quote_type_wins_over_the_classifier_for_the_description(self) -> None:
+        parsed = parse("---\ntype: quote\n---\n# Short\n\nA line.\n")
+        result = classify_properties(parsed, TAGS, FakeClassifierClient(reply(source_type="note")))
+        self.assertNotIn("description", result.properties)
+
     def test_existing_frontmatter_is_kept_and_list_tags_sit_next_to_own_tags(self) -> None:
         parsed = parse("---\ntags: [ops]\nauthor: Jane Doe\n---\n# Leading\n\nText.\n")
         self.assertEqual(existing_properties(parsed)["people"], ["Jane Doe"])

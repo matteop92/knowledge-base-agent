@@ -536,7 +536,7 @@
   // The phone filter sheet ------------------------------------------------------------------------
   // A summary page (date and type inline, then one row each for People and Tags) and, behind each row, a page with
   // its own search box: a long list is found by typing, never by scrolling a wall of pills.
-  const DATE_MODES = [["any", "Any"], ["week", "Week"], ["month", "30 days"], ["custom", "Custom"]];
+  const DATE_MODES = [["any", "Any"], ["today", "Last day"], ["week", "Week"], ["month", "30 days"], ["custom", "Custom"]];
   const FACETS = { people: { title: "People", kind: "person", noun: "people" }, tags: { title: "Tags", kind: "tag", noun: "tags" } };
   const MOST_USED = 8;
   const RAIL_FROM = 30;  // the A-Z rail appears once a list is this long
@@ -544,7 +544,7 @@
   function dateMode() {
     if (view.dateMode === "custom") return "custom";
     const date = view.filter.date;
-    return !date ? "any" : date.preset === "week" || date.preset === "month" ? date.preset : "custom";
+    return !date ? "any" : ["today", "week", "month"].includes(date.preset) ? date.preset : "custom";
   }
 
   function pick(kind, row) {
