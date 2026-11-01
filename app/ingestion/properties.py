@@ -38,9 +38,10 @@ MAX_OUTPUT_TOKENS = 400
 MAX_TAGS = 3  # per note, from the approved list
 MAX_SUGGESTED_TAGS = 5  # free suggestions while drafting the list
 FIELDS = ("source_type", "tags", "people", "date", "description", "language")
-DEFAULT_SOURCE_TYPES = ("transcript", "book", "highlights", "article", "note", "social_post",
+DEFAULT_SOURCE_TYPES = ("transcript", "book", "highlights", "article", "note", "social_post", "quote",
                         "meeting", "reference", "other")
 TAG = re.compile(r"^[a-z0-9][a-z0-9 &/-]{0,39}$")
+NO_DESCRIPTION_TYPES = ("social_post", "quote")  # a post or a quote is short enough to read as it is
 
 
 class PropertiesError(ValueError):
@@ -311,6 +312,9 @@ def classify_properties(parsed: ParsedDocument, tag_list: TagList, client: Model
         json_schema=json_schema(tag_list), max_output_tokens=MAX_OUTPUT_TOKENS,
     )
     cleaned, proposed = _clean_reply(result.data, tag_list)
+    kind = str(existing_properties(parsed).get("source_type") or cleaned["source_type"]).casefold()
+    if kind in NO_DESCRIPTION_TYPES:
+        cleaned["description"] = None
     return PropertiesResult({name: cleaned[name] for name in missing if cleaned[name] not in (None, [])},
                             proposed, model, result.usage)
 
