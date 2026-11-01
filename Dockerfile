@@ -1,6 +1,6 @@
 # Obsidian's sync tool needs Node 22; build it in its own stage so Python's image stays clean.
 # Base images are pinned by digest so a rebuild cannot silently pick up a different image.
-FROM node:22-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS obsidian
+FROM node:26-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39 AS obsidian
 WORKDIR /opt/obsidian
 # The lock file pins the sync tool and everything it depends on.
 COPY deploy/obsidian/package.json deploy/obsidian/package-lock.json ./
