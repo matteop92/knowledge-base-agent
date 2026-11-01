@@ -28,7 +28,7 @@ from app.tag_aliases import aliases
 
 
 log = logging.getLogger("knowledge.properties")
-PROMPT_VERSION = "properties_v4"
+PROMPT_VERSION = "properties_v5"
 PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / f"{PROMPT_VERSION}.md"
 DEFAULT_MODEL = "openai/gpt-6-luna"
 MODEL_VERSION = "accepted-2026-10-17"

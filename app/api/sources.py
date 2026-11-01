@@ -161,6 +161,7 @@ class SourceStore:
         facts = card_facts(metadata, source.relative_path, source.added_at)
         added = source.added_at.date().isoformat() if source.added_at else None
         row = {"id": source.document_id, "title": source.title, "tags": source.tags, "added": added,
+               "added_at": source.added_at.isoformat() if source.added_at else None,
                "description": _description(metadata),
                "obsidian_url": obsidian_link(self.vault_name, source.relative_path),
                "opens_in_obsidian": facts["type"] == "book", **facts}

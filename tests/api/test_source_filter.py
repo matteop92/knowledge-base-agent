@@ -66,15 +66,18 @@ class SourceFilterTests(unittest.TestCase):
         self.assertEqual(out, {"week": [1, 2], "month": [1, 2], "year": [1, 2, 3, 5], "y2025": [4, 5], "range": [5]})
 
     def test_today_is_a_date_pick_and_a_typed_suggestion(self) -> None:
-        out = run("""const S = [...SOURCES, row(6, "note", "Fresh", [], [], [], "2026-10-28")];
+        out = run("""const at = (hours) => new Date(+NOW - hours * 3600000).toISOString();
+          const S = [...SOURCES, { ...row(6, "note", "Fresh", [], [], [], "2026-10-28"), added_at: at(5) },
+            { ...row(7, "note", "Yesterday", [], [], [], "2026-10-27"), added_at: at(23) },
+            { ...row(8, "note", "Too old", [], [], [], "2026-10-27"), added_at: at(25) }];
           const group = f.suggest("tod", make(), S, NOW).find((g) => g.kind === "date");
           console.log(JSON.stringify({ today: f.filtered(S, make({ date: { preset: "today" } }), NOW).map((s) => s.id),
             menu: f.counts(make(), S, NOW).dates.map((r) => r.key),
             suggest: group.items.map((i) => [i.label, i.count]), text: f.dateText({ preset: "today" }) }));""")
-        self.assertEqual(out["today"], [6])
+        self.assertEqual(out["today"], [6, 7])
         self.assertEqual(out["menu"], ["any", "today", "week", "month", "year"])
-        self.assertEqual(out["suggest"], [["Added today", 1]])
-        self.assertEqual(out["text"], "today")
+        self.assertEqual(out["suggest"], [["Added last day", 2]])
+        self.assertEqual(out["text"], "last day")
 
     def test_menu_counts_ignore_their_own_filter_but_respect_the_others(self) -> None:
         out = run("""const c = f.counts(make({ tags: ["farming"], types: ["transcript"] }), SOURCES, NOW);
