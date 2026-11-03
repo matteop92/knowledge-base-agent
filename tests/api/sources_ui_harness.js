@@ -55,7 +55,7 @@ function boot({ phone = false, sources = [], detail = null, detailStatus = 200, 
   context.globalThis = context;
   context.window.sourceFilter = undefined;
   vm.createContext(context);
-  for (const file of ["app/web/source-filter.js", "app/web/reader-blocks.js", "app/web/sources.js"]) vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
+  for (const file of ["app/web/source-filter.js", "app/web/reader-blocks.js", "app/web/reader-picks.js", "app/web/sources.js"]) vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
   for (const fn of documentStub.listeners.DOMContentLoaded || []) fn();
   const flush = async () => { for (let i = 0; i < 6; i++) await new Promise((r) => setImmediate(r)); };
   const settle = () => { const due = timers.filter((t) => t.live && t.ms === 300); for (const t of due) { t.live = false; t.fn(); } return due.length; };
