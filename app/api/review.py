@@ -23,12 +23,11 @@ CONTEXT_CHARS = 40  # what a pick keeps on each side of its words, to choose bet
 
 ROUND_SQL = "select coalesce(max(round), 1) from knowledge.feed_shown"
 POSITION_SQL = "select coalesce(max(md5(round::text || passage_key)), '') from knowledge.feed_shown where round=%s"
-AFTER_SQL = "select count(*) from knowledge.feed_passages where md5(%s::text || passage_key) > %s"
 NEXT_SQL = """select passage_key, document_id, kind, start_char, end_char, text, note, type, title, author, locator
     from knowledge.feed_passages
-    where md5(%(round)s::text || passage_key) > %(position)s and passage_key <> all(%(held)s::text[])
+    where md5(%(round)s::text || passage_key) > %(position)s
     order by md5(%(round)s::text || passage_key)
-    limit %(count)s"""
+    limit %(limit)s"""
 RUN_SQL = """select r.source_sha256, r.source_text, coalesce(r.parsed->'blocks', '[]'::jsonb)
     from knowledge.active_runs a
     join knowledge.runs r on r.run_id=a.run_id
@@ -153,9 +152,13 @@ class ReviewStore:
             for _ in range(3):
                 round_ = conn.execute(ROUND_SQL).fetchone()[0]
                 position = conn.execute(POSITION_SQL, (round_,)).fetchone()[0]
-                if conn.execute(AFTER_SQL, (round_, position)).fetchone()[0] == 0:
+                # One query: everything ranked after the position, held keys included, so that "nothing left" (a new
+                # round) is told apart from "only held ones left" (an empty list).
+                ahead = conn.execute(NEXT_SQL, {"round": round_, "position": position, "limit": count + len(held_keys)}).fetchall()
+                if not ahead:
                     round_, position = round_ + 1, ""
-                rows = conn.execute(NEXT_SQL, {"round": round_, "position": position, "held": held_keys, "count": count}).fetchall()
+                    ahead = conn.execute(NEXT_SQL, {"round": round_, "position": position, "limit": count + len(held_keys)}).fetchall()
+                rows = [row for row in ahead if row[0] not in held_keys][:count]
                 blocks = dict(conn.execute(BLOCKS_SQL, ([row[1] for row in rows],)).fetchall()) if rows else {}
                 passages = [self._passage(row, round_, blocks.get(row[1]) or []) for row in rows]
                 # A passage with nothing to draw (only an image or a table) is logged as shown here, so it never blocks

@@ -51,7 +51,7 @@ with limits as (
   select 400 as max_words, 1 as max_headings
 ),
 src as (
-  select r.document_id, r.source_sha256, r.source_text, r.parsed,
+  select r.run_id, r.document_id, r.source_sha256,
          coalesce(p.type, 'note') as type, p.title,
          coalesce((select string_agg(btrim(regexp_replace(a, '^\[\[|\]\]$', '', 'g')), ', ')
                      from jsonb_array_elements_text(p.authors) a
@@ -63,7 +63,9 @@ src as (
 ),
 blocks as (
   select src.document_id, src.type, (b.value->>'index')::integer as idx, b.value as block
-  from src cross join lateral jsonb_array_elements(coalesce(src.parsed->'blocks', '[]'::jsonb)) b
+  from src
+  join knowledge.runs r on r.run_id = src.run_id
+  cross join lateral jsonb_array_elements(coalesce(r.parsed->'blocks', '[]'::jsonb)) b
   where src.type not in ('article', 'transcript', 'book')
 ),
 highlights as (
@@ -98,27 +100,30 @@ parts as (
          'auto', w.start_char, w.end_char, null, null
   from wholes w
   join src s on s.document_id = w.document_id
+  join knowledge.runs r on r.run_id = s.run_id
   cross join limits l
   where w.start_char is not null
     and (s.type = 'quote'
          or (w.headings <= l.max_headings
-             and regexp_count(substr(s.source_text, w.start_char + 1, w.end_char - w.start_char), '\S+') <= l.max_words))
+             and regexp_count(substr(r.source_text, w.start_char + 1, w.end_char - w.start_char), '\S+') <= l.max_words))
   union all
   select k.document_id, 'pick', 'picked', k.start_char, k.end_char, null, null
   from knowledge.feed_picks k
   join src s on s.document_id = k.document_id and s.source_sha256 = k.source_sha256
-  where k.removed_at is null and k.end_char <= char_length(s.source_text)
+  join knowledge.runs r on r.run_id = s.run_id
+  where k.removed_at is null and k.end_char <= char_length(r.source_text)
 ),
 passages as (
-  select md5(s.document_id || E'\n' || substr(s.source_text, x.start_char + 1, x.end_char - x.start_char)) as passage_key,
+  select md5(s.document_id || E'\n' || substr(r.source_text, x.start_char + 1, x.end_char - x.start_char)) as passage_key,
          x.origin, x.kind, x.document_id, x.start_char, x.end_char,
-         substr(s.source_text, x.start_char + 1, x.end_char - x.start_char) as text,
+         substr(r.source_text, x.start_char + 1, x.end_char - x.start_char) as text,
          case when x.note_span is not null
-              then substr(s.source_text, split_part(x.note_span, ':', 1)::integer + 1,
+              then substr(r.source_text, split_part(x.note_span, ':', 1)::integer + 1,
                           split_part(x.note_span, ':', 2)::integer - split_part(x.note_span, ':', 1)::integer) end as note,
          s.type, s.title, s.author, x.locator
   from parts x
   join src s on s.document_id = x.document_id
+  join knowledge.runs r on r.run_id = s.run_id
   where x.end_char > x.start_char
 )
 select distinct on (passage_key) passage_key, origin, kind, document_id, start_char, end_char, text, note, type, title, author, locator
