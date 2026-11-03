@@ -19,7 +19,8 @@
 
   const view = { sources: [], vaultName: "", loaded: false, loadSeq: 0, filter: F.empty(), showAll: false, groups: [],
     active: 0, menu: null, menuTrigger: null, facet: null, facetQuery: "", rail: [], dateMode: null };
-  const reader = { open: false, pushed: false, closing: false, gen: 0, source: null, opener: null, scroll: 0, seq: 0 };
+  const reader = { open: false, pushed: false, closing: false, gen: 0, source: null, opener: null, scroll: 0, seq: 0,
+    picks: [], pending: null, armed: null, settle: null, toast: null, undo: null };
 
   const h = (tag, cls, text) => {
     const node = document.createElement(tag);
@@ -849,10 +850,13 @@
     $("reader-ask-input").value = "";
     $("reader-original").hidden = true;
     $("reader-body").replaceChildren();
+    picks.resetPicks();
   }
 
   // Tables, code and diagrams come from reader-blocks.js.
   const { codeBlock, diagram, table } = window.readerBlocks(h, inline);
+  // Add to Review (selecting words in the reader) comes from reader-picks.js.
+  const picks = window.readerPicks({ h, plural, reader });
 
   // A note's image, loaded through the server (the page never loads other sites). It holds its place with a fill
   // until it arrives; if it cannot load, its alt text stays as a caption, or nothing when there is none.
@@ -873,6 +877,13 @@
     return figure;
   }
 
+  // A text item that names its block, so a selection inside it can be sent to Review.
+  function blockText(tag, cls, text, index) {
+    const node = inline(tag, cls, text);
+    if (index !== undefined && index !== null) node.dataset.block = String(index);
+    return node;
+  }
+
   function drawBlocks(blocks, source, runId) {
     const guests = source.guests || [];
     const fragment = document.createDocumentFragment();
@@ -882,31 +893,31 @@
       if (block.kind === "speaker_turn") {
         const turn = h("div", "r-turn");
         turn.append(h("span", guests.includes(block.speaker) ? "r-speaker is-guest" : "r-speaker", block.speaker || ""),
-          inline("p", "r-text", block.text));
+          blockText("p", "r-text", block.text, block.block));
         fragment.append(turn);
       } else if (block.kind === "highlight") {
         const item = h("div", "r-highlight");
-        item.append(inline("p", "r-text", block.text));
+        item.append(blockText("p", "r-text", block.text, block.block));
         if (block.page_reference) item.append(h("span", "r-loc", block.page_reference));
-        if (block.personal_note) item.append(inline("p", "r-note", block.personal_note));
+        if (block.personal_note) item.append(blockText("p", "r-note", block.personal_note, block.note_block));
         fragment.append(item);
       } else if (block.kind === "heading") {
         const depth = (block.heading_path || []).length;
-        fragment.append(inline(depth > 2 ? "h3" : "h2", "r-heading", block.text));
+        fragment.append(blockText(depth > 2 ? "h3" : "h2", "r-heading", block.text, block.block));
       } else if (block.kind === "list_item") {
         if (!list) { list = h("ul", "r-list"); fragment.append(list); }
         // A numbered item keeps its own number as text, so it drops the bullet.
-        list.append(inline("li", /^\d+[.)]\s/.test(block.text) ? "r-text is-numbered" : "r-text", block.text));
+        list.append(blockText("li", /^\d+[.)]\s/.test(block.text) ? "r-text is-numbered" : "r-text", block.text, block.block));
       } else if (block.kind === "code_block") {
         fragment.append(block.language === "mermaid" ? diagram(block.text) : codeBlock(block.text));
       } else if (block.kind === "table") {
         fragment.append(table(block.rows || []));
       } else if (block.kind === "block_quote") {
-        fragment.append(inline("blockquote", "r-quote", block.text));
+        fragment.append(blockText("blockquote", "r-quote", block.text, block.block));
       } else if (block.kind === "image") {
         fragment.append(image(block, source, runId));
       } else if (block.kind !== "asset_reference") {
-        fragment.append(inline("p", source.type === "quote" ? "r-text r-quote-big" : "r-text", block.text));
+        fragment.append(blockText("p", source.type === "quote" ? "r-text r-quote-big" : "r-text", block.text, block.block));
       }
     }
     return fragment;
@@ -933,6 +944,9 @@
       if (mine !== reader.seq || !reader.open) return;
       readerNotice("");
       $("reader-body").replaceChildren(drawBlocks(detail.body || [], source, detail.run_id));
+      reader.picks = detail.picks || [];
+      picks.markAll();
+      picks.syncPicksControl();
       const url = String(detail.source_url || "");
       if (/^https?:\/\//.test(url) && (source.type === "post" || source.type === "article")) {
         $("reader-original-link").href = url;
@@ -1037,6 +1051,7 @@
 
   function leave() {
     dropReader();
+    picks.resetPicks();
     closeMenu(false);
     closeSuggest();
   }
@@ -1051,6 +1066,7 @@
     $("sources-more").addEventListener("click", () => { view.showAll = true; renderList(); });
     $("sources-filters").addEventListener("click", openFilters);
     $("reader-back").addEventListener("click", () => closeReader());
+    picks.init();
     $("reader-ask").addEventListener("click", () => reader.source && askAbout(reader.source));
     $("reader-askbox").addEventListener("submit", (event) => {
       event.preventDefault();

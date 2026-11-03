@@ -3,8 +3,10 @@
 // Tables, code and diagrams on the Sources reading page, drawn as elements like the rest of the page. A mermaid diagram
 // is drawn by the vendored library (vendor/mermaid.min.js), loaded the first time a source has one; its SVG is read as
 // XML and adopted, never set as HTML. If the library or a diagram fails, the diagram's source is shown as code.
-// sources.js passes in its own element builder `h` and inline-text drawer `inline`.
+// sources.js passes in its own element builder `h` and inline-text drawer `inline`, which it also hands on as
+// `window.readerBlocks.inline`.
 window.readerBlocks = (h, inline) => {
+  window.readerBlocks.inline = inline;  // review.js and the Ask page draw passages the way the reader does
   let mermaidReady = null;
   let diagramSeq = 0;
 

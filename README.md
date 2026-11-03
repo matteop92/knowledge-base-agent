@@ -12,6 +12,10 @@ A personal knowledge agent that grows with you. Add any source in seconds from y
 | --- | --- | --- |
 | <img src="docs/images/05-capture.png" width="200" alt="Capture sheet with tag chips"> | <img src="docs/images/06-settings-tags.png" width="200" alt="Settings with suggested tags"> | <img src="docs/images/07-history.png" width="200" alt="Navigation drawer with past conversations"> |
 
+| Sources | A reading page | Review: a highlight | Review: a quote |
+| --- | --- | --- | --- |
+| <img src="docs/images/08-sources.png" width="200" alt="The Sources list with one card per source type"> | <img src="docs/images/09-source-reader.png" width="200" alt="A reading page with a passage added to Review shown in green"> | <img src="docs/images/10-review-highlight.png" width="200" alt="Review showing one book highlight with the reader's own note"> | <img src="docs/images/11-review-quote.png" width="200" alt="Review showing one quote"> |
+
 *These screenshots are mock data. They come from a demo server with made-up notes and canned answers, not from a real vault or real model output.*
 
 ## Why I built it
@@ -41,6 +45,7 @@ A knowledge base only pays off if adding to it is quick enough to do every day. 
 - **Add anything from any device.** Paste text or a link, drop a Markdown file, share a screenshot, or share a YouTube link. On Android, the installed app is a share target, so "Share to Knowledge Agent" works from any app. On desktop you can paste, drag and drop.
 - **It becomes a proper note.** A screenshot is read into text. A YouTube video becomes a transcript with the speakers named. Each note is filed in the right folder (transcripts, articles, highlights, notes) and tagged from your own tag list.
 - **Browse what is indexed.** The Sources page lists every source as a card, narrowed by type, people, tags, title or date added from one search bar, and opens a quiet reading page for each. "Ask about this" starts a question limited to that source; books open in Obsidian.
+- **Bring saved ideas back.** The Review section shows one saved passage at a time (book highlights, quotes, short notes and posts) in an endless shuffle. Each passage takes the colour of its source type, names its source, and long ones split into parts you tap or arrow through. "Ask about this" starts a question about that source. In the reading page, select any words and add them to Review.
 - **It reaches all your devices.** Captures are written as new files in your Obsidian vault, and Obsidian Sync carries them to your phone and computers like any other note. The server never edits or overwrites an existing note.
 - **It is searchable within minutes.** The server watches the vault and indexes new, edited and deleted notes every few minutes, so tomorrow's question can use what you saved today.
 - **It tells you what is missing.** When an answer has a gap, the app says what the notes did not cover and offers "Add a note to fill this gap", which opens the capture sheet with the gap shown above the box, so you know what to write or paste. Questions point at what to collect next, so the collection grows where it is thin.

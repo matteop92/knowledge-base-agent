@@ -16,7 +16,9 @@
   <script src="/static/settings.js" defer></script>
   <script src="/static/source-filter.js" defer></script>
   <script src="/static/reader-blocks.js" defer></script>
+  <script src="/static/reader-picks.js" defer></script>
   <script src="/static/sources.js" defer></script>
+  <script src="/static/review.js" defer></script>
 </head>
 <body>
   <!-- Icons: one sprite, referenced with <use> -->
@@ -61,6 +63,7 @@
     <symbol id="i-person" viewBox="0 0 256 256"><path fill="currentColor" d="M229.19,213c-15.81-27.32-40.63-46.49-69.47-54.62a70,70,0,1,0-63.44,0C67.44,166.5,42.62,185.67,26.81,213a6,6,0,1,0,10.38,6C56.4,185.81,90.34,166,128,166s71.6,19.81,90.81,53a6,6,0,1,0,10.38-6ZM70,96a58,58,0,1,1,58,58A58.07,58.07,0,0,1,70,96Z"/></symbol>
     <symbol id="i-calendar" viewBox="0 0 256 256"><path fill="currentColor" d="M208,34H182V24a6,6,0,0,0-12,0V34H86V24a6,6,0,0,0-12,0V34H48A14,14,0,0,0,34,48V208a14,14,0,0,0,14,14H208a14,14,0,0,0,14-14V48A14,14,0,0,0,208,34ZM48,46H74V56a6,6,0,0,0,12,0V46h84V56a6,6,0,0,0,12,0V46h26a2,2,0,0,1,2,2V82H46V48A2,2,0,0,1,48,46ZM208,210H48a2,2,0,0,1-2-2V94H210V208A2,2,0,0,1,208,210Z"/></symbol>
     <symbol id="i-stack" viewBox="0 0 256 256"><path fill="currentColor" d="M13,109.21l112,64a6,6,0,0,0,6,0l112-64a6,6,0,0,0,0-10.42l-112-64a6,6,0,0,0-6,0l-112,64a6,6,0,0,0,0,10.42Zm115-62.3L227.91,104,128,161.09,28.09,104ZM245.21,141a6,6,0,0,1-2.23,8.19l-112,64a6,6,0,0,1-6,0l-112-64a6,6,0,0,1,6-10.42l109,62.3,109-62.3A6,6,0,0,1,245.21,141Z"/></symbol>
+    <symbol id="i-quotes" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><rect x="30" y="64" width="76" height="68" rx="14"/><path d="M106 132v14a34 34 0 0 1-34 34"/><rect x="150" y="64" width="76" height="68" rx="14"/><path d="M226 132v14a34 34 0 0 1-34 34"/></symbol>
   </svg>
 
   <!-- Sign-in -->
@@ -94,6 +97,7 @@
         <button type="button" class="side-item" data-tab="ask" aria-label="Ask"><svg class="icon" aria-hidden="true"><use href="#i-ask"/></svg><span class="label">Ask</span></button>
         <button type="button" class="side-item" data-tab="add" aria-label="Add to notes"><svg class="icon" aria-hidden="true"><use href="#i-add"/></svg><span class="label">Add to notes</span></button>
         <button type="button" class="side-item" data-tab="sources" aria-label="Sources"><svg class="icon" aria-hidden="true"><use href="#i-books"/></svg><span class="label">Sources</span></button>
+        <button type="button" class="side-item" data-tab="review" aria-label="Review"><svg class="icon" aria-hidden="true"><use href="#i-quotes"/></svg><span class="label">Review</span></button>
       </nav>
       <button type="button" id="sidebar-history" class="history-toggle" aria-label="History" aria-expanded="true" aria-controls="history-panel"><span class="section-title">History</span><svg class="icon chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
       <div id="history-panel" class="history-panel">
@@ -135,6 +139,11 @@
             </div>
           </main>
           <form id="composer" class="composer">
+            <div id="passage-card" class="passage-card" hidden>
+              <div id="passage-card-text" class="passage-card-text"></div>
+              <span id="passage-card-source" class="passage-card-source"></span>
+              <button type="button" id="passage-card-remove" class="chip-remove" aria-label="Hide this passage"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button>
+            </div>
             <div id="scope-chip" class="scope-chip" hidden>
               <span id="scope-chip-text" class="scope-chip-text"></span>
               <button type="button" id="scope-chip-remove" class="chip-remove" aria-label="Stop limiting to this source"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button>
@@ -274,10 +283,19 @@
           </div>
         </section>
 
+        <section id="review" class="view view-review" hidden aria-label="Review">
+          <div id="review-pager" class="review-pager" tabindex="0"></div>
+          <div id="review-state" class="review-state" hidden></div>
+          <p id="review-hint" class="review-hint" hidden></p>
+          <button type="button" id="review-ask" class="review-ask" hidden><svg class="icon" aria-hidden="true"><use href="#i-ask"/></svg><span>Ask about this</span></button>
+          <p id="review-live" class="sr-only" aria-live="polite"></p>
+        </section>
+
         <section id="source-reader" class="view view-reader" hidden aria-label="Source">
           <header class="reader-bar">
             <button type="button" id="reader-back" class="reader-link"><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg><span>Sources</span></button>
             <span class="reader-spacer"></span>
+            <button type="button" id="reader-picks" class="reader-link reader-picks" aria-haspopup="dialog" hidden><svg class="icon" aria-hidden="true"><use href="#i-quotes"/></svg><span id="reader-picks-label"></span></button>
             <a id="reader-obsidian" class="reader-link reader-obsidian open-obsidian" href="#" aria-label="Open in Obsidian" hidden><svg class="icon" aria-hidden="true"><use href="#i-obsidian"/></svg><span>Open in Obsidian</span></a>
             <button type="button" id="reader-ask" class="primary reader-ask"><svg class="icon" aria-hidden="true"><use href="#i-ask"/></svg><span>Ask about this</span></button>
           </header>
@@ -296,6 +314,13 @@
               <div id="reader-body" class="reader-body"></div>
               <p id="reader-original" class="reader-original" hidden><a id="reader-original-link" href="#" target="_blank" rel="noopener noreferrer">Read the original</a></p>
             </article>
+          </div>
+          <div id="pick-action" class="pick-action" hidden>
+            <button type="button" id="pick-action-button" class="pick-action-button"></button>
+          </div>
+          <div id="pick-toast" class="pick-toast" role="status" aria-live="polite" hidden>
+            <span id="pick-toast-text" class="pick-toast-text"></span>
+            <button type="button" id="pick-toast-undo" class="pick-toast-undo" hidden>Undo</button>
           </div>
           <form id="reader-askbox" class="reader-askbox">
             <label for="reader-ask-input" class="sr-only">Ask about this</label>
@@ -326,6 +351,7 @@
         <section data-sheet="feedback" hidden></section>
         <section data-sheet="tags" hidden></section>
         <section data-sheet="filters" hidden></section>
+        <section data-sheet="picks" hidden></section>
       </div>
     </div>
   </div>
