@@ -72,9 +72,8 @@ def _span(block: dict[str, Any], name: str) -> tuple[int, int] | None:
 
 
 # Some exports label the reader's own note "**Note - Location 34**" instead of "**My note**", so the parser keeps it inside
-# the highlight, and each quoted line starts with "> ". Review shows the quote and the note apart, without the markers.
+# the highlight. Review shows the quote and the note apart.
 NOTE_LABEL = re.compile(r"^[ \t]*\*\*[ \t]*Note\b[^\n]*\*\*[ \t]*$", re.MULTILINE)
-QUOTE_MARK = re.compile(r"^[ \t]*>[ \t]?", re.MULTILINE)
 
 
 def _quote_and_note(text: str, note: str | None) -> tuple[str, str | None]:
@@ -82,7 +81,7 @@ def _quote_and_note(text: str, note: str | None) -> tuple[str, str | None]:
     if label and text[:label.start()].strip():
         text, inline_note = text[:label.start()], text[label.end():].strip()
         note = "\n\n".join(part for part in (note, inline_note) if part) or None
-    return QUOTE_MARK.sub("", text).strip(), note
+    return text.strip(), note
 
 
 def _highlight(blocks: list[dict[str, Any]], start: int) -> tuple[str, str | None]:
