@@ -394,3 +394,17 @@ class ReviewApiTests(unittest.TestCase):
         self.assertEqual(self.pick(doc, "thought here", block=item["block"]).status_code, 200)
         texts = sorted(p["text"] for p in self.next(5))
         self.assertEqual(texts, sorted(["Alpha thought here.", "own take", "thought here"]))
+
+    def test_a_note_labelled_note_location_is_split_from_its_highlight_and_the_quote_marks_go(self) -> None:
+        text = ("---\ntitle: T\nauthor: A\n---\n# T\n\n**Highlight p. 1**\n> people have limited capacity.\n> They settle for enough.\n\n"
+                "**Note - Location 34**\n\nHow can this be done?\n\nVia tests\n")
+        doc = self.pool.add(HIGHLIGHTS, text)
+        [passage] = [p for p in self.next(5) if p["source_id"] == doc]
+        self.assertEqual(passage["text"], "people have limited capacity.\nThey settle for enough.")
+        self.assertEqual(passage["note"], "How can this be done?\n\nVia tests")
+
+    def test_a_highlight_that_is_only_a_note_label_is_left_alone(self) -> None:
+        from app.api.review import _quote_and_note
+        self.assertEqual(_quote_and_note("**Note - Location 3**\n\nOnly this.", None)[0], "**Note - Location 3**\n\nOnly this.")
+        self.assertEqual(_quote_and_note("Quote.", "mine"), ("Quote.", "mine"))
+        self.assertEqual(_quote_and_note("Quote.\n\n**Note**\n\nMore.", "mine"), ("Quote.", "mine\n\nMore."))
