@@ -217,6 +217,31 @@ const scenarios = {
       source: pages[0].el.querySelectorAll(".review-source-title").map((e) => e.textContent).concat(pages[0].el.querySelectorAll(".review-source-author").map((e) => e.textContent)),
       type: app.els["review"].dataset.type, tone: app.els["app"].dataset.reviewTone };
   },
+  async wheelFlipsOnePassagePerGesture() {
+    const app = boot({ replies: [{ passages: [passage(1), passage(2), passage(3)] }, { passages: [] }, { passages: [] }] });
+    app.screen.show(); await app.flush();
+    const pager = app.els["review-pager"];
+    app.seen(0);
+    const wheel = (deltaY) => pager.dispatch("wheel", { deltaY });
+    const e1 = wheel(100); wheel(80); wheel(60); wheel(40);  // one flick and its trailing inertia
+    const flipped = page(app, 1).el.scrolledIntoView === true;
+    const extra = page(app, 2).el.scrolledIntoView === true;
+    const quiet = app.calls.timers.filter((t) => t.live && t.ms === 160).pop(); quiet.fn();  // the wheel goes quiet
+    app.seen(1);
+    wheel(120);
+    const second = page(app, 2).el.scrolledIntoView === true;
+    wheel(2);  // too small to count
+    return { prevented: e1.prevented === true, flipped, extra, second };
+  },
+  async tailStaysPutWhileFetching() {
+    const app = boot({ replies: [{ passages: [passage(1), passage(2)] }, { passages: [passage(3)] }] });
+    app.screen.show(); await app.flush();
+    const pager = app.els["review-pager"];
+    const tail = pager.children[pager.children.length - 1];
+    app.seen(1); await app.flush();
+    const after = pager.children.map((c) => c.className.includes("review-tail") ? "tail" : "page");
+    return { sameTail: pager.children[pager.children.length - 1] === tail, order: after };
+  },
   async hintShowsOnTheFirstPassagesOnly() {
     const app = boot({ replies: [{ passages: [passage(1)] }] });
     app.stored["ka-review-hint"] = "5";

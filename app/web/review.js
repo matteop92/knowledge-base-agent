@@ -15,6 +15,7 @@
   const VISIBLE = 0.6;          // share of a page that must be on screen
   const HINT_KEY = "ka-review-hint";
   const HINT_PASSAGES = 5;
+  const WHEEL_QUIET_MS = 160;   // no wheel events for this long ends a gesture
   const MAX_HELD = 30;          // the most keys the server accepts in one request
 
   // What kind of source a passage comes from sets the colour of the whole screen and its label (Sources uses the same looks).
@@ -204,14 +205,23 @@
     }
   }
 
-  // The last page while more is on its way, or when loading more failed.
+  // The last page while more is on its way, or when loading more failed. It is one element that stays in the pager
+  // (hidden when idle) and is updated in place, so a fetch that starts while the reader scrolls never moves the pages.
   function drawTail() {
-    const pager = $("review-pager");
-    const old = pager.querySelector(".review-tail");
-    if (old) old.remove();
-    if (!view.pages.length || (!view.fetching && !view.failed)) return;
-    const tail = h("div", "review-page review-tail");
-    tail.setAttribute("role", "status");
+    let tail = view.tail;
+    if (!tail) {
+      tail = view.tail = h("div", "review-page review-tail");
+      tail.setAttribute("role", "status");
+      tail.hidden = true;
+      $("review-pager").append(tail);
+    }
+    const show = view.pages.length > 0 && (view.fetching || view.failed);
+    const shown = show ? (view.failed ? "failed" : "waiting") : "";
+    if (tail.dataset.shown === shown) return;
+    tail.dataset.shown = shown;
+    tail.hidden = !show;
+    tail.replaceChildren();
+    if (!show) return;
     if (view.failed) {
       tail.append(h("p", "review-state-title", "More passages did not load."));
       const retry = h("button", "chip-button", "Retry");
@@ -221,7 +231,6 @@
     } else {
       tail.append(h("p", "review-state-title", "Finding the next passage…"));
     }
-    pager.append(tail);
   }
 
   // Fetching ----------------------------------------------------------------------------------------
@@ -258,7 +267,7 @@
   function addPage(passage) {
     const page = buildPage(passage);
     view.pages.push(page);
-    $("review-pager").append(page.el);
+    $("review-pager").insertBefore(page.el, view.tail || null);
     view.byElement.set(page.el, page);
     if (view.observer) view.observer.observe(page.el);
   }
@@ -341,6 +350,18 @@
     if (target && target.el.scrollIntoView) target.el.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  // A mouse wheel or trackpad flips one passage per gesture, with a smooth glide: the browser's own snapping stutters
+  // on a full-screen page (and a trackpad's trailing inertia would flip several). The lock lifts when the wheel goes quiet.
+  const wheel = { locked: false, idle: null };
+  function onWheel(event) {
+    event.preventDefault();
+    clearTimeout(wheel.idle);
+    wheel.idle = setTimeout(() => { wheel.locked = false; }, WHEEL_QUIET_MS);
+    if (wheel.locked || Math.abs(event.deltaY) < 8) return;
+    wheel.locked = true;
+    go(event.deltaY > 0 ? 1 : -1);
+  }
+
   function onKey(event) {
     if (state.view !== "review" || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
     const tag = event.target && event.target.tagName ? event.target.tagName.toLowerCase() : "";
@@ -390,6 +411,7 @@
       askAboutPassage(page.passage);
     });
     $("review-pager").addEventListener("scroll", hideAsk, { passive: true });
+    $("review-pager").addEventListener("wheel", onWheel, { passive: false });
     document.addEventListener("keydown", onKey);
     document.addEventListener("visibilitychange", () => { if (document.hidden) leave(); else if (state.view === "review") show(); });
     phone.addEventListener("change", () => {

@@ -32,6 +32,11 @@ class El {
   focus() { if (El.document) El.document.activeElement = this; }
   getBoundingClientRect() { return this.rect; }
   scrollIntoView() { this.scrolledIntoView = true; }
+  insertBefore(node, ref) {
+    node.parent = this;
+    const at = ref ? this.children.indexOf(ref) : -1;
+    if (at < 0) this.children.push(node); else this.children.splice(at, 0, node);
+  }
   remove() { if (this.parent) this.parent.children = this.parent.children.filter((c) => c !== this); }
   get parentElement() { return this.parent; }
   get nodeType() { return this.tagName === "#text" ? 3 : 1; }

@@ -115,6 +115,16 @@ class ReviewScreenTests(unittest.TestCase):
         self.assertEqual(out["source"], ["Title 1", "Ada Stone"])
         self.assertEqual((out["type"], out["tone"]), ("post", "light"))
 
+    def test_a_wheel_flick_flips_one_passage_even_with_trailing_inertia(self) -> None:
+        out = run("wheelFlipsOnePassagePerGesture")
+        self.assertEqual(out, {"prevented": True, "flipped": True, "extra": False, "second": True})
+
+    def test_loading_more_never_moves_the_pages_under_the_reader(self) -> None:
+        out = run("tailStaysPutWhileFetching")
+        self.assertTrue(out["sameTail"])
+        self.assertEqual(out["order"][-1], "tail")
+        self.assertEqual(out["order"].count("tail"), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
