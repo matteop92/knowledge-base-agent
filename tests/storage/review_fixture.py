@@ -50,6 +50,13 @@ class PoolBuilder:
     def close(self) -> None:
         self.folder.cleanup()
 
+    def teardown(self) -> None:
+        """Leave the shared test database as found: no documents, no active profile, and none of this fixture's rows."""
+        self.admin.execute("update knowledge.corpus_state set profile_id=null where singleton=true")
+        self.admin.execute("truncate knowledge.documents cascade")
+        self.admin.execute("delete from knowledge.profiles where profile_id=%s", (PROFILE,))
+        self.admin.execute("delete from knowledge.embedding_specs where spec_id=%s", (SPEC,))
+
     def add(self, path: str, text: str) -> str:
         """Parse a file and publish it as the active run of its document (a new run if it was added before)."""
         base = Path(self.folder.name)

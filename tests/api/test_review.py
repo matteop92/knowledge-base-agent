@@ -36,6 +36,7 @@ class ReviewApiTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        cls.pool.teardown()
         cls.admin.close()
 
     def connect(self):

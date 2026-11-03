@@ -23,6 +23,7 @@ class ReviewPoolTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        cls.pool.teardown()
         cls.conn.close()
         cls.admin.close()
 
