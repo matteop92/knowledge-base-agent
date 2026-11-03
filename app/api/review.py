@@ -207,8 +207,10 @@ class ReviewStore:
             inside = [index for index, (_, offset) in enumerate(display) if start <= offset < end]
             if not inside:
                 continue
-            result.append({"id": str(pick_id), "block": int(block.get("index", 0)), "start": inside[0], "end": inside[-1] + 1,
-                           "text": "".join(display[index][0] for index in inside)})
+            # The page counts UTF-16 units, Python counts code points: an emoji before the pick is two units.
+            units = lambda upto: sum(len(char.encode("utf-16-le")) // 2 for char, _ in display[:upto])  # noqa: E731
+            result.append({"id": str(pick_id), "block": int(block.get("index", 0)), "start": units(inside[0]),
+                           "end": units(inside[-1] + 1), "text": "".join(display[index][0] for index in inside)})
         return result
 
     def live(self, conn, document_id: str, sha: str, blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:

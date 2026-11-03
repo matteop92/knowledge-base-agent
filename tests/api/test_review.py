@@ -320,3 +320,11 @@ class ReviewApiTests(unittest.TestCase):
         self.assertEqual(other.post("/api/review/picks", json=body).status_code, 401)
         self.assertEqual(self.client.post("/api/review/picks", json=body).status_code, 404)
         self.assertEqual(self.client.post("/api/review/picks", json={**body, "source_id": "nope"}).status_code, 404)
+
+    def test_pick_positions_count_utf16_units_like_the_page(self) -> None:
+        shown = "\U0001F600 hello world now"
+        doc = self.article(shown + "\n")
+        self.assertEqual(self.pick(doc, "world", containing="hello").status_code, 200)
+        [pick] = self.detail(doc)["picks"]
+        units = shown.encode("utf-16-le")
+        self.assertEqual(units[pick["start"] * 2:pick["end"] * 2].decode("utf-16-le"), "world")
