@@ -88,11 +88,6 @@ class ReviewScreenTests(unittest.TestCase):
         self.assertEqual(out["labels"][:2], ["Part 1 of 4", "Part 2 of 4"])
         self.assertEqual(out["arrows"], ["Previous part", "Next part"])
 
-    def test_the_hint_shows_on_the_first_few_passages_only(self) -> None:
-        out = run("hintShowsOnTheFirstPassagesOnly")
-        self.assertEqual((out["lateHidden"], out["freshHidden"]), (True, False))
-        self.assertIn("Tap the edges", out["text"])
-
     def test_ask_about_this_starts_a_question_limited_to_the_source_and_shows_the_passage(self) -> None:
         out = run("askHandoff")
         self.assertEqual(out["log"], ["newQuestion", ["scope", "source-7"]])

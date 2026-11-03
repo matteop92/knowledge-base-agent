@@ -373,5 +373,21 @@ class ShownTextParityTests(unittest.TestCase):
                     self.assertEqual(source[offset - 100], char)
 
 
+class HighlightQuoteMarkTests(unittest.TestCase):
+    def test_the_quote_marks_of_a_highlight_exported_as_a_quote_are_left_out(self) -> None:
+        text = "**Highlight p. 1**\n> first quoted line\n> second quoted line\n"
+        item = block(0, "highlight", text, content_span={"start_char": 19, "end_char": len(text) - 1})
+        [shown] = reading_blocks([item])
+        self.assertEqual(shown["text"], "first quoted line\nsecond quoted line")
+
+    def test_shown_characters_still_point_at_their_place_in_the_file(self) -> None:
+        from app.api.sources import block_display
+        text = "**Highlight**\n> quoted words\n"
+        item = block(0, "highlight", text, content_span={"start_char": 14, "end_char": len(text) - 1})
+        display = block_display(item)
+        self.assertEqual("".join(char for char, _ in display), "quoted words")
+        self.assertEqual({text[offset] for _, offset in display if text[offset] != " "}, set("quotedwrs"))
+
+
 if __name__ == "__main__":
     unittest.main()

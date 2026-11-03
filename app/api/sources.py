@@ -43,6 +43,8 @@ QUOTE_TEXT_SQL = """select r.document_id, string_agg(b->>'raw_text', E'\\n\\n' o
 MARKERS = {"heading": re.compile(r"^#{1,6}[ \t]+|[ \t]+#+[ \t]*$"),
            "list_item": re.compile(r"^[ \t]*[-*+][ \t]+(?:\[[ xX]\][ \t]+)?"),
            "block_quote": re.compile(r"^[ \t]*>[ \t]?", re.MULTILINE)}
+# A highlight exported as a Markdown quote keeps its `> ` on every line; the reader leaves it out like any quote's.
+MARKERS["highlight"] = MARKERS["block_quote"]
 # A link target may hold one level of brackets (a Wikipedia file name); the page's link pattern reads it the same way.
 TARGET = r"\((?:[^()\s]|\([^()\s]*\))*(?:\s+\"[^\"]*\")?\)"
 IMAGE = re.compile(r"!\[[^\]]*\]" + TARGET + r"|!\[\[[^\]|]+\.(?:png|jpe?g|gif|webp|svg|bmp|avif)(?:\|[^\]]*)?\]\]",

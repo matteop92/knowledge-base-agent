@@ -71,6 +71,19 @@ def _span(block: dict[str, Any], name: str) -> tuple[int, int] | None:
     return (int(span["start_char"]), int(span["end_char"])) if isinstance(span, dict) else None
 
 
+# Some exports label the reader's own note "**Note - Location 34**" instead of "**My note**", so the parser keeps it inside
+# the highlight. Review shows the quote and the note apart.
+NOTE_LABEL = re.compile(r"^[ \t]*\*\*[ \t]*Note\b[^\n]*\*\*[ \t]*$", re.MULTILINE)
+
+
+def _quote_and_note(text: str, note: str | None) -> tuple[str, str | None]:
+    label = NOTE_LABEL.search(text)
+    if label and text[:label.start()].strip():
+        text, inline_note = text[:label.start()], text[label.end():].strip()
+        note = "\n\n".join(part for part in (note, inline_note) if part) or None
+    return text.strip(), note
+
+
 def _highlight(blocks: list[dict[str, Any]], start: int) -> tuple[str, str | None]:
     """A highlight's text and its own note, cleaned by the reader's pipeline."""
     for index, block in enumerate(blocks):
@@ -78,7 +91,7 @@ def _highlight(blocks: list[dict[str, Any]], start: int) -> tuple[str, str | Non
             note = next((other for other in blocks[index + 1:] if other.get("content_role") == "personal_note"
                          and other.get("group_id") == block.get("group_id")), None)
             items = reading_blocks([block] + ([note] if note else []))
-            return (items[0]["text"], items[0]["personal_note"]) if items else ("", None)
+            return _quote_and_note(items[0]["text"], items[0]["personal_note"]) if items else ("", None)
     return "", None
 
 
