@@ -132,5 +132,34 @@ class ReviewPoolTest(unittest.TestCase):
             self.conn.execute("delete from knowledge.feed_shown")
 
 
+    def test_authors_are_cleaned_of_wiki_links_and_joined(self) -> None:
+        doc = self.add("Knowledge/Notes/who.md", "---\nauthors: ['[[Ada Stone]]', Ben Hart]\n---\nShort note.\n")
+        self.assertEqual(self.rows(doc)[0][7], "Ada Stone, Ben Hart")
+
+    def test_a_highlight_without_a_page_has_no_locator(self) -> None:
+        text = "---\ntitle: T\n---\n# T\n\n**Highlight**\nNo page here.\n"
+        doc = self.add("Knowledge/Book Highlights/nopage.md", text)
+        self.assertIsNone(self.rows(doc)[0][8])
+
+    def test_a_pick_that_runs_past_a_highlight_is_its_own_passage(self) -> None:
+        doc = self.add("Knowledge/Book Highlights/Book.md", highlights_file(("Alpha thought.", None), ("Beta thought.", None)))
+        text = self.conn.execute("select r.source_text from knowledge.runs r join knowledge.active_runs a on a.run_id=r.run_id where r.document_id=%s", (doc,)).fetchone()[0]
+        start = text.index("thought.\n") + 1
+        end = text.index("Beta") + 4
+        sha = self.conn.execute("select source_sha256 from knowledge.runs r join knowledge.active_runs a on a.run_id=r.run_id where r.document_id=%s", (doc,)).fetchone()[0]
+        self.conn.execute("insert into knowledge.feed_picks (document_id, source_sha256, start_char, end_char, exact) values (%s,%s,%s,%s,%s)",
+                          (doc, sha, start, end, text[start:end]))
+        self.assertEqual([r[1] for r in self.rows(doc)].count("picked"), 1)
+        self.assertEqual(len(self.rows(doc)), 3)
+
+    def test_a_pick_on_a_quote_source_is_its_own_passage(self) -> None:
+        doc = self.add("Knowledge/Notes/q.md", "---\ntype: quote\n---\nNothing is lost that is not first forgotten.\n")
+        text, sha = self.conn.execute("select r.source_text, r.source_sha256 from knowledge.runs r join knowledge.active_runs a on a.run_id=r.run_id where r.document_id=%s", (doc,)).fetchone()
+        start = text.index("not first")
+        self.conn.execute("insert into knowledge.feed_picks (document_id, source_sha256, start_char, end_char, exact) values (%s,%s,%s,%s,'not first')",
+                          (doc, sha, start, start + 9))
+        self.assertEqual(sorted(r[0] for r in self.rows(doc)), ["pick", "quote"])
+
+
 if __name__ == "__main__":
     unittest.main()

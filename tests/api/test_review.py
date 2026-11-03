@@ -339,3 +339,57 @@ class ReviewApiTests(unittest.TestCase):
             self.next(5)  # never blank, never blocks
         logged = self.admin.execute("select count(*) from knowledge.feed_shown where document_id=%s", (image_only,)).fetchone()[0]
         self.assertLessEqual(logged, 2)
+
+    def test_reanchoring_picks_the_repeat_whose_surroundings_still_match(self) -> None:
+        from app.api.review import _reanchored
+        text = "Echo here. Something else. Echo here. And more."
+        self.assertEqual(_reanchored(text, "Echo here.", "", " And more.", 0), text.index("Echo here.", 5))
+        self.assertEqual(_reanchored(text, "Echo here.", "", " Something else.", 40), 0)
+        # No surroundings match: the repeat nearest to where the pick was.
+        self.assertEqual(_reanchored(text, "Echo here.", "zzz", "zzz", 30), text.index("Echo here.", 5))
+        self.assertIsNone(_reanchored(text, "Gone entirely.", "", "", 0))
+
+    def test_a_repeated_pick_follows_its_own_occurrence_through_an_edit(self) -> None:
+        doc = self.article("Echo here. Middle.\n\nEcho here. Tail.\n")
+        self.pick(doc, "Echo here.", containing="Echo here. Tail", occurrence=1)
+        self.article("A new line first.\n\nEcho here. Middle.\n\nEcho here. Tail.\n")
+        [(_, start, _, _)] = self.live()
+        self.assertTrue(self.source_text(doc)[start:].startswith("Echo here. Tail."))
+
+    def test_picks_inside_a_list_item_and_a_quote_exclude_the_markers(self) -> None:
+        doc = self.article("- first point here\n- second point here\n\n> a quoted line to keep\n")
+        self.assertEqual(self.pick(doc, "second point", containing="second point").status_code, 200)
+        self.assertEqual(self.pick(doc, "quoted line", containing="quoted line").status_code, 200)
+        exact = [row[3] for row in self.live()]
+        self.assertEqual(exact, ["second point", "quoted line"])
+        for _, start, end, text in self.live():
+            self.assertEqual(self.source_text(doc)[start:end], text)
+
+    def test_a_pick_in_a_file_saved_with_windows_line_endings_anchors_exactly(self) -> None:
+        doc = self.pool.add(self.ARTICLE, "# Title\r\n\r\nFirst paragraph.\r\n\r\nSecond paragraph here.\r\n")
+        self.assertEqual(self.pick(doc, "paragraph here", containing="Second").status_code, 200)
+        [(_, start, end, exact)] = self.live()
+        self.assertEqual((exact, self.source_text(doc)[start:end]), ("paragraph here", "paragraph here"))
+        [pick] = self.detail(doc)["picks"]
+        self.assertEqual(pick["text"], "paragraph here")
+
+    def test_code_and_table_blocks_cannot_be_picked(self) -> None:
+        doc = self.article("```\nsome code line\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nPlain text.\n")
+        blocks = self.admin.execute("""select jsonb_array_elements(r.parsed->'blocks')->>'kind' from knowledge.runs r
+            join knowledge.active_runs a on a.run_id=r.run_id where r.document_id=%s""", (doc,)).fetchall()
+        kinds = [row[0] for row in blocks]
+        for kind in ("code_block", "table"):
+            self.assertEqual(self.pick(doc, "x", block=kinds.index(kind)).status_code, 400, kind)
+        self.assertEqual(self.live(), [])
+
+    def test_delete_with_a_bad_id_is_404_and_needs_a_session(self) -> None:
+        self.assertEqual(self.client.request("DELETE", "/api/review/picks/not-a-uuid", json={}).status_code, 404)
+        self.assertEqual(TestClient(self.app).request("DELETE", "/api/review/picks/00000000-0000-0000-0000-000000000000", json={}).status_code, 401)
+
+    def test_a_pick_in_a_highlights_text_and_one_in_its_note_are_separate_passages(self) -> None:
+        doc = self.pool.add(HIGHLIGHTS, highlights_file(("Alpha thought here.", "my own take on it")))
+        item = next(i for i in self.detail(doc)["body"] if i["kind"] == "highlight")
+        self.assertEqual(self.pick(doc, "own take", block=item["note_block"]).status_code, 200)
+        self.assertEqual(self.pick(doc, "thought here", block=item["block"]).status_code, 200)
+        texts = sorted(p["text"] for p in self.next(5))
+        self.assertEqual(texts, sorted(["Alpha thought here.", "own take", "thought here"]))
