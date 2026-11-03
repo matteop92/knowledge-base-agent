@@ -912,9 +912,23 @@ h3.r-heading { font-size: 18.5px; }
 .review-p + .review-p { margin-top: 1em; }
 .review-page.is-short .review-text { font-size: 27px; line-height: 1.35; letter-spacing: -0.012em; }
 .review-note { margin-top: 20px; padding: 10px 14px; border-radius: 10px; background: var(--row-active); font-size: 14px; color: var(--ink-soft); }
-.review-source { flex: none; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; width: 100%; max-width: 640px; margin: 0 auto; padding-top: 18px; }
+.review-kicker { flex: none; width: 100%; max-width: 640px; margin: 22px auto 0; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.review-source { flex: none; width: 100%; max-width: 640px; margin: 0 auto; padding-top: 18px; }
 .review-source-title { font-family: var(--serif); font-size: 17.5px; font-weight: 480; line-height: 1.3; }
-.review-source-author { font-size: 12.5px; color: var(--muted); }
+.review-source-author { margin-top: 4px; font-size: 12.5px; color: var(--muted); }
+/* A passage's screen is the colour of its source's card in Sources. */
+.review-page.is-highlights { background: var(--cover-0); color: var(--paper); }
+.review-page.is-highlights::before { content: ""; position: absolute; left: 16px; top: 0; bottom: 0; width: 1px; background: color-mix(in srgb, var(--paper) 16%, transparent); }
+.review-page.is-highlights .review-kicker, .review-page.is-highlights .review-source-author { color: color-mix(in srgb, var(--paper) 72%, transparent); }
+.review-page.is-highlights .review-bar { background: color-mix(in srgb, var(--paper) 25%, transparent); }
+.review-page.is-highlights .review-bar.is-done { background: var(--paper); }
+.review-page.is-highlights .review-note { background: color-mix(in srgb, var(--paper) 12%, transparent); color: var(--paper); }
+.review-page.is-highlights .review-arrow { color: var(--paper); }
+.review-page.is-quote { background: var(--paper); }
+.review-page.is-quote .review-text::before { content: "\201C"; display: block; height: 28px; font-size: 44px; line-height: 1; color: var(--dot); }
+.review-page.is-note { background: var(--note-paper); }
+.review-page.is-note .review-kicker, .review-page.is-note .review-source-author { color: var(--ink-soft); }
+.review-page.is-post { background: var(--surface); }
 .review-arrow { position: absolute; top: 50%; display: none; transform: translateY(-50%); border-radius: 999px; color: var(--ink-soft); }
 .review-arrow:disabled { opacity: 0.3; }
 .review-prev { left: 12px; }
@@ -925,6 +939,10 @@ h3.r-heading { font-size: 18.5px; }
 .review-state { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center; background: var(--ground); }
 .review-state-title { font-family: var(--serif); font-size: 19px; font-weight: 480; }
 .review-state-sub { max-width: 320px; font-size: 14px; color: var(--muted); }
+.view-review[data-type="highlights"] .review-hint { color: color-mix(in srgb, var(--paper) 60%, transparent); }
+.view-review[data-type="highlights"] .review-ask { background: var(--paper); color: var(--ink); }
+.view-review[data-type="highlights"] .review-ask:hover:not(:disabled) { background: var(--surface); }
+.app[data-review-tone="dark"] .topbar .icon-button { color: var(--paper); }
 .review-hint { position: absolute; left: 24px; right: 24px; bottom: 14px; margin: 0; text-align: center; font-size: 12.5px; color: var(--muted); pointer-events: none; }
 .review-ask { position: absolute; z-index: 3; left: 50%; bottom: 64px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 10px; height: var(--ctl); padding: 0 22px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 14px; font-weight: 400; white-space: nowrap; box-shadow: 0 10px 28px rgba(29, 28, 26, 0.28); }
 .review-ask:hover:not(:disabled) { background: var(--ink-hover); }

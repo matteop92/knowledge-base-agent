@@ -108,6 +108,13 @@ class ReviewScreenTests(unittest.TestCase):
         self.assertEqual(out["first"], {"posts": 1, "logged": False})
         self.assertEqual((out["posts"], out["logged"]), (2, True))
 
+    def test_each_source_type_colours_its_screen_and_names_itself_and_its_source(self) -> None:
+        out = run("typesStyleTheScreen")
+        self.assertEqual(out["classes"], [["is-highlights"], ["is-quote"], ["is-note"], ["is-post"], ["is-note"]])
+        self.assertEqual(out["kickers"], ["Highlights", "Quote", "Note", "Post", "Note"])
+        self.assertEqual(out["source"], ["Title 1", "Ada Stone"])
+        self.assertEqual((out["type"], out["tone"]), ("post", "light"))
+
 
 if __name__ == "__main__":
     unittest.main()

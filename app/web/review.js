@@ -17,6 +17,10 @@
   const HINT_PASSAGES = 5;
   const MAX_HELD = 30;          // the most keys the server accepts in one request
 
+  // What kind of source a passage comes from sets the colour of the whole screen and its label (Sources uses the same looks).
+  const TYPES = { highlights: ["Highlights", "dark"], quote: ["Quote", "light"], note: ["Note", "light"], post: ["Post", "light"] };
+  const typeOf = (passage) => (Object.hasOwn(TYPES, passage.type) ? passage.type : "note");
+
   const view = { pages: [], current: 0, fetching: false, failed: false, stalled: false, loaded: false, hinted: 0,
     askOpen: false, observer: null, byElement: new Map() };
 
@@ -101,14 +105,17 @@
     el.setAttribute("aria-roledescription", "passage");
     el.setAttribute("aria-label", passage.title);
     el.dataset.key = passage.passage_key;
-    const page = { passage, el, parts: [], part: 0, logged: false, timer: null };
+    const type = typeOf(passage);
+    el.classList.add(`is-${type}`);
+    const page = { passage, type, el, parts: [], part: 0, logged: false, timer: null };
     const bars = h("div", "review-bars");
+    const kicker = h("div", "review-kicker", TYPES[type][0]);
     const body = h("div", "review-body");
     body.append(h("div", "review-text"), h("div", "review-note"));
     const source = h("div", "review-source");
-    source.append(h("span", "review-source-title", passage.title));
+    source.append(h("div", "review-source-title", passage.title));
     const byline = [passage.author, passage.locator].filter(Boolean).join(" · ");
-    if (byline) source.append(h("span", "review-source-author", byline));
+    if (byline) source.append(h("div", "review-source-author", byline));
     const prev = h("button", "icon-button review-arrow review-prev");
     const next = h("button", "icon-button review-arrow review-next");
     for (const [button, label, name] of [[prev, "Previous part", "i-back"], [next, "Next part", "i-back"]]) {
@@ -119,7 +126,7 @@
     next.classList.add("is-forward");
     prev.addEventListener("click", (event) => { event.stopPropagation(); turn(page, -1); });
     next.addEventListener("click", (event) => { event.stopPropagation(); turn(page, 1); });
-    el.append(bars, body, source, prev, next);
+    el.append(bars, kicker, body, source, prev, next);
     el.addEventListener("click", (event) => tap(page, event));
     layout(page);
     return page;
@@ -298,6 +305,7 @@
           view.current = index;
           page.announced = true;
           hideAsk();
+          syncTone(page);
           $("review-live").textContent = `${page.passage.title}${page.passage.author ? `, ${page.passage.author}` : ""}`;
         }
         syncHint();
@@ -349,9 +357,16 @@
     event.preventDefault();
   }
 
+  // The page behind the controls over it (menu button, hint, Ask button) is dark for highlights, light otherwise.
+  function syncTone(page) {
+    $("review").dataset.type = page.type;
+    $("app").dataset.reviewTone = TYPES[page.type][1];
+  }
+
   // Screen ------------------------------------------------------------------------------------------
   function show() {
     syncHint();
+    if (view.pages[view.current]) syncTone(view.pages[view.current]);
     if (!view.pages.length) {
       if (!view.fetching) fetchMore();
       return undefined;
@@ -363,6 +378,7 @@
 
   function leave() {
     hideAsk();
+    delete $("app").dataset.reviewTone;
     for (const page of view.pages) stopDwell(page);
   }
 

@@ -18,7 +18,7 @@ function passage(n, extra = {}) {
 
 function boot({ phone = true, replies = [] } = {}) {
   const els = {};
-  for (const id of ["review", "review-pager", "review-state", "review-hint", "review-ask", "review-live"]) {
+  for (const id of ["app", "review", "review-pager", "review-state", "review-hint", "review-ask", "review-live"]) {
     els[id] = new El("div"); els[id].id = id;
   }
   els["review-state"].hidden = true; els["review-hint"].hidden = true; els["review-ask"].hidden = true;
@@ -205,6 +205,17 @@ const scenarios = {
     const first = { posts: app.calls.api.filter(([m]) => m === "POST").length, logged: page(app, 0).logged };
     app.seen(0, 0); app.seen(0); app.fire(); await app.flush();
     return { first, posts: app.calls.api.filter(([m]) => m === "POST").length, logged: page(app, 0).logged };
+  },
+  async typesStyleTheScreen() {
+    const kinds = ["highlights", "quote", "note", "post", "podcast"];
+    const app = boot({ replies: [{ passages: kinds.slice(0, 3).map((t, i) => passage(i + 1, { type: t })) }, { passages: kinds.slice(3).map((t, i) => passage(i + 4, { type: t })) }] });
+    app.screen.show(); await app.flush();
+    app.seen(0); await app.flush(); app.seen(1); await app.flush(); app.seen(3); await app.flush();
+    const pages = app.screen.pages();
+    return { classes: pages.map((p) => p.el.className.split(" ").filter((c) => c.startsWith("is-") && c !== "is-short")),
+      kickers: pages.map((p) => p.el.querySelector(".review-kicker").textContent),
+      source: pages[0].el.querySelectorAll(".review-source-title").map((e) => e.textContent).concat(pages[0].el.querySelectorAll(".review-source-author").map((e) => e.textContent)),
+      type: app.els["review"].dataset.type, tone: app.els["app"].dataset.reviewTone };
   },
   async hintShowsOnTheFirstPassagesOnly() {
     const app = boot({ replies: [{ passages: [passage(1)] }] });
