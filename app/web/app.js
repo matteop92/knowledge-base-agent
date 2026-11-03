@@ -920,7 +920,7 @@ function setView(view) {
   return new Promise((resolve) => closeSheet(() => resolve(applyView(view))));
 }
 
-const SHEET_TITLES = { source: "Source", gaps: "What’s missing", feedback: "What was wrong?", tags: "Notes for this tag", filters: "Filters" };
+const SHEET_TITLES = { source: "Source", gaps: "What’s missing", feedback: "What was wrong?", tags: "Notes for this tag", filters: "Filters", picks: "In Review" };
 // `mark` says what the open sheet is showing (a source, a turn's gaps, a tag), so syncActive can fill the matching controls.
 const sheet = { open: false, closing: false, opener: null, name: null, serial: 0, afterClose: [], mark: null };
 // Source, Gaps and a tag’s notes swap in place while the desktop panel stays open; the other sheets never do.

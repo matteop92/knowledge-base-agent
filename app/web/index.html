@@ -294,6 +294,7 @@
           <header class="reader-bar">
             <button type="button" id="reader-back" class="reader-link"><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg><span>Sources</span></button>
             <span class="reader-spacer"></span>
+            <button type="button" id="reader-picks" class="reader-link reader-picks" aria-haspopup="dialog" hidden><svg class="icon" aria-hidden="true"><use href="#i-quotes"/></svg><span id="reader-picks-label"></span></button>
             <a id="reader-obsidian" class="reader-link reader-obsidian open-obsidian" href="#" aria-label="Open in Obsidian" hidden><svg class="icon" aria-hidden="true"><use href="#i-obsidian"/></svg><span>Open in Obsidian</span></a>
             <button type="button" id="reader-ask" class="primary reader-ask"><svg class="icon" aria-hidden="true"><use href="#i-ask"/></svg><span>Ask about this</span></button>
           </header>
@@ -312,6 +313,13 @@
               <div id="reader-body" class="reader-body"></div>
               <p id="reader-original" class="reader-original" hidden><a id="reader-original-link" href="#" target="_blank" rel="noopener noreferrer">Read the original</a></p>
             </article>
+          </div>
+          <div id="pick-action" class="pick-action" hidden>
+            <button type="button" id="pick-action-button" class="pick-action-button"></button>
+          </div>
+          <div id="pick-toast" class="pick-toast" role="status" aria-live="polite" hidden>
+            <span id="pick-toast-text" class="pick-toast-text"></span>
+            <button type="button" id="pick-toast-undo" class="pick-toast-undo" hidden>Undo</button>
           </div>
           <form id="reader-askbox" class="reader-askbox">
             <label for="reader-ask-input" class="sr-only">Ask about this</label>
@@ -342,6 +350,7 @@
         <section data-sheet="feedback" hidden></section>
         <section data-sheet="tags" hidden></section>
         <section data-sheet="filters" hidden></section>
+        <section data-sheet="picks" hidden></section>
       </div>
     </div>
   </div>

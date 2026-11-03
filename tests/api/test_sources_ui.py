@@ -250,5 +250,76 @@ class SourceSurfaceTests(unittest.TestCase):
             self.assertIn(f'id="{element_id}"', page, element_id)
 
 
+@unittest.skipUnless(shutil.which("node"), "needs node")
+class AddToReviewTests(unittest.TestCase):
+    def test_a_mouse_selection_inside_one_paragraph_shows_the_pill_and_one_across_two_shows_nothing(self) -> None:
+        out = run("pickPill")
+        self.assertEqual(out["shown"], {"hidden": False, "label": "Add to Review", "pill": True, "left": "120px", "top": "152px"})
+        self.assertTrue(out["across"])
+        self.assertTrue(out["cleared"])
+
+    def test_on_touch_the_bar_waits_for_the_selection_to_settle_and_hides_while_it_changes(self) -> None:
+        out = run("pickBar")
+        self.assertTrue(out["waiting"])
+        self.assertEqual(out["shown"], {"hidden": False, "bar": True})
+        self.assertTrue(out["hiddenWhileChanging"])
+        self.assertTrue(out["againShown"])
+
+    def test_adding_sends_the_block_text_and_occurrence_then_draws_the_fill_and_the_confirmation(self) -> None:
+        out = run("pickAdd")
+        self.assertEqual(out["body"], {"source_id": "id-4", "block": 2, "text": "beta", "occurrence": 1})
+        self.assertEqual((out["marks"], out["whole"]), (["beta"], "Alpha beta gamma delta"))
+        self.assertEqual((out["toast"], out["undo"], out["toastShown"]), ("Added to Review", True, True))
+        self.assertEqual((out["control"], out["controlHidden"], out["actionHidden"]), ("In Review · 1", False, True))
+
+    def test_the_occurrence_counts_matches_up_to_the_selection(self) -> None:
+        self.assertEqual(run("pickOccurrence")["occurrence"], 2)
+
+    def test_undo_deletes_the_pick_and_removes_the_fill(self) -> None:
+        out = run("pickUndo")
+        self.assertEqual(out["deleted"], ["DELETE /api/review/picks/p1"])
+        self.assertEqual((out["marks"], out["whole"], out["controlHidden"]), (0, "Alpha beta gamma delta", True))
+        self.assertEqual((out["toast"], out["undo"]), ("Removed from Review", False))
+
+    def test_inside_a_pick_offers_remove_and_overlapping_one_offers_add(self) -> None:
+        out = run("pickInsideAndOverlap")
+        self.assertEqual((out["inside"], out["overlap"]), ("Remove from Review", "Add to Review"))
+        self.assertEqual(out["marks"], ["beta gamma"])
+
+    def test_a_merged_pick_replaces_the_picks_it_covers(self) -> None:
+        out = run("pickMerge")
+        self.assertEqual((out["marks"], out["control"]), (["Alpha beta gamma"], "In Review · 1"))
+
+    def test_the_in_review_panel_lists_picks_on_demand_and_remove_clears_the_fill(self) -> None:
+        out = run("pickSheet")
+        self.assertEqual((out["closed"], out["opened"]), (0, ["picks"]))
+        self.assertEqual((out["rows"], out["afterRemove"], out["marks"], out["control"]), (["Alpha", "gamma"], 1, ["gamma"], "In Review · 1"))
+        self.assertEqual(out["deleted"], ["DELETE /api/review/picks/p1"])
+
+    def test_a_failed_add_shows_the_message_and_draws_nothing(self) -> None:
+        out = run("pickFailed")
+        self.assertEqual(out["toast"], "those words are not in the source; select them again")
+        self.assertEqual((out["undo"], out["marks"], out["controlHidden"]), (False, 0, True))
+
+    def test_a_selection_in_a_highlights_note_sends_the_notes_block_index(self) -> None:
+        out = run("pickInNote")
+        self.assertEqual((out["block"], out["noteBlock"], out["textBlock"]), (5, "5", "4"))
+
+    def test_picks_are_drawn_when_the_source_opens(self) -> None:
+        out = run("pickMarksOnLoad")
+        self.assertEqual((out["marks"], out["whole"], out["control"], out["hidden"], out["none"]),
+                         (["beta"], "Alpha beta gamma delta", "In Review · 1", False, True))
+
+    def test_the_page_has_the_confirmation_the_picks_panel_and_the_review_button(self) -> None:
+        page = (WEB / "index.html").read_text(encoding="utf-8")
+        self.assertRegex(page, r'id="pick-toast"[^>]*role="status"[^>]*aria-live="polite"')
+        self.assertRegex(page, r'id="pick-toast-undo"')
+        self.assertIn('<section data-sheet="picks" hidden></section>', page)
+        self.assertIn('id="reader-picks"', page)
+        self.assertIn("Open in Obsidian", page)  # the reader keeps its own controls
+        self.assertIn('id="reader-ask"', page)
+        self.assertIn('picks: "In Review"', (WEB / "app.js").read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     unittest.main()

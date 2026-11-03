@@ -35,6 +35,26 @@ class El {
   focus() { documentStub.activeElement = this; }
   scrollIntoView() {}
   remove() { if (this.parent) this.parent.children = this.parent.children.filter((c) => c !== this); }
+  get parentElement() { return this.parent; }
+  get nodeType() { return this.tagName === "#text" ? 3 : 1; }
+  normalize() {
+    const merged = [];
+    for (const child of this.children) {
+      const last = merged[merged.length - 1];
+      if (last && last.tagName === "#text" && child.tagName === "#text") last._text += child._text; else merged.push(child);
+    }
+    this.children = merged;
+  }
+  replaceWith(...nodes) {
+    const siblings = this.parent.children;
+    for (const n of nodes) n.parent = this.parent;
+    siblings.splice(siblings.indexOf(this), 1, ...nodes);
+  }
+  closest(selector) {
+    const data = /^\[data-([\w-]+)\]$/.exec(selector);
+    for (let node = this; node; node = node.parent) if (data && node.dataset[data[1]] !== undefined) return node;
+    return null;
+  }
   requestSubmit() { this.dispatch("submit"); }
   all() { return this.children.flatMap((c) => [c, ...c.all()]); }
   matches(compound) {
@@ -59,12 +79,15 @@ class El {
   getClientRects() { return [1]; }
 }
 
+const selection = { current: null };
 const documentStub = { activeElement: null, listeners: {}, createElement: (tag) => new El(tag),
+  createRange: () => ({ selectNodeContents(el) { this.el = el; }, setEnd(container, offset) { this.offset = offset; },
+    toString() { return this.el.textContent.slice(0, this.offset); } }),
   createTextNode: (text) => Object.assign(new El("#text"), { _text: String(text) }),
   createDocumentFragment: () => Object.assign(new El("#fragment"), { fragment: true }),
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }, querySelector: () => null, querySelectorAll: () => [], getElementById: () => null, head: null };
 
-function boot({ phone = false, sources = [], detail = null, detailStatus = 200 } = {}) {
+function boot({ phone = false, sources = [], detail = null, detailStatus = 200, coarse = false, handler = null } = {}) {
   const page = fs.readFileSync("app/web/index.html", "utf8");
   const els = {};
   for (const match of page.matchAll(/<(\w+)([^>]*?)\sid="([\w-]+)"([^>]*)>/g)) {
@@ -76,23 +99,27 @@ function boot({ phone = false, sources = [], detail = null, detailStatus = 200 }
   child(els["sources-empty"], "p", "sources-empty-title"); child(els["sources-empty"], "p", "sources-empty-sub");
   child(els["source-reader"], "div", "reader-scroll");
   const filters = child(els["sheet"], "section", ""); filters.dataset.sheet = "filters";
+  const picksSection = child(els["sheet"], "section", ""); picksSection.dataset.sheet = "picks";
   els["sources-input"].value = "";
   const calls = { pushes: [], backs: 0, apis: [], asked: [], scopes: [], sheets: [] };
   const sheetState = { open: false, name: null };
-  const window_ = { matchMedia: () => ({ matches: false, addEventListener() {} }) };
+  const timers = [];
+  const window_ = { innerWidth: 1000, matchMedia: (query) => ({ matches: String(query).includes("coarse") ? coarse : false, addEventListener() {} }) };
   const phoneQuery = { matches: phone, addEventListener() {} };
   const context = {
-    console, document: documentStub, window: window_, setTimeout, clearTimeout, history: { pushState: (s) => calls.pushes.push(s), back: () => { calls.backs += 1; } },
+    console, document: documentStub, window: window_, getSelection: () => selection.current,
+    setTimeout: (fn, ms) => { const timer = { fn, ms, live: true }; timers.push(timer); return timer; }, clearTimeout: (timer) => { if (timer) timer.live = false; }, history: { pushState: (s) => calls.pushes.push(s), back: () => { calls.backs += 1; } },
     $: (id) => { if (!els[id]) throw new Error(`no element ${id}`); return els[id]; },
     icon: (name) => { const el = new El("svg"); el.className = "icon"; el.dataset.name = name; return el; },
     phone: phoneQuery, sheet: sheetState, state: { view: "sources" },
-    api: async (method, path) => {
+    api: async (method, path, body) => {
       calls.apis.push(`${method} ${path}`);
+      if (handler) { const reply = await handler(method, path, body); if (reply !== undefined) return reply; }
       if (path === "/api/sources") return { sources, vault_name: "Vault" };
       if (detailStatus !== 200) { const e = new Error("x"); e.status = detailStatus; throw e; }
       return detail || { body: [], source_url: null };
     },
-    openSheet: (name, opener, fill) => { fill(filters); sheetState.open = true; sheetState.name = name; calls.sheets.push(name); },
+    openSheet: (name, opener, fill) => { fill(name === "picks" ? picksSection : filters); sheetState.open = true; sheetState.name = name; calls.sheets.push(name); },
     closeSheet: () => { sheetState.open = false; }, newQuestion: () => {}, setScope: (scope) => calls.scopes.push(scope),
     ask: (q) => calls.asked.push(q), announce() {},
   };
@@ -102,7 +129,8 @@ function boot({ phone = false, sources = [], detail = null, detailStatus = 200 }
   for (const file of ["app/web/source-filter.js", "app/web/reader-blocks.js", "app/web/sources.js"]) vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
   for (const fn of documentStub.listeners.DOMContentLoaded || []) fn();
   const flush = async () => { for (let i = 0; i < 6; i++) await new Promise((r) => setImmediate(r)); };
-  return { els, calls, context, flush, screen: context.window.sourcesScreen, sheetState };
+  const settle = () => { const due = timers.filter((t) => t.live && t.ms === 300); for (const t of due) { t.live = false; t.fn(); } return due.length; };
+  return { els, calls, context, flush, screen: context.window.sourcesScreen, sheetState, timers, settle };
 }
 
 const cards = (app) => app.els["sources-list"].children.map((item) => item.children[0].children[0]);
@@ -121,6 +149,29 @@ const mixed = () => [
 ];
 const text = (el) => el.textContent;
 const has = (el, cls) => el.all().some((c) => c.classList.contains(cls));
+
+// Add to Review ----------------------------------------------------------------------------------
+const para = (block, words) => ({ kind: "paragraph", text: words, block });
+const paragraphs = (app) => app.els["reader-body"].querySelectorAll("p.r-text");
+const changed = () => { for (const fn of documentStub.listeners.selectionchange || []) fn(); };
+// A selection of `words` inside `el`, which has `before` ahead of it; `end` is the element it ends in.
+function select(el, words, before, end = el) {
+  const range = { startContainer: el, endContainer: end, startOffset: before.length, toString: () => words,
+    getBoundingClientRect: () => ({ left: 100, top: 200, width: 40 }) };
+  selection.current = { isCollapsed: !words, rangeCount: 1, getRangeAt: () => range, removeAllRanges() { selection.current = null; } };
+  changed();
+}
+// The reader open on a source whose detail has the given body and picks. POSTs are recorded as app.posted.
+async function openPicks({ body, picks = [], coarse = false, handler = null }) {
+  const posted = [];
+  const app = boot({ sources: mixed(), coarse, detail: { source_url: null, body, picks },
+    handler: (method, path, data) => { if (method === "POST") posted.push(data); return handler ? handler(method, path, data) : undefined; } });
+  app.posted = posted;
+  app.screen.show(); await app.flush();
+  links(app)[3].click(); await app.flush();
+  selection.current = null;
+  return app;
+}
 
 const scenarios = {
   async sevenCards() {
@@ -375,6 +426,120 @@ const scenarios = {
     links(app)[3].click(); await app.flush();
     app.els["reader-ask-input"].value = "what is it?"; app.els["reader-askbox"].dispatch("submit");
     return { first, second: { scopes: app.calls.scopes.slice(), asked: app.calls.asked.slice() }, hint: app.els["reader-ask-input"].placeholder };
+  },
+  async pickPill() {
+    const app = await openPicks({ body: [para(2, "Alpha beta gamma delta"), para(3, "Second paragraph here")] });
+    const [one, two] = paragraphs(app);
+    select(one, "beta", "Alpha ");
+    const shown = { hidden: app.els["pick-action"].hidden, label: text(app.els["pick-action-button"]), pill: app.els["pick-action"].classList.contains("is-pill"),
+      left: app.els["pick-action"].style.left, top: app.els["pick-action"].style.top };
+    select(one, "gamma delta Second", "Alpha beta ", two);
+    changed();
+    const across = app.els["pick-action"].hidden;
+    selection.current = null; changed();
+    return { shown, across, cleared: app.els["pick-action"].hidden };
+  },
+  async pickBar() {
+    const app = await openPicks({ coarse: true, body: [para(2, "Alpha beta gamma delta")] });
+    const [one] = paragraphs(app);
+    select(one, "beta", "Alpha ");
+    const waiting = app.els["pick-action"].hidden;
+    const settled = app.settle();
+    const shown = { hidden: app.els["pick-action"].hidden, bar: app.els["pick-action"].classList.contains("is-bar") };
+    select(one, "beta gamma", "Alpha ");
+    const hiddenWhileChanging = app.els["pick-action"].hidden;
+    app.settle();
+    return { waiting, settled, shown, hiddenWhileChanging, againShown: !app.els["pick-action"].hidden };
+  },
+  async pickAdd() {
+    const reply = { id: "p1", block: 2, start: 6, end: 10, text: "beta" };
+    const app = await openPicks({ body: [para(2, "Alpha beta gamma delta")], handler: (m, path, body) => (m === "POST" ? reply : undefined) });
+    const [one] = paragraphs(app);
+    select(one, "beta", "Alpha ");
+    app.els["pick-action-button"].click();
+    await app.flush();
+    const post = app.calls.apis.indexOf("POST /api/review/picks");
+    return { post, body: app.posted[0], marks: one.querySelectorAll("mark.r-pick").map(text), toast: text(app.els["pick-toast-text"]),
+      undo: !app.els["pick-toast-undo"].hidden, toastShown: !app.els["pick-toast"].hidden, control: text(app.els["reader-picks-label"]),
+      controlHidden: app.els["reader-picks"].hidden, actionHidden: app.els["pick-action"].hidden, whole: one.textContent };
+  },
+  async pickOccurrence() {
+    const app = await openPicks({ body: [para(2, "echo and echo and echo")], handler: (m) => (m === "POST" ? { id: "p1", block: 2, start: 9, end: 13, text: "echo" } : undefined) });
+    const [one] = paragraphs(app);
+    select(one, "echo", "echo and ");
+    app.els["pick-action-button"].click();
+    await app.flush();
+    return app.posted[0];
+  },
+  async pickUndo() {
+    const reply = { id: "p1", block: 2, start: 6, end: 10, text: "beta" };
+    const app = await openPicks({ body: [para(2, "Alpha beta gamma delta")], handler: (m) => (m === "POST" ? reply : m === "DELETE" ? {} : undefined) });
+    const [one] = paragraphs(app);
+    select(one, "beta", "Alpha ");
+    app.els["pick-action-button"].click();
+    await app.flush();
+    app.els["pick-toast-undo"].click();
+    await app.flush();
+    return { deleted: app.calls.apis.filter((a) => a.startsWith("DELETE")), marks: one.querySelectorAll("mark.r-pick").length, whole: one.textContent,
+      toast: text(app.els["pick-toast-text"]), undo: !app.els["pick-toast-undo"].hidden, controlHidden: app.els["reader-picks"].hidden };
+  },
+  async pickInsideAndOverlap() {
+    const picks = [{ id: "p1", block: 2, start: 6, end: 16, text: "beta gamma" }];
+    const app = await openPicks({ body: [para(2, "Alpha beta gamma delta")], picks });
+    const [one] = paragraphs(app);
+    select(one, "gamma", "Alpha beta ");
+    const inside = text(app.els["pick-action-button"]);
+    select(one, "gamma delta", "Alpha beta ");
+    const overlap = text(app.els["pick-action-button"]);
+    return { inside, overlap, marks: one.querySelectorAll("mark.r-pick").map(text) };
+  },
+  async pickMerge() {
+    const picks = [{ id: "p1", block: 2, start: 0, end: 10, text: "Alpha beta" }];
+    const merged = { id: "p2", block: 2, start: 0, end: 16, text: "Alpha beta gamma" };
+    const app = await openPicks({ body: [para(2, "Alpha beta gamma delta")], picks, handler: (m) => (m === "POST" ? merged : undefined) });
+    const [one] = paragraphs(app);
+    select(one, "beta gamma", "Alpha ");
+    app.els["pick-action-button"].click();
+    await app.flush();
+    return { marks: one.querySelectorAll("mark.r-pick").map(text), control: text(app.els["reader-picks-label"]) };
+  },
+  async pickSheet() {
+    const picks = [{ id: "p1", block: 2, start: 0, end: 5, text: "Alpha" }, { id: "p2", block: 2, start: 11, end: 16, text: "gamma" }];
+    const app = await openPicks({ body: [para(2, "Alpha beta gamma delta")], picks, handler: (m) => (m === "DELETE" ? {} : undefined) });
+    const [one] = paragraphs(app);
+    const closed = app.calls.sheets.length;
+    app.els["reader-picks"].click();
+    const section = app.els["sheet"].querySelector("section.picks-test") || app.els["sheet"].children[1];
+    const rows = section.querySelectorAll("li.pick-row").map((li) => text(li.querySelector(".pick-row-text")));
+    section.querySelectorAll("li.pick-row")[0].querySelector("button").click();
+    await app.flush();
+    return { closed, opened: app.calls.sheets, rows, afterRemove: section.querySelectorAll("li.pick-row").length, marks: one.querySelectorAll("mark.r-pick").map(text),
+      control: text(app.els["reader-picks-label"]), deleted: app.calls.apis.filter((a) => a.startsWith("DELETE")) };
+  },
+  async pickFailed() {
+    const failure = Object.assign(new Error("those words are not in the source; select them again"), { status: 400 });
+    const app = await openPicks({ body: [para(2, "Alpha beta gamma delta")], handler: (m) => { if (m === "POST") throw failure; } });
+    const [one] = paragraphs(app);
+    select(one, "beta", "Alpha ");
+    app.els["pick-action-button"].click();
+    await app.flush();
+    return { toast: text(app.els["pick-toast-text"]), undo: !app.els["pick-toast-undo"].hidden, marks: one.querySelectorAll("mark.r-pick").length, controlHidden: app.els["reader-picks"].hidden };
+  },
+  async pickInNote() {
+    const body = [{ kind: "highlight", text: "Keep it small.", page_reference: "Page 12", personal_note: "Try it now.", block: 4, note_block: 5 }];
+    const app = await openPicks({ body, handler: (m) => (m === "POST" ? { id: "p1", block: 5, start: 4, end: 6, text: "it" } : undefined) });
+    const note = app.els["reader-body"].querySelector(".r-note");
+    select(note, "it", "Try ");
+    app.els["pick-action-button"].click();
+    await app.flush();
+    return { block: app.posted[0].block, noteBlock: note.dataset.block, textBlock: app.els["reader-body"].querySelector(".r-text").dataset.block };
+  },
+  async pickMarksOnLoad() {
+    const picks = [{ id: "p1", block: 2, start: 6, end: 10, text: "beta" }];
+    const app = await openPicks({ body: [para(2, "Alpha beta gamma delta")], picks });
+    const [one] = paragraphs(app);
+    return { marks: one.querySelectorAll("mark.r-pick").map(text), whole: one.textContent, control: text(app.els["reader-picks-label"]), hidden: app.els["reader-picks"].hidden,
+      none: (await openPicks({ body: [para(2, "Alpha")] })).els["reader-picks"].hidden };
   },
   async booksLeaveTheApp() {
     const app = boot({ sources: mixed() }); app.screen.show(); await app.flush();
