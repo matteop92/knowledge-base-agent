@@ -20,6 +20,7 @@ from app.api.answers import AnswerEngine, AnswerJobs, OpenRouterAnswerEngine
 from app.api.capture import CaptureJobs, Classifier, Extractor, ScreenshotInput, YouTubeInput
 from app.api.auth import COOKIE_NAME, AuthError, RateLimiter, Session, SessionStore, SupabaseAuth
 from app.api.conversations import ConversationError, ConversationStore
+from app.api.review import ReviewStore
 from app.api.scheduler import IndexScheduler, vault_settings_from_env
 from app.api.settings import Settings
 from app.api.sources import SourceStore
@@ -54,6 +55,11 @@ class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=4000)
     # Limit the answer to this one source (the Sources page's "Ask about this").
     source_id: str | None = Field(default=None, max_length=64)
+
+
+class ShownRequest(BaseModel):
+    passage_key: str = Field(max_length=64)
+    round: int = Field(ge=1, le=1_000_000)
 
 
 class FeedbackRequest(BaseModel):
@@ -95,6 +101,7 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
     app.state.indexer = indexer
     tags = TagStore(connect, settings.vault_name)
     sources = SourceStore(connect, settings.vault_name)
+    review = ReviewStore(connect)
     captures = CaptureJobs(connect, settings, classifier, indexer, extractor=extractor, transcriber=transcriber)
     app.state.captures = captures
 
@@ -316,6 +323,15 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
     @app.get("/api/sources/{document_id}")
     def source_detail(document_id: str, _: Session = Depends(session)):
         return sources.detail(document_id)
+
+    @app.get("/api/review/next")
+    def review_next(count: int = 3, held: str = "", _: Session = Depends(session)):
+        return {"passages": review.next(count, held)}
+
+    @app.post("/api/review/shown")
+    def review_shown(body: ShownRequest, _: Session = Depends(session)):
+        review.shown(body.passage_key, body.round)
+        return {"status": "ok"}
 
     @app.get("/api/sources/{document_id}/images/{index}")
     def source_image(document_id: str, index: int, renewal: Response, r: str = "", _: Session = Depends(session)):

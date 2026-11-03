@@ -2,35 +2,13 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
-import tempfile
 import unittest
-import uuid
-from pathlib import Path
 
 import psycopg
-from psycopg.types.json import Jsonb
 
-from app.ingestion.router import route_source
-from app.ingestion.source_reader import capture_source
 from tests.storage.database import apply_migrations
-
-PROFILE = "review-pool"
-SPEC = "e" * 64
-
-
-def highlights_file(*items: tuple[str, str | None]) -> str:
-    parts = ["---\ntitle: Book Notes\nauthor: Ada Stone\n---\n# Book Notes\n"]
-    for index, (text, note) in enumerate(items, 1):
-        parts.append(f"**Highlight p. {index}**\n{text}\n")
-        if note:
-            parts.append(f"**My note**\n{note}\n")
-    return "\n".join(parts)
-
-
-def words(count: int, stem: str = "word") -> str:
-    return " ".join(f"{stem}{n}" for n in range(count))
+from tests.storage.review_fixture import PoolBuilder, highlights_file, words
 
 
 @unittest.skipUnless(os.getenv("KNOWLEDGE_TEST_DATABASE_URL"), "set disposable KNOWLEDGE_TEST_DATABASE_URL")
@@ -39,11 +17,7 @@ class ReviewPoolTest(unittest.TestCase):
     def setUpClass(cls):
         cls.admin = psycopg.connect(os.environ["KNOWLEDGE_TEST_DATABASE_URL"], autocommit=True)
         apply_migrations(cls.admin.cursor())
-        cls.admin.execute("""insert into knowledge.embedding_specs (spec_id, provider, model, model_version, dimensions,
-            distance_metric, input_recipe_version, chunking_version, payload)
-            values (%s,'fixture','synthetic','1',3,'cosine','raw-v1','c1','{}') on conflict do nothing""", (SPEC,))
-        cls.admin.execute("""insert into knowledge.profiles (profile_id, variant, chunking_version, spec_id, text_config)
-            values (%s,'fixed_raw','c1',%s,'simple') on conflict do nothing""", (PROFILE, SPEC))
+        cls.pool = PoolBuilder(cls.admin)
         cls.conn = psycopg.connect(os.environ["KNOWLEDGE_TEST_DATABASE_URL"], autocommit=True)
         cls.conn.execute("set role knowledge_runtime")
 
@@ -53,37 +27,11 @@ class ReviewPoolTest(unittest.TestCase):
         cls.admin.close()
 
     def setUp(self) -> None:
-        self.admin.execute("update knowledge.corpus_state set profile_id=null where singleton=true")
-        self.admin.execute("truncate knowledge.documents cascade")
-        self.admin.execute("update knowledge.corpus_state set profile_id=%s where singleton=true", (PROFILE,))
-        self.folder = tempfile.TemporaryDirectory()
-        self.addCleanup(self.folder.cleanup)
-        self.documents: dict[str, str] = {}
+        self.pool.reset()
+        self.addCleanup(self.pool.close)
 
     def add(self, path: str, text: str) -> str:
-        """Parse a file with the real parsers and publish it as the active run of a new document."""
-        base = Path(self.folder.name)
-        source = base / "vault" / path
-        source.parent.mkdir(parents=True, exist_ok=True)
-        source.write_bytes(text.encode("utf-8"))
-        parsed = route_source(capture_source(base / "vault", path, base / "runs"))
-        document = str(uuid.uuid5(uuid.NAMESPACE_URL, path))
-        self.admin.execute("insert into knowledge.documents values (%s,'primary',%s) on conflict do nothing", (document, path))
-        self.publish(document, parsed)
-        self.documents[path] = document
-        return document
-
-    def publish(self, document: str, parsed) -> str:
-        run_id = f"run-{uuid.uuid4().hex}"
-        raw = parsed.source_text.encode("utf-8")
-        self.admin.execute("""insert into knowledge.runs (run_id, document_id, source_sha256, source_bytes, source_text,
-            parsed, parser_version, manifest) values (%s,%s,%s,%s,%s,%s,%s,'{}')""",
-                           (run_id, document, hashlib.sha256(raw).hexdigest(), raw, parsed.source_text,
-                            Jsonb(parsed.model_dump(mode="json")), parsed.parser_version))
-        self.admin.execute("""insert into knowledge.active_runs (profile_id, document_id, run_id, selection)
-            values (%s,%s,%s,'{}') on conflict (profile_id, document_id) do update set run_id=excluded.run_id""",
-                           (PROFILE, document, run_id))
-        return run_id
+        return self.pool.add(path, text)
 
     def rows(self, document: str | None = None):
         sql = "select kind, origin, text, note, passage_key, type, title, author, locator, start_char, end_char from knowledge.feed_passages"
@@ -159,9 +107,7 @@ class ReviewPoolTest(unittest.TestCase):
     def test_a_new_run_replaces_the_old_runs_rows(self) -> None:
         path = "Knowledge/Book Highlights/Book.md"
         doc = self.add(path, highlights_file(("Old thought.", None)))
-        base = Path(self.folder.name)
-        (base / "vault" / path).write_bytes(highlights_file(("New thought.", None)).encode("utf-8"))
-        self.publish(doc, route_source(capture_source(base / "vault", path, base / "runs2")))
+        self.add(path, highlights_file(("New thought.", None)))
         self.assertEqual([r[2] for r in self.rows(doc)], ["New thought."])
 
     def test_a_round_logs_a_passage_once(self) -> None:
