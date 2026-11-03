@@ -18,10 +18,10 @@ function passage(n, extra = {}) {
 
 function boot({ phone = true, replies = [] } = {}) {
   const els = {};
-  for (const id of ["app", "review", "review-pager", "review-state", "review-hint", "review-ask", "review-live"]) {
+  for (const id of ["app", "review", "review-pager", "review-state", "review-ask", "review-live"]) {
     els[id] = new El("div"); els[id].id = id;
   }
-  els["review-state"].hidden = true; els["review-hint"].hidden = true; els["review-ask"].hidden = true;
+  els["review-state"].hidden = true; els["review-ask"].hidden = true;
   const calls = { api: [], asked: [], timers: [] };
   const queue = replies.slice();
   const stored = {};
@@ -241,15 +241,6 @@ const scenarios = {
     app.seen(1); await app.flush();
     const after = pager.children.map((c) => c.className.includes("review-tail") ? "tail" : "page");
     return { sameTail: pager.children[pager.children.length - 1] === tail, order: after };
-  },
-  async hintShowsOnTheFirstPassagesOnly() {
-    const app = boot({ replies: [{ passages: [passage(1)] }] });
-    app.stored["ka-review-hint"] = "5";
-    app.screen.show(); await app.flush();
-    const late = app.els["review-hint"].hidden;
-    const fresh = boot({ replies: [{ passages: [passage(1)] }] });
-    fresh.screen.show(); await fresh.flush();
-    return { lateHidden: late, freshHidden: fresh.els["review-hint"].hidden, text: fresh.els["review-hint"].textContent };
   },
 };
 

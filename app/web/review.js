@@ -13,8 +13,6 @@
   const AHEAD = 2;              // fetch more when fewer than this many passages are left after the current one
   const DWELL_MS = 1000;
   const VISIBLE = 0.6;          // share of a page that must be on screen
-  const HINT_KEY = "ka-review-hint";
-  const HINT_PASSAGES = 5;
   const WHEEL_QUIET_MS = 160;   // no wheel events for this long ends a gesture
   const MAX_HELD = 30;          // the most keys the server accepts in one request
 
@@ -22,7 +20,7 @@
   const TYPES = { highlights: ["Highlights", "dark"], quote: ["Quote", "light"], note: ["Note", "light"], post: ["Post", "light"] };
   const typeOf = (passage) => (Object.hasOwn(TYPES, passage.type) ? passage.type : "note");
 
-  const view = { pages: [], current: 0, fetching: false, failed: false, stalled: false, loaded: false, hinted: 0,
+  const view = { pages: [], current: 0, fetching: false, failed: false, stalled: false, loaded: false,
     askOpen: false, observer: null, byElement: new Map() };
 
   const h = (tag, cls, text) => {
@@ -293,7 +291,6 @@
     try {
       await api("POST", "/api/review/shown", { passage_key: page.passage.passage_key, round: page.passage.round });
       page.logged = true;
-      countHint();
     } catch (error) {
       page.posting = false;  // the next second on screen tries again
       if (error.status === 401) return;
@@ -317,31 +314,12 @@
           syncTone(page);
           $("review-live").textContent = `${page.passage.title}${page.passage.author ? `, ${page.passage.author}` : ""}`;
         }
-        syncHint();
         startDwell(page);
         maybeFetch();
       } else {
         stopDwell(page);
       }
     }
-  }
-
-  // The hint under the passage: shown on the first few passages only.
-  function readHint() {
-    try { return Number(localStorage.getItem(HINT_KEY)) || 0; } catch (_) { return 0; }
-  }
-
-  function countHint() {
-    view.hinted = Math.max(view.hinted, readHint()) + 1;
-    try { localStorage.setItem(HINT_KEY, String(view.hinted)); } catch (_) { /* a private window keeps no count */ }
-  }
-
-  function syncHint() {
-    view.hinted = Math.max(view.hinted, readHint());
-    const hint = $("review-hint");
-    hint.hidden = view.hinted >= HINT_PASSAGES;
-    hint.textContent = phone.matches ? "Tap the edges for the next part · tap the middle to ask"
-      : "← → turn the part · click the passage to ask";
   }
 
   // Moving ------------------------------------------------------------------------------------------
@@ -378,7 +356,7 @@
     event.preventDefault();
   }
 
-  // The page behind the controls over it (menu button, hint, Ask button) is dark for highlights, light otherwise.
+  // The page behind the controls over it (menu button, Ask button) is dark for highlights, light otherwise.
   function syncTone(page) {
     $("review").dataset.type = page.type;
     $("app").dataset.reviewTone = TYPES[page.type][1];
@@ -386,7 +364,6 @@
 
   // Screen ------------------------------------------------------------------------------------------
   function show() {
-    syncHint();
     if (view.pages[view.current]) syncTone(view.pages[view.current]);
     if (!view.pages.length) {
       if (!view.fetching) fetchMore();
@@ -416,7 +393,6 @@
     document.addEventListener("visibilitychange", () => { if (document.hidden) leave(); else if (state.view === "review") show(); });
     phone.addEventListener("change", () => {
       for (const page of view.pages) layout(page, true);
-      syncHint();
     });
     if (typeof IntersectionObserver === "function") {
       view.observer = new IntersectionObserver(onVisible, { root: $("review-pager"), threshold: [0, VISIBLE, 1] });

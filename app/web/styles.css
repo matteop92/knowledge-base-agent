@@ -941,11 +941,9 @@ h3.r-heading { font-size: 18.5px; }
 .review-state { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center; background: var(--ground); }
 .review-state-title { font-family: var(--serif); font-size: 19px; font-weight: 480; }
 .review-state-sub { max-width: 320px; font-size: 14px; color: var(--muted); }
-.view-review[data-type="highlights"] .review-hint { color: color-mix(in srgb, var(--paper) 60%, transparent); }
 .view-review[data-type="highlights"] .review-ask { background: var(--paper); color: var(--ink); }
 .view-review[data-type="highlights"] .review-ask:hover:not(:disabled) { background: var(--surface); }
 .app[data-review-tone="dark"] .topbar .icon-button { color: var(--paper); }
-.review-hint { position: absolute; left: 24px; right: 24px; bottom: 14px; margin: 0; text-align: center; font-size: 12.5px; color: var(--muted); pointer-events: none; }
 .review-ask { position: absolute; z-index: 3; left: 50%; bottom: 64px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 10px; height: var(--ctl); padding: 0 22px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 14px; font-weight: 400; white-space: nowrap; box-shadow: 0 10px 28px rgba(29, 28, 26, 0.28); }
 .review-ask:hover:not(:disabled) { background: var(--ink-hover); }
 .review-ask[hidden] { display: none; }
