@@ -49,6 +49,12 @@ BLOCKS_SQL = """select r.document_id, coalesce(r.parsed->'blocks', '[]'::jsonb)
     where r.document_id = any(%s::text[])"""
 
 
+def _without_jit(conn) -> None:
+    """The pool view's estimated cost is high on a small vault, which makes Postgres compile it (over a second per
+    query) for no gain; these queries run once and are short."""
+    conn.execute("set jit = off")
+
+
 def _held(value: str) -> list[str]:
     keys = [key for key in (part.strip() for part in value.split(",")) if key]
     if len(keys) > MAX_HELD or not all(KEY.match(key) for key in keys):
@@ -142,6 +148,7 @@ class ReviewStore:
         count = max(1, min(count, MAX_COUNT))
         held_keys = _held(held)
         with self.connect() as conn:
+            _without_jit(conn)
             self.reanchor(conn)
             round_ = conn.execute(ROUND_SQL).fetchone()[0]
             position = conn.execute(POSITION_SQL, (round_,)).fetchone()[0]
@@ -169,6 +176,7 @@ class ReviewStore:
         if not KEY.match(passage_key):
             raise ConversationError(404, "passage not found")
         with self.connect() as conn:
+            _without_jit(conn)
             current = conn.execute(ROUND_SQL).fetchone()[0]
             if not max(1, current - 1) <= round_ <= current + 1:
                 raise ConversationError(400, "that round is not current")

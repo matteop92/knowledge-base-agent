@@ -1145,7 +1145,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // A click anywhere else folds the account menu away. The desktop panel has no dimmed backdrop: a click on the
   // page behind it closes it, but not a click on the panel or on the controls that open or swap it. Where the click
   // happened is read from the event path, because a control may already have been replaced by the time this runs.
-  const SHEET_CONTROLS = ["marker", "source-number", "gap-chip", "thumbs", "tag-row", "sbar-filters"];
+  const SHEET_CONTROLS = ["marker", "source-number", "gap-chip", "thumbs", "tag-row", "sbar-filters", "reader-picks"];
   let pressedInSheet = false;
   document.addEventListener("pointerdown", (event) => {
     pressedInSheet = event.composedPath().some((node) => node.id === "sheet");
