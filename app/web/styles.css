@@ -966,6 +966,8 @@ h3.r-heading { font-size: 18.5px; }
 
 /* Add to Review in the reader: the pill over a selection (the bar at the foot of the screen on touch), the confirmation,
    the highlighter fill on what is added, and the panel of this source's picks. */
+/* Words selected in the reader show in our green (a little deeper than what is already added). */
+.reader-body ::selection { background: color-mix(in srgb, var(--accent) 32%, transparent); color: var(--ink); }
 .r-pick { background: var(--highlighter); color: inherit; border-radius: 3px; }
 .reader-picks { margin-right: 4px; }
 .pick-action { position: fixed; z-index: 30; }
