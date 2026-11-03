@@ -1,0 +1,62 @@
+[
+ [
+  "plain words",
+  "plain words"
+ ],
+ [
+  "a **bold** word",
+  "a bold word"
+ ],
+ [
+  "an *italic* word",
+  "an italic word"
+ ],
+ [
+  "some `code` here",
+  "some code here"
+ ],
+ [
+  "a [link](https://example.org/x) here",
+  "a link here"
+ ],
+ [
+  "a [titled](https://example.org/x \"the title\") link",
+  "a titled link"
+ ],
+ [
+  "a [local](notes/other.md) link",
+  "a local link"
+ ],
+ [
+  "a [[Wiki Page]] link",
+  "a Wiki Page link"
+ ],
+ [
+  "a [[Wiki Page|shown label]] link",
+  "a shown label link"
+ ],
+ [
+  "a [**bold link**](https://example.org) end",
+  "a bold link end"
+ ],
+ [
+  "**bold with [a link](https://example.org)** end",
+  "bold with a link end"
+ ],
+ [
+  "2 * 3 * 4 stays",
+  "2 * 3 * 4 stays"
+ ],
+ [
+  "an unclosed **bold stays",
+  "an unclosed **bold stays"
+ ],
+ [
+  "two **a** and *b* and `c` together",
+  "two a and b and c together"
+ ],
+ [
+  "a wiki [[ spaced label ]] trims",
+  "a wiki spaced label trims"
+ ]
+]

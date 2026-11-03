@@ -356,5 +356,22 @@ class RouteTests(unittest.TestCase):
                          [(None, "q", IDS["note"]), (None, "q", None)])
 
 
+class ShownTextParityTests(unittest.TestCase):
+    """The server maps a pick onto the text the page shows, so its rules must match inline() in sources.js; the same
+    cases run against the page in test_sources_ui.py."""
+
+    def test_the_shown_text_of_each_shared_case(self) -> None:
+        import json
+        from app.api.sources import block_display
+        cases = json.loads(Path("tests/api/inline_cases.json").read_text(encoding="utf-8"))
+        for source, shown in cases:
+            block = {"kind": "paragraph", "raw_text": source, "span": {"start_char": 100, "end_char": 100 + len(source)}}
+            with self.subTest(source=source):
+                display = block_display(block)
+                self.assertEqual("".join(char for char, _ in display), shown)
+                for char, offset in display:  # every shown character points back at itself in the file
+                    self.assertEqual(source[offset - 100], char)
+
+
 if __name__ == "__main__":
     unittest.main()

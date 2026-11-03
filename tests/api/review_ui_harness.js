@@ -4,50 +4,12 @@
 const fs = require("fs");
 const vm = require("vm");
 
-class El {
-  constructor(tag) {
-    this.tagName = tag; this.children = []; this.parent = null; this.attrs = {}; this.dataset = {}; this.listeners = {};
-    this.className = ""; this._text = ""; this.hidden = false; this.disabled = false; this.id = ""; this.rect = { left: 0, width: 400 };
-    const self = this;
-    this.classList = {
-      add: (...names) => { for (const n of names) if (!self.classList.contains(n)) self.className = `${self.className} ${n}`.trim(); },
-      remove: (name) => { self.className = self.className.split(/\s+/).filter((n) => n && n !== name).join(" "); },
-      contains: (name) => self.className.split(/\s+/).includes(name),
-      toggle: (name, on) => { if (on === undefined ? !self.classList.contains(name) : on) self.classList.add(name); else self.classList.remove(name); },
-    };
-  }
-  set textContent(value) { this.children = []; this._text = String(value); }
-  get textContent() { return this._text + this.children.map((c) => c.textContent).join(""); }
-  append(...nodes) { for (const n of nodes) this._add(n); }
-  replaceChildren(...nodes) { this.children = []; this._text = ""; this.append(...nodes); }
-  _add(node) { if (typeof node === "string") { this._text += node; return; } node.parent = this; this.children.push(node); }
-  setAttribute(k, v) { this.attrs[k] = String(v); }
-  getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }
-  removeAttribute(k) { delete this.attrs[k]; }
-  addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
-  dispatch(type, event = {}) {
-    const e = { target: this, preventDefault() { e.prevented = true; }, stopPropagation() { e.stopped = true; }, ...event };
-    for (const fn of this.listeners[type] || []) fn(e);
-    return e;
-  }
-  click(event = {}) { return this.dispatch("click", event); }
-  remove() { if (this.parent) this.parent.children = this.parent.children.filter((c) => c !== this); }
-  scrollIntoView() { this.scrolledIntoView = true; }
-  getBoundingClientRect() { return this.rect; }
-  closest(selector) { for (let node = this; node; node = node.parent) if (node.tagName === selector) return node; return null; }
-  all() { return this.children.flatMap((c) => [c, ...c.all()]); }
-  matches(compound) {
-    const tag = /^[a-z0-9]+/i.exec(compound);
-    if (tag && tag[0].toLowerCase() !== this.tagName) return false;
-    for (const cls of compound.match(/\.[\w-]+/g) || []) if (!this.classList.contains(cls.slice(1))) return false;
-    return true;
-  }
-  querySelectorAll(selector) { return this.all().filter((el) => el.matches(selector)); }
-  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
-}
+const { El } = require("./fake_dom");
 
 const documentStub = { hidden: false, listeners: {}, createElement: (tag) => new El(tag),
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); } };
+
+El.document = documentStub;
 
 function passage(n, extra = {}) {
   return { passage_key: String(n).padStart(32, "0"), round: 1, text: `Passage ${n} text.`, note: null, title: `Title ${n}`, author: "Ada Stone",

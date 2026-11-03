@@ -310,6 +310,10 @@ class AddToReviewTests(unittest.TestCase):
         self.assertEqual((out["marks"], out["whole"], out["control"], out["hidden"], out["none"]),
                          (["beta"], "Alpha beta gamma delta", "In Review · 1", False, True))
 
+    def test_the_page_shows_the_same_text_as_the_servers_mapping_for_every_shared_case(self) -> None:
+        out = run("inlineParity")
+        self.assertEqual(out["shown"], out["expected"])
+
     def test_the_page_has_the_confirmation_the_picks_panel_and_the_review_button(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")
         self.assertRegex(page, r'id="pick-toast"[^>]*role="status"[^>]*aria-live="polite"')
