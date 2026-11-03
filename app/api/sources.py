@@ -73,13 +73,92 @@ def _content(block: dict[str, Any]) -> str:
     return text
 
 
-def _block_text(block: dict[str, Any]) -> str:
-    """The block's text without its markers (a speaker label, a highlight header, `##`, `- `, `>`) or images."""
-    text = _content(block)
+Pairs = list[tuple[str, int]]  # a text as (character, its offset in the source file)
+
+
+def _drop(pairs: Pairs, pattern: re.Pattern[str]) -> Pairs:
+    """The pairs without the text the pattern matches, so the rest keeps its source offsets."""
+    gone = [False] * len(pairs)
+    for found in pattern.finditer("".join(char for char, _ in pairs)):
+        gone[found.start():found.end()] = [True] * (found.end() - found.start())
+    return [pair for pair, drop in zip(pairs, gone) if not drop]
+
+
+def _trim(pairs: Pairs) -> Pairs:
+    first, last = 0, len(pairs)
+    while first < last and pairs[first][0].isspace():
+        first += 1
+    while last > first and pairs[last - 1][0].isspace():
+        last -= 1
+    return pairs[first:last]
+
+
+def _block_pairs(block: dict[str, Any]) -> Pairs:
+    """The block's text without its markers (a speaker label, a highlight header, `##`, `- `, `>`) or images, each
+    character with its offset in the source file."""
+    text = str(block.get("raw_text") or "")
+    span, content = block.get("span"), block.get("content_span")
+    base, start, end = (int(span.get("start_char", 0)) if isinstance(span, dict) else 0), 0, len(text)
+    if isinstance(span, dict) and isinstance(content, dict):
+        first = int(content.get("start_char", 0)) - base
+        last = int(content.get("end_char", 0)) - base
+        if 0 <= first < last <= len(text):
+            start, end = first, last
+    pairs = [(char, base + start + offset) for offset, char in enumerate(text[start:end])]
+    pairs = [pair for index, pair in enumerate(pairs)  # a line ending is one "\n", so the page and the server agree
+             if not (pair[0] == "\r" and index + 1 < len(pairs) and pairs[index + 1][0] == "\n")]
     marker = MARKERS.get(block.get("kind"))
     if marker:
-        text = marker.sub("", text.strip())
-    return EMBED.sub("", EMPTY_LINK.sub("", IMAGE.sub("", text))).strip()
+        pairs = _drop(_trim(pairs), marker)
+    for pattern in (IMAGE, EMPTY_LINK, EMBED):
+        pairs = _drop(pairs, pattern)
+    return _trim(pairs)
+
+
+def _block_text(block: dict[str, Any]) -> str:
+    return "".join(char for char, _ in _block_pairs(block))
+
+
+# The page draws these as elements (see inline() in sources.js); only the words between the markers stay on screen.
+INLINE = re.compile(r'(`[^`\n]+`|\[[^\]]+\]\((?:[^()\s]|\([^()\s]*\))+(?:\s+"[^"]*")?\)|\[\[[^\]]+\]\]|\*\*(?=\S)[^*]+?(?<=\S)\*\*|\*(?=\S)[^*]+?(?<=\S)\*)')
+LINK = re.compile(r'^\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)(?:\s+"[^"]*")?\)$')
+WIKI = re.compile(r"^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$")
+EMPHASIS = re.compile(r"^(\*\*?)([^*]+)\1$")
+CODE = re.compile(r"^`[^`\n]+`$")
+
+
+def _shown(text: str, offsets: list[int]) -> Pairs:
+    """What the page shows for `text` (offsets: each character's offset in the source file): links, wiki links, bold,
+    italic and code lose their markers. Mirrors inline() in sources.js."""
+    shown: Pairs = []
+    cursor = 0
+    for found in INLINE.finditer(text):
+        shown += list(zip(text[cursor:found.start()], offsets[cursor:found.start()]))
+        run, at = found.group(0), found.start()
+        link, wiki, emphasis = LINK.match(run), WIKI.match(run), EMPHASIS.match(run)
+        if CODE.match(run):
+            shown += list(zip(run[1:-1], offsets[at + 1:at + len(run) - 1]))
+        elif link:
+            first = at + link.start(1)
+            shown += _shown(link.group(1), offsets[first:first + len(link.group(1))])
+        elif wiki:
+            group = 2 if wiki.group(2) else 1
+            label = wiki.group(group)
+            first = at + wiki.start(group) + (len(label) - len(label.lstrip()))
+            shown += list(zip(label.strip(), offsets[first:first + len(label.strip())]))
+        elif emphasis:
+            first = at + emphasis.start(2)
+            shown += _shown(emphasis.group(2), offsets[first:first + len(emphasis.group(2))])
+        else:
+            shown += list(zip(run, offsets[at:at + len(run)]))
+        cursor = found.end()
+    return shown + list(zip(text[cursor:], offsets[cursor:]))
+
+
+def block_display(block: dict[str, Any]) -> Pairs:
+    """The characters the reader shows for a text block, each with its offset in the source file."""
+    pairs = _block_pairs(block)
+    return _shown("".join(char for char, _ in pairs), [offset for _, offset in pairs])
 
 
 def _table_cells(line: str) -> list[str]:
@@ -107,7 +186,8 @@ def https_target(target: Any) -> str | None:
 def reading_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Blocks as the reader draws them. A personal note rides on the highlight before it; the "Front Matter" heading is left out.
     Fenced code (a diagram when the language is `mermaid`) and tables come out as blocks of their own. An image on its own
-    line comes out by index and alt text only; the page loads it through the image route, so its URL never leaves the server."""
+    line comes out by index and alt text only; the page loads it through the image route, so its URL never leaves the server.
+    Each text item carries its block's index (and a highlight's note its own), which is how a pick names where it sits."""
     result: list[dict[str, Any]] = []
     for block in blocks:
         kind = block.get("kind")
@@ -134,10 +214,11 @@ def reading_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         previous = result[-1] if result else None
         if note and previous and previous["kind"] == "highlight" and previous["personal_note"] is None:
             previous["personal_note"] = text
+            previous["note_block"] = int(block.get("index", 0))
             continue
         result.append({"kind": kind, "text": text, "speaker": block.get("speaker"),
                        "page_reference": block.get("page_reference"), "heading_path": block.get("heading_path"),
-                       "personal_note": text if note else None})
+                       "personal_note": text if note else None, "block": int(block.get("index", 0)), "note_block": None})
     return result
 
 
@@ -150,8 +231,9 @@ def _description(metadata: dict[str, Any]) -> str | None:
 
 
 class SourceStore:
-    def __init__(self, connect: Callable[[], Any], vault_name: str) -> None:
-        self.connect, self.vault_name = connect, vault_name
+    def __init__(self, connect: Callable[[], Any], vault_name: str, picks: Any = None) -> None:
+        # `picks` is the Review store, which supplies a source's picks to the reader.
+        self.connect, self.vault_name, self.picks = connect, vault_name, picks
 
     def is_active(self, document_id: str) -> bool:
         with self.connect() as conn:
@@ -211,11 +293,13 @@ class SourceStore:
             found = conn.execute(DETAIL_SQL, (document_id,)).fetchone()
             if found is None:
                 raise ConversationError(404, "source not found")
-        relative_path, metadata, blocks, run_id, sha, root_alias, added = found
+            relative_path, metadata, blocks, run_id, sha, root_alias, added = found
+            picks = self.picks.live(conn, document_id, sha, blocks) if self.picks and isinstance(blocks, list) else []
         metadata = metadata if isinstance(metadata, dict) else {}
         source = to_source(document_id, str(run_id), sha, root_alias, relative_path, metadata, 0, None, added_at=added)
         header = self._header(source, metadata)
         header["source_url"] = metadata.get("source_url")
         header["run_id"] = str(run_id)  # ties image URLs to this parse, so the browser cache never outlives a re-index
         header["body"] = reading_blocks(blocks if isinstance(blocks, list) else [])
+        header["picks"] = picks
         return header

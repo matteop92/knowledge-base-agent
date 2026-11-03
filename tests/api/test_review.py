@@ -189,3 +189,133 @@ class ReviewApiTests(unittest.TestCase):
                          ("A **bold** thought.", "my own take", "Book Notes", "Ada Stone", "p. 1", "highlights"))
         self.assertEqual(found[note]["text"], "First paragraph.\n\nSecond [link](https://example.org).")
         self.assertEqual((found[note]["author"], found[note]["note"]), ("Ben Hart", None))
+
+    # Picks -----------------------------------------------------------------------------------
+    ARTICLE = "Knowledge/Articles/a.md"
+
+    def article(self, body: str = "First idea here. Second idea there.\n\nA **bold** claim, a [link](https://example.org/x) and more.\n") -> str:
+        return self.pool.add(self.ARTICLE, f"# Title\n\n{body}")
+
+    def detail(self, document: str) -> dict:
+        response = self.client.get(f"/api/sources/{document}")
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()
+
+    def block_of(self, document: str, containing: str) -> int:
+        return next(item["block"] for item in self.detail(document)["body"] if containing in item["text"])
+
+    def pick(self, document: str, words: str, containing: str | None = None, occurrence: int = 1, block: int | None = None):
+        block = block if block is not None else self.block_of(document, containing or words)
+        return self.client.post("/api/review/picks", json={"source_id": document, "block": block, "text": words,
+                                                           "occurrence": occurrence})
+
+    def source_text(self, document: str) -> str:
+        return self.admin.execute("""select r.source_text from knowledge.runs r join knowledge.active_runs a on a.run_id=r.run_id
+            where r.document_id=%s""", (document,)).fetchone()[0]
+
+    def live(self) -> list[tuple]:
+        return self.admin.execute("select pick_id, start_char, end_char, exact from knowledge.feed_picks where removed_at is null order by start_char").fetchall()
+
+    def test_a_selection_is_stored_with_offsets_that_slice_to_the_words(self) -> None:
+        doc = self.article()
+        response = self.pick(doc, "Second idea there.")
+        self.assertEqual(response.status_code, 200, response.text)
+        [(pick_id, start, end, exact)] = self.live()
+        self.assertEqual((exact, self.source_text(doc)[start:end]), ("Second idea there.", "Second idea there."))
+        self.assertEqual(response.json()["id"], str(pick_id))
+
+    def test_a_repeated_phrase_anchors_to_the_requested_occurrence(self) -> None:
+        doc = self.article("Echo and echo and echo again.\n")
+        self.assertEqual(self.pick(doc, "echo", containing="Echo", occurrence=2).status_code, 200)
+        [(_, start, _, _)] = self.live()
+        self.assertEqual(start, self.source_text(doc).index("echo and echo again") + len("echo and "))
+
+    def test_a_selection_over_bold_and_link_text_includes_the_markers_and_reports_shown_positions(self) -> None:
+        doc = self.article()
+        self.assertEqual(self.pick(doc, "bold claim, a link", containing="claim").status_code, 200)
+        [(_, _, _, exact)] = self.live()
+        self.assertEqual(exact, "bold** claim, a [link")
+        [pick] = self.detail(doc)["picks"]
+        item = next(item for item in self.detail(doc)["body"] if "bold" in item["text"])
+        # The page shows "A bold claim, a link and more." (the markers are drawn as elements).
+        self.assertEqual((pick["block"], pick["text"], pick["start"], pick["end"]), (item["block"], "bold claim, a link", 2, 20))
+
+    def test_a_selection_in_a_highlights_note_anchors_in_the_note_block(self) -> None:
+        doc = self.pool.add(HIGHLIGHTS, highlights_file(("Alpha thought.", "my own take on it")))
+        item = next(i for i in self.detail(doc)["body"] if i["kind"] == "highlight")
+        self.assertNotEqual(item["block"], item["note_block"])
+        self.assertEqual(self.pick(doc, "own take", block=item["note_block"]).status_code, 200)
+        [pick] = self.detail(doc)["picks"]
+        self.assertEqual((pick["block"], pick["text"]), (item["note_block"], "own take"))
+        self.assertEqual(item["personal_note"][pick["start"]:pick["end"]], "own take")
+
+    def test_words_that_are_not_there_are_refused_and_store_nothing(self) -> None:
+        doc = self.article()
+        block = self.block_of(doc, "Second idea")
+        self.assertEqual(self.pick(doc, "No such words", block=block).status_code, 400)
+        self.assertEqual(self.pick(doc, "Second idea there.", block=block, occurrence=2).status_code, 400)
+        self.assertEqual(self.pick(doc, "Second idea there.", block=9999).status_code, 400)
+        self.assertEqual(self.live(), [])
+
+    def test_removing_a_pick_is_harmless_to_repeat(self) -> None:
+        doc = self.article()
+        pick_id = self.pick(doc, "First idea here.").json()["id"]
+        for _ in range(2):
+            self.assertEqual(self.client.request("DELETE", f"/api/review/picks/{pick_id}", json={}).status_code, 200)
+        self.assertEqual((self.live(), self.detail(doc)["picks"]), ([], []))
+        unknown = "00000000-0000-0000-0000-000000000000"
+        self.assertEqual(self.client.request("DELETE", f"/api/review/picks/{unknown}", json={}).status_code, 404)
+
+    def test_a_selection_that_overlaps_a_pick_merges_with_it_and_one_inside_it_changes_nothing(self) -> None:
+        doc = self.article("Alpha beta gamma delta.\n")
+        first = self.pick(doc, "Alpha beta").json()
+        second = self.pick(doc, "beta gamma").json()
+        [(pick_id, _, _, exact)] = self.live()
+        self.assertEqual((exact, str(pick_id), second["text"]), ("Alpha beta gamma", second["id"], "Alpha beta gamma"))
+        self.assertNotEqual(first["id"], second["id"])
+        inside = self.pick(doc, "beta").json()
+        self.assertEqual(inside["id"], second["id"])
+        self.assertEqual(len(self.live()), 1)
+
+    def test_ae1_a_new_pick_enters_the_shuffle_at_its_hashed_place(self) -> None:
+        self.highlights("Alpha.", "Beta.", "Gamma.", "Delta.")
+        doc = self.article()
+        self.assertEqual(self.pick(doc, "First idea here.").status_code, 200)
+        passages = self.next(5)
+        keys = [p["passage_key"] for p in passages]
+        self.assertEqual(keys, sorted(keys, key=lambda key: rank(1, key)))
+        picked = next(p for p in passages if p["source_id"] == doc)
+        self.assertEqual((picked["text"], picked["note"]), ("First idea here.", None))
+
+    def test_a_pick_in_the_feed_shows_the_words_without_markers(self) -> None:
+        doc = self.article()
+        self.pick(doc, "bold claim, a link", containing="claim")
+        [picked] = [p for p in self.next(5) if p["source_id"] == doc]
+        self.assertEqual(picked["text"], "bold claim, a link")
+
+    def test_ae4_a_pick_follows_its_words_through_an_edit_and_goes_when_they_are_deleted(self) -> None:
+        doc = self.article("Intro line with a tpyo.\n\nLife is just the way it is.\n")
+        pick_id = self.pick(doc, "Life is just the way it is").json()["id"]
+        self.article("Intro line with a typo.\n\nLife is just the way it is.\n")  # a new run, a different hash
+        [pick] = self.detail(doc)["picks"]
+        self.assertEqual((pick["id"], pick["text"]), (pick_id, "Life is just the way it is"))
+        [(_, start, end, _)] = self.live()
+        self.assertEqual(self.source_text(doc)[start:end], "Life is just the way it is")
+        self.assertEqual([p["text"] for p in self.next(5) if p["source_id"] == doc], ["Life is just the way it is"])
+        self.article("Intro line with a typo.\n\nSomething else now.\n")
+        self.assertEqual(self.detail(doc)["picks"], [])
+        self.assertEqual([p for p in self.next(5) if p["source_id"] == doc], [])
+        self.assertEqual(self.live(), [])
+
+    def test_the_reader_detail_carries_block_indexes(self) -> None:
+        doc = self.article()
+        items = self.detail(doc)["body"]
+        self.assertTrue(all(isinstance(item["block"], int) for item in items))
+        self.assertEqual(self.detail(doc)["picks"], [])
+
+    def test_pick_routes_need_a_session_and_a_known_source(self) -> None:
+        other = TestClient(self.app)
+        body = {"source_id": "00000000-0000-0000-0000-000000000000", "block": 0, "text": "x"}
+        self.assertEqual(other.post("/api/review/picks", json=body).status_code, 401)
+        self.assertEqual(self.client.post("/api/review/picks", json=body).status_code, 404)
+        self.assertEqual(self.client.post("/api/review/picks", json={**body, "source_id": "nope"}).status_code, 404)
