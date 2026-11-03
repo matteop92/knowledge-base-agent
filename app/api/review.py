@@ -150,13 +150,26 @@ class ReviewStore:
         with self.connect() as conn:
             _without_jit(conn)
             self.reanchor(conn)
-            round_ = conn.execute(ROUND_SQL).fetchone()[0]
-            position = conn.execute(POSITION_SQL, (round_,)).fetchone()[0]
-            if conn.execute(AFTER_SQL, (round_, position)).fetchone()[0] == 0:
-                round_, position = round_ + 1, ""
-            rows = conn.execute(NEXT_SQL, {"round": round_, "position": position, "held": held_keys, "count": count}).fetchall()
-            blocks = dict(conn.execute(BLOCKS_SQL, ([row[1] for row in rows],)).fetchall()) if rows else {}
-        return [self._passage(row, round_, blocks.get(row[1]) or []) for row in rows]
+            for _ in range(3):
+                round_ = conn.execute(ROUND_SQL).fetchone()[0]
+                position = conn.execute(POSITION_SQL, (round_,)).fetchone()[0]
+                if conn.execute(AFTER_SQL, (round_, position)).fetchone()[0] == 0:
+                    round_, position = round_ + 1, ""
+                rows = conn.execute(NEXT_SQL, {"round": round_, "position": position, "held": held_keys, "count": count}).fetchall()
+                blocks = dict(conn.execute(BLOCKS_SQL, ([row[1] for row in rows],)).fetchall()) if rows else {}
+                passages = [self._passage(row, round_, blocks.get(row[1]) or []) for row in rows]
+                # A passage with nothing to draw (only an image or a table) is logged as shown here, so it never blocks
+                # the position or the next round, and the page never gets a blank screen.
+                empty = [passage for passage in passages if not passage["text"].strip()]
+                for passage in empty:
+                    conn.execute("""insert into knowledge.feed_shown (round, passage_key, document_id) values (%s,%s,%s)
+                        on conflict (round, passage_key) do nothing""", (round_, passage["passage_key"], passage["source_id"]))
+                if not empty:
+                    return passages
+                kept = [passage for passage in passages if passage["text"].strip()]
+                if kept:
+                    return kept
+        return []
 
     def _passage(self, row, round_: int, blocks: list[dict[str, Any]]) -> dict[str, Any]:
         key, document_id, kind, start, end, raw, raw_note, type_, title, author, locator = row

@@ -328,3 +328,14 @@ class ReviewApiTests(unittest.TestCase):
         [pick] = self.detail(doc)["picks"]
         units = shown.encode("utf-16-le")
         self.assertEqual(units[pick["start"] * 2:pick["end"] * 2].decode("utf-16-le"), "world")
+
+    def test_a_passage_with_nothing_to_draw_is_skipped_and_logged_so_the_feed_moves_on(self) -> None:
+        image_only = self.pool.add("Knowledge/Notes/img.md", "---\ntype: social_post\n---\n![a](https://example.org/a.png)\n\n| a | b |\n|---|---|\n| 1 | 2 |\n")
+        self.highlights("Alpha.", "Beta.")
+        keys = {p["passage_key"] for p in self.next(5)}
+        self.assertEqual(len(keys), 2)
+        self.assertNotIn(image_only, {p["source_id"] for p in self.next(5)})
+        for _ in range(2):
+            self.next(5)  # never blank, never blocks
+        logged = self.admin.execute("select count(*) from knowledge.feed_shown where document_id=%s", (image_only,)).fetchone()[0]
+        self.assertLessEqual(logged, 2)

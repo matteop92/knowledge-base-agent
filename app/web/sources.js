@@ -1059,11 +1059,14 @@
       const pick = await api("POST", "/api/review/picks", { source_id: source.id, block: info.block, text: info.words, occurrence: info.occurrence });
       if (!reader.open || reader.source !== source) return;
       // A pick that overlapped others replaces them; the server already merged them into this one.
+      const before = reader.picks.length;
       reader.picks = reader.picks.filter((p) => p.id !== pick.id && !(p.block === pick.block && p.start < pick.end && p.end > pick.start));
+      const merged = reader.picks.length < before;
       reader.picks.push(pick);
       markBlock(pick.block);
       syncPicksControl();
-      showToast("Added to Review", pick.id);
+      // Undo removes the one pick; after a merge that would drop the older ones too, so none is offered.
+      showToast("Added to Review", merged ? null : pick.id);
     } catch (error) {
       if (error.status === 401) return;
       showToast(error.message || "Could not add this passage.", null);
@@ -1072,13 +1075,14 @@
 
   async function removePick(id) {
     const pick = reader.picks.find((p) => p.id === id);
+    const source = reader.source;
     try {
       await api("DELETE", `/api/review/picks/${encodeURIComponent(id)}`);
     } catch (error) {
       if (error.status === 401) return;
       if (error.status !== 404) { showToast(error.message || "Could not remove this passage.", null); return; }
     }
-    if (!reader.open) return;
+    if (!reader.open || reader.source !== source) return;
     reader.picks = reader.picks.filter((p) => p.id !== id);
     if (pick) markBlock(pick.block);
     syncPicksControl();
@@ -1262,6 +1266,10 @@
     // Pressing the button must not clear the selection it acts on.
     for (const type of ["mousedown", "pointerdown"]) {
       $("pick-action").addEventListener(type, (event) => { event.preventDefault(); reader.armed = reader.pending; });
+    }
+    // A press that slides off the button is not a click: forget what it armed.
+    for (const type of ["mouseleave", "pointerleave", "pointercancel"]) {
+      $("pick-action").addEventListener(type, () => { reader.armed = null; });
     }
     $("pick-toast-undo").addEventListener("click", () => { const id = reader.undo; if (id) removePick(id); });
     document.addEventListener("selectionchange", onSelectionChange);

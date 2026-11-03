@@ -6,6 +6,7 @@ Read-only. Card facts (type, platform, people, dates) are derived at read time f
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from typing import Any, Callable
@@ -15,6 +16,8 @@ from app.api.answers import obsidian_link
 from app.api.conversations import ConversationError
 from app.ingestion.card_facts import card_facts
 from app.storage.search import LABEL_METADATA, load_sources
+
+log = logging.getLogger(__name__)
 
 # Blocks of the active run in reading order, with the label metadata and path of its document.
 DETAIL_SQL = f"""select d.relative_path, {LABEL_METADATA}, coalesce(r.parsed->'blocks', '[]'::jsonb),
@@ -294,7 +297,11 @@ class SourceStore:
             if found is None:
                 raise ConversationError(404, "source not found")
             relative_path, metadata, blocks, run_id, sha, root_alias, added = found
-            picks = self.picks.live(conn, document_id, sha, blocks) if self.picks and isinstance(blocks, list) else []
+            try:
+                picks = self.picks.live(conn, document_id, sha, blocks) if self.picks and isinstance(blocks, list) else []
+            except Exception:  # noqa: BLE001 - a source must open even when its picks cannot be read
+                log.exception("picks for source %s could not be read", document_id)
+                picks = []
         metadata = metadata if isinstance(metadata, dict) else {}
         source = to_source(document_id, str(run_id), sha, root_alias, relative_path, metadata, 0, None, added_at=added)
         header = self._header(source, metadata)

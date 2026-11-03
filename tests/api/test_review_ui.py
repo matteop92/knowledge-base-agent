@@ -99,6 +99,15 @@ class ReviewScreenTests(unittest.TestCase):
         self.assertEqual(out["shown"], {"hidden": False, "text": ["First.", "Second."], "source": "A Book · Ada Stone"})
         self.assertTrue(out["afterClear"])
 
+    def test_the_held_list_never_passes_what_the_server_accepts(self) -> None:
+        out = run("heldStaysUnderTheServerCap")
+        self.assertLessEqual(out["held"], 30)
+
+    def test_a_failed_shown_call_is_retried_and_the_passage_stays_held_until_it_lands(self) -> None:
+        out = run("failedShownIsRetried")
+        self.assertEqual(out["first"], {"posts": 1, "logged": False})
+        self.assertEqual((out["posts"], out["logged"]), (2, True))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -15,6 +15,7 @@
   const VISIBLE = 0.6;          // share of a page that must be on screen
   const HINT_KEY = "ka-review-hint";
   const HINT_PASSAGES = 5;
+  const MAX_HELD = 30;          // the most keys the server accepts in one request
 
   const view = { pages: [], current: 0, fetching: false, failed: false, stalled: false, loaded: false, hinted: 0,
     askOpen: false, observer: null, byElement: new Map() };
@@ -217,7 +218,10 @@
   }
 
   // Fetching ----------------------------------------------------------------------------------------
-  const heldKeys = () => view.pages.filter((page) => !page.logged).map((page) => page.passage.passage_key);
+  // What the server must not hand out again: passages on screen or ahead that are not yet logged. Passages scrolled
+  // past without a second on screen are let go (the list is capped at what the server accepts).
+  const heldKeys = () => view.pages.filter((page, index) => !page.logged && index >= view.current)
+    .map((page) => page.passage.passage_key).slice(-MAX_HELD);
 
   async function fetchMore() {
     if (view.fetching) return;
@@ -230,7 +234,7 @@
       const data = await api("GET", `/api/review/next?count=${BATCH}&held=${heldKeys().join(",")}`);
       const passages = data.passages || [];
       view.loaded = true;
-      for (const passage of passages) addPage(passage);
+      for (const passage of passages) if (!view.pages.some((p) => !p.logged && p.passage.passage_key === passage.passage_key)) addPage(passage);
       // Nothing new while passages are held: wait for one to be shown. Nothing and nothing held: the pool is empty.
       if (!passages.length) view.stalled = true;
       setState(!view.pages.length ? "empty" : null);
@@ -268,13 +272,16 @@
   }
 
   async function markShown(page) {
-    if (page.logged) return;
-    page.logged = true;
-    countHint();
+    if (page.logged || page.posting) return;
+    page.posting = true;  // stays held until the server has it
     try {
       await api("POST", "/api/review/shown", { passage_key: page.passage.passage_key, round: page.passage.round });
+      page.logged = true;
+      countHint();
     } catch (error) {
+      page.posting = false;  // the next second on screen tries again
       if (error.status === 401) return;
+      if (error.status === 400 || error.status === 404) page.logged = true;  // the server will never take it
     }
     // A shown passage may free the server to start the next round or hand out what was held.
     view.stalled = false;

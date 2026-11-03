@@ -224,6 +224,26 @@ const scenarios = {
     context.setPassage(null);
     return { log, shown, afterClear: els["passage-card"].hidden };
   },
+  async heldStaysUnderTheServerCap() {
+    const many = Array.from({ length: 40 }, (_, i) => passage(i + 1));
+    const app = boot({ replies: [{ passages: many.slice(0, 3) }, { passages: many.slice(3, 6) }] });
+    app.screen.show(); await app.flush();
+    // 38 passages skimmed past without a second on screen sit behind the reader.
+    app.screen.pages().unshift(...many.slice(6).map((p) => ({ passage: p, el: new El("div"), logged: false, parts: [""], part: 0 })));
+    app.seen(app.screen.pages().length - 1); await app.flush();
+    const gets = app.calls.api.filter(([m]) => m === "GET").map(([, path]) => path);
+    const held = gets[gets.length - 1].split("held=")[1].split(",").filter(Boolean);
+    return { gets: gets.length, held: held.length };
+  },
+  async failedShownIsRetried() {
+    const fail = Object.assign(new Error("x"), { status: 500 });
+    const app = boot({ replies: [{ passages: [passage(1), passage(2)] }, { passages: [] }, fail, {}, {}] });
+    app.screen.show(); await app.flush();
+    app.seen(0); app.fire(); await app.flush();
+    const first = { posts: app.calls.api.filter(([m]) => m === "POST").length, logged: page(app, 0).logged };
+    app.seen(0, 0); app.seen(0); app.fire(); await app.flush();
+    return { first, posts: app.calls.api.filter(([m]) => m === "POST").length, logged: page(app, 0).logged };
+  },
   async hintShowsOnTheFirstPassagesOnly() {
     const app = boot({ replies: [{ passages: [passage(1)] }] });
     app.stored["ka-review-hint"] = "5";
