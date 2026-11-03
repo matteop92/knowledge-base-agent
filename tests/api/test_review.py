@@ -353,6 +353,7 @@ class ReviewApiTests(unittest.TestCase):
         doc = self.article("Echo here. Middle.\n\nEcho here. Tail.\n")
         self.pick(doc, "Echo here.", containing="Echo here. Tail", occurrence=1)
         self.article("A new line first.\n\nEcho here. Middle.\n\nEcho here. Tail.\n")
+        self.detail(doc)  # reading the source is what re-anchors its picks
         [(_, start, _, _)] = self.live()
         self.assertTrue(self.source_text(doc)[start:].startswith("Echo here. Tail."))
 
