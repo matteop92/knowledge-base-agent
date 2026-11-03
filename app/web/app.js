@@ -255,6 +255,25 @@ function setScope(scope) {
   state.scope = scope;
   $("scope-chip").hidden = !scope;
   $("scope-chip-text").textContent = scope ? `Asking about: ${scope.title}` : "";
+  if (!scope) setPassage(null);
+}
+
+// A Review passage shown above the composer. It is context for the reader only: the question sent is unchanged.
+function setPassage(passage) {
+  $("passage-card").hidden = !passage;
+  $("passage-card-text").replaceChildren();
+  $("passage-card-source").textContent = passage ? [passage.title, passage.author].filter(Boolean).join(" · ") : "";
+  if (!passage) return;
+  for (const paragraph of passage.text.split(/\n\n+/).filter(Boolean)) {
+    $("passage-card-text").append(window.readerBlocks.inline("p", "passage-card-p", paragraph));
+  }
+}
+
+// "Ask about this" on a Review passage: a new question limited to its source, with the passage shown above the composer.
+function askAboutPassage(passage) {
+  newQuestion();
+  setScope({ id: passage.source_id, title: passage.title });
+  setPassage(passage);
 }
 
 function newQuestion() {
@@ -876,12 +895,14 @@ function openFeedback(element, turnId, opener) {
 function applyView(view) {
   const changed = state.view !== view;
   if (changed && state.view === "sources") window.sourcesScreen.leave();
+  if (changed && state.view === "review") window.reviewScreen.leave();
   state.view = view;
   $("app").dataset.view = view;
   $("view-ask").hidden = view !== "ask";
   $("capture").hidden = view !== "add";
   $("settings").hidden = view !== "settings";
   $("sources").hidden = view !== "sources";
+  $("review").hidden = view !== "review";
   for (const tab of document.querySelectorAll("[data-tab]")) {
     if (tab.dataset.tab === view) tab.setAttribute("aria-current", "page"); else tab.removeAttribute("aria-current");
   }
@@ -890,6 +911,7 @@ function applyView(view) {
   if (!changed) return undefined;
   if (view === "add") return window.captureScreen.show();
   if (view === "sources") return window.sourcesScreen.show();
+  if (view === "review") return window.reviewScreen.show();
   return view === "settings" ? window.settingsScreen.show() : undefined;
 }
 
@@ -1151,6 +1173,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     else window.sourcesScreen.popped();
   });
   $("scope-chip-remove").addEventListener("click", () => { setScope(null); $("question").focus(); });
+  $("passage-card-remove").addEventListener("click", () => { setPassage(null); $("question").focus(); });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeSheet();
