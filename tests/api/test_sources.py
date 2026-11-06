@@ -6,7 +6,7 @@ import tempfile
 import time
 import unittest
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -117,6 +117,16 @@ class ListTests(unittest.TestCase):
         with mock.patch("app.api.sources.load_sources", return_value=ROWS):
             ids = [item["id"] for item in store(Conn()).list()["sources"]]
         self.assertEqual(ids[-1], IDS["article"])
+
+    def test_recently_added_lists_only_the_last_seven_days(self) -> None:
+        now = datetime.now(timezone.utc)
+        rows = [{**ROWS[0], "added_at": now - timedelta(days=3)}, {**ROWS[1], "added_at": now - timedelta(days=10)},
+                {**ROWS[2], "added_at": None}]
+        with mock.patch("app.api.sources.load_sources", return_value=rows):
+            found = store(Conn()).recently_added()
+        self.assertEqual([item["source_id"] for item in found], [rows[0]["document_id"]])
+        self.assertEqual((found[0]["status"], found[0]["indexed"], found[0]["kind"]), ("done", True, None))
+        self.assertEqual(found[0]["vault_path"], rows[0]["relative_path"])
 
 
 def block(index, kind, text, **fields):

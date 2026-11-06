@@ -52,7 +52,7 @@
     for (const value of selected) if (!found.has(value)) found.set(value, 0);
     return [...found].map(([value, count]) => ({ value, label: label(value), count, selected: selected.includes(value) }))
       .filter((row) => row.count > 0 || row.selected)
-      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+      .sort((a, b) => a.label.localeCompare(b.label));  // A to Z; "most in your notes" is ordered where it is shown
   }
 
   // Rows for each browse menu, counted with every other active filter applied; zero rows only while selected.

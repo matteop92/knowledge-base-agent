@@ -691,7 +691,7 @@
       else list.append(h("p", "f-none", `No ${facet.noun} match “${query}”.`));
       return;
     }
-    const top = rest.slice(0, MOST_USED);
+    const top = [...rest].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)).slice(0, MOST_USED);
     if (rest.length > MOST_USED) group("Most in your notes", top.map((row) => facetRow(facet, row, "")));
     const sorted = [...(rest.length > MOST_USED ? rest : [])].sort((a, b) => a.label.localeCompare(b.label));
     const letters = [];
@@ -987,7 +987,7 @@
     reader.pushed = true;
     closeMenu(false);
     closeSuggest();
-    const card = opener.querySelector(".s-title");
+    const card = opener ? opener.querySelector(".s-title") : null;
     // The body loads once the page is drawn: a view transition runs its update a frame later and would clear it.
     transition(() => {
       if (!reader.open || reader.gen !== gen) return;  // Back came before the transition ran
@@ -1089,6 +1089,27 @@
     render();
   }
 
-  window.sourcesScreen = { show, leave, popped };
+  // The Sources tab pressed while a source is open: back to the list, never both on screen.
+  function home() {
+    if (reader.open) closeReader();
+  }
+
+  // Opens one source on its own page (a row on Add to notes); false when it is not in the index.
+  async function openById(id) {
+    if (reader.open) dropReader();
+    // Find the source before anything changes on screen, then open its page and switch tab in one go, so the list
+    // is never drawn in between.
+    if (!view.sources.some((item) => item.id === id)) await load();
+    const source = view.sources.find((item) => item.id === id);
+    if (!source) { await setView("sources"); return false; }
+    // A book opens in Obsidian from the Sources list, so it does here too.
+    if (source.opens_in_obsidian) { window.location.href = source.obsidian_url; return true; }
+    openReader(source, null);
+    if (!reader.open) { await setView("sources"); return false; }  // a reader still closing refused it
+    await setView("sources");
+    return true;
+  }
+
+  window.sourcesScreen = { show, leave, popped, home, openById, readerOpen: () => reader.open || reader.closing };
   document.addEventListener("DOMContentLoaded", init);
 })();

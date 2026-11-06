@@ -9,12 +9,14 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 from app.agent.properties import to_source, to_sources
 from app.api.answers import obsidian_link
 from app.api.conversations import ConversationError
 from app.ingestion.card_facts import card_facts
+from app.storage import StorageError
 from app.storage.search import LABEL_METADATA, load_sources
 
 log = logging.getLogger(__name__)
@@ -254,6 +256,24 @@ class SourceStore:
                "opens_in_obsidian": facts["type"] == "book", **facts}
         row["date"] = row.pop("card_date", added)
         return row
+
+    def recently_added(self, days: int = 7) -> list[dict[str, Any]]:
+        """Sources that entered the index in the last `days` days, shaped like a finished capture row, so Add to notes
+        also lists notes that came from Obsidian."""
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+        try:
+            with self.connect() as conn:
+                rows = load_sources(conn)
+        except StorageError:  # no search profile yet: nothing is indexed, so nothing was added
+            return []
+        found = []
+        for source in to_sources(rows):
+            if source.added_at and source.added_at > since:
+                found.append({"id": f"source-{source.document_id}", "kind": None, "status": "done",
+                              "vault_path": source.relative_path, "title": source.title, "indexed": True, "error": None,
+                              "cost_usd": 0.0, "created_at": source.added_at.isoformat(), "finished_at": None,
+                              "source_id": source.document_id})
+        return found
 
     def list(self) -> dict[str, Any]:
         with self.connect() as conn:

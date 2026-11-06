@@ -901,7 +901,10 @@ function applyView(view) {
   $("view-ask").hidden = view !== "ask";
   $("capture").hidden = view !== "add";
   $("settings").hidden = view !== "settings";
-  $("sources").hidden = view !== "sources";
+  // With a source open the list stays hidden: pressing the Sources tab again closes the reader instead.
+  const readerOpen = view === "sources" && window.sourcesScreen.readerOpen();
+  $("sources").hidden = view !== "sources" || readerOpen;
+  if (!changed && readerOpen) window.sourcesScreen.home();
   $("review").hidden = view !== "review";
   for (const tab of document.querySelectorAll("[data-tab]")) {
     if (tab.dataset.tab === view) tab.setAttribute("aria-current", "page"); else tab.removeAttribute("aria-current");

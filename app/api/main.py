@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Literal
 
@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from app.api import images
 from app.api.answers import AnswerEngine, AnswerJobs, OpenRouterAnswerEngine
-from app.api.capture import CaptureJobs, Classifier, Extractor, ScreenshotInput, YouTubeInput
+from app.api.capture import RECENT_LIMIT, CaptureJobs, Classifier, Extractor, ScreenshotInput, YouTubeInput
 from app.api.auth import COOKIE_NAME, AuthError, RateLimiter, Session, SessionStore, SupabaseAuth
 from app.api.conversations import ConversationError, ConversationStore
 from app.api.review import ReviewStore
@@ -311,7 +311,12 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
     @app.get("/api/captures")
     def recent_captures(_: Session = Depends(session)):
         captures.expire_stale()
-        return {"captures": captures.recent(), "enabled": captures.enabled, "vault_name": settings.vault_name}
+        saved = captures.recent()
+        # Notes that reached the index another way (from Obsidian) join the saves from this app, newest first.
+        known = {job["vault_path"] for job in saved if job["vault_path"]}
+        added = [item for item in sources.recently_added() if item["vault_path"] not in known]
+        recent = sorted(saved + added, key=lambda job: datetime.fromisoformat(job["created_at"]), reverse=True)[:RECENT_LIMIT]
+        return {"captures": recent, "enabled": captures.enabled, "vault_name": settings.vault_name}
 
     @app.get("/api/captures/{capture_id}")
     def capture_status(capture_id: str, _: Session = Depends(session)):

@@ -370,7 +370,9 @@
     body.className = "capture-body";
     const title = document.createElement("p");
     title.className = "capture-title";
-    title.textContent = job.title || "Capture";
+    const label = document.createElement("span");
+    label.textContent = job.title || "Capture";
+    title.append(label);
     const meta = document.createElement("div");
     meta.className = "capture-meta";
     if (job.status === "running") {
@@ -436,6 +438,14 @@
     time.className = "capture-time";
     time.textContent = formatAge(when, new Date());
     item.append(state, body, time);
+    // A saved and indexed note opens on its own Sources page from its title; the Obsidian link beside it still opens Obsidian.
+    const openable = job.status === "done" && job.source_id;
+    title.classList.toggle("is-openable", Boolean(openable));
+    if (openable) title.append(icon("chevron"));
+    if (openable) { title.tabIndex = 0; title.setAttribute("role", "link"); } else { title.removeAttribute("tabindex"); title.removeAttribute("role"); }
+    const open = () => window.sourcesScreen.openById(job.source_id);
+    title.onclick = openable ? open : null;
+    title.onkeydown = openable ? (event) => { if (event.key === "Enter") open(); } : null;
   }
 
   function pollCapture(id, announceResult) {
