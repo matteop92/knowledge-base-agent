@@ -350,7 +350,11 @@ span.pick-tag { background: var(--paper); box-shadow: 0 0 0 1px rgba(29, 28, 26,
 .capture-item { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 14px; align-items: start; padding: 14px 2px; border-bottom: 1px solid var(--hairline); }
 .capture-state { display: inline-flex; margin-top: 1px; color: var(--ink-soft); }
 .capture-state .icon { width: 20px; height: 20px; }
-.capture-item.is-openable { cursor: pointer; }
+.capture-item.is-openable { cursor: pointer; position: relative; isolation: isolate; outline: none; }
+.capture-item.is-openable::before { content: ""; position: absolute; inset: 4px -12px; z-index: -1; border-radius: 12px; background: var(--hover); opacity: 0; transition: opacity 0.12s; }
+@media (hover: hover) { .capture-item.is-openable:hover::before { opacity: 1; } }
+.capture-item.is-openable:active::before { opacity: 1; }
+.capture-item.is-openable:focus-visible::before { opacity: 1; }
 .capture-item[data-status="done"] .capture-state { color: var(--accent); }
 .capture-item[data-status="running"] .capture-state { color: var(--muted); }
 .capture-item[data-status="running"] .capture-state .icon { animation: spin 1s linear infinite; }
