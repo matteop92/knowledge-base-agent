@@ -249,8 +249,9 @@ class CaptureJobs:
         return _job_dict(row)
 
     def recent(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Saves from the last 7 days, newest first."""
         with self.connect() as conn:
-            rows = conn.execute(JOB_SELECT + " order by created_at desc limit %s", (limit,)).fetchall()
+            rows = conn.execute(JOB_SELECT + " where created_at > now() - interval '7 days' order by created_at desc limit %s", (limit,)).fetchall()
         return [_job_dict(row) for row in rows]
 
     def expire_stale(self) -> int:
