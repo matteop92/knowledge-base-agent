@@ -691,7 +691,7 @@
       else list.append(h("p", "f-none", `No ${facet.noun} match “${query}”.`));
       return;
     }
-    const top = rest.slice(0, MOST_USED);
+    const top = [...rest].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)).slice(0, MOST_USED);
     if (rest.length > MOST_USED) group("Most in your notes", top.map((row) => facetRow(facet, row, "")));
     const sorted = [...(rest.length > MOST_USED ? rest : [])].sort((a, b) => a.label.localeCompare(b.label));
     const letters = [];
