@@ -436,13 +436,13 @@
     time.className = "capture-time";
     time.textContent = formatAge(when, new Date());
     item.append(state, body, time);
-    // A saved and indexed note opens on its own Sources page; the Obsidian link inside the row still opens Obsidian.
+    // A saved and indexed note opens on its own Sources page from its title; the Obsidian link beside it still opens Obsidian.
     const openable = job.status === "done" && job.source_id;
-    item.classList.toggle("is-openable", Boolean(openable));
-    if (openable) { item.tabIndex = 0; item.setAttribute("role", "link"); } else { item.removeAttribute("tabindex"); item.removeAttribute("role"); }
+    title.classList.toggle("is-openable", Boolean(openable));
+    if (openable) { title.tabIndex = 0; title.setAttribute("role", "link"); } else { title.removeAttribute("tabindex"); title.removeAttribute("role"); }
     const open = () => window.sourcesScreen.openById(job.source_id);
-    item.onclick = openable ? (event) => { if (!event.target.closest("a, button")) open(); } : null;
-    item.onkeydown = openable ? (event) => { if (event.key === "Enter" && event.target === item) open(); } : null;
+    title.onclick = openable ? open : null;
+    title.onkeydown = openable ? (event) => { if (event.key === "Enter") open(); } : null;
   }
 
   function pollCapture(id, announceResult) {
