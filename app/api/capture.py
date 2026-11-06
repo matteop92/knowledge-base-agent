@@ -29,9 +29,11 @@ INDEX_WAIT_SECONDS = 30
 # up to 4 minutes of speaker naming, then the Gemini fallback (10 minutes), classification, the 30-second
 # index wait and an index pass.
 JOB_LIMIT = timedelta(minutes=20)
+RECENT_LIMIT = 20  # rows in Recent on Add to notes
 INTERRUPTED = "interrupted: the server restarted while saving"
 JOB_SELECT = """select job_id, kind, status, vault_path, title, indexed, error, cost_usd, created_at, finished_at,
     (select d.document_id from knowledge.documents d join knowledge.active_runs a on a.document_id=d.document_id
+      join knowledge.corpus_state s on s.profile_id=a.profile_id
       where d.relative_path=capture_jobs.vault_path limit 1)
     from knowledge.capture_jobs"""
 
@@ -248,7 +250,7 @@ class CaptureJobs:
             raise ConversationError(404, "capture not found")
         return _job_dict(row)
 
-    def recent(self, limit: int = 20) -> list[dict[str, Any]]:
+    def recent(self, limit: int = RECENT_LIMIT) -> list[dict[str, Any]]:
         """Saves from the last 7 days, newest first."""
         with self.connect() as conn:
             rows = conn.execute(JOB_SELECT + " where created_at > now() - interval '7 days' order by created_at desc limit %s", (limit,)).fetchall()

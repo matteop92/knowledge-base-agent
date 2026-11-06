@@ -1102,11 +1102,14 @@
     if (!view.sources.some((item) => item.id === id)) await load();
     const source = view.sources.find((item) => item.id === id);
     if (!source) { await setView("sources"); return false; }
+    // A book opens in Obsidian from the Sources list, so it does here too.
+    if (source.opens_in_obsidian) { window.location.href = source.obsidian_url; return true; }
     openReader(source, null);
+    if (!reader.open) { await setView("sources"); return false; }  // a reader still closing refused it
     await setView("sources");
     return true;
   }
 
-  window.sourcesScreen = { show, leave, popped, home, openById, readerOpen: () => reader.open };
+  window.sourcesScreen = { show, leave, popped, home, openById, readerOpen: () => reader.open || reader.closing };
   document.addEventListener("DOMContentLoaded", init);
 })();

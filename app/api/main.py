@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from app.api import images
 from app.api.answers import AnswerEngine, AnswerJobs, OpenRouterAnswerEngine
-from app.api.capture import CaptureJobs, Classifier, Extractor, ScreenshotInput, YouTubeInput
+from app.api.capture import RECENT_LIMIT, CaptureJobs, Classifier, Extractor, ScreenshotInput, YouTubeInput
 from app.api.auth import COOKIE_NAME, AuthError, RateLimiter, Session, SessionStore, SupabaseAuth
 from app.api.conversations import ConversationError, ConversationStore
 from app.api.review import ReviewStore
@@ -315,7 +315,7 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
         # Notes that reached the index another way (from Obsidian) join the saves from this app, newest first.
         known = {job["vault_path"] for job in saved if job["vault_path"]}
         added = [item for item in sources.recently_added() if item["vault_path"] not in known]
-        recent = sorted(saved + added, key=lambda job: datetime.fromisoformat(job["created_at"]), reverse=True)
+        recent = sorted(saved + added, key=lambda job: datetime.fromisoformat(job["created_at"]), reverse=True)[:RECENT_LIMIT]
         return {"captures": recent, "enabled": captures.enabled, "vault_name": settings.vault_name}
 
     @app.get("/api/captures/{capture_id}")

@@ -248,10 +248,17 @@ console.log(JSON.stringify(out));"""
         capture = (WEB / "capture.js").read_text(encoding="utf-8").replace("\r", "")
         render = capture[capture.index("  const KINDS"):capture.index("  function pollCapture")]
         probe = """
-const make = (tag) => ({ tag, children: [], dataset: {}, attrs: {}, className: "", textContent: "", title: "", href: "",
-  append(...n) { this.children.push(...n); }, prepend(...n) { this.children.unshift(...n); },
-  replaceChildren(...n) { this.children = n; }, setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(name, fn) { this.handlers = { ...this.handlers, [name]: fn }; } });
+const make = (tag) => {
+  const node = { tag, children: [], dataset: {}, attrs: {}, classes: new Set(), className: "", textContent: "", title: "", href: "",
+    append(...n) { this.children.push(...n); }, prepend(...n) { this.children.unshift(...n); },
+    replaceChildren(...n) { this.children = n; }, setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; },
+    addEventListener(name, fn) { this.handlers = { ...this.handlers, [name]: fn }; } };
+  node.classList = { toggle: (name, on) => { if (on) node.classes.add(name); else node.classes.delete(name); } };
+  return node;
+};
 const list = make("ul");
+const opened = [];
+const window = { sourcesScreen: { openById: (id) => opened.push(id) } };
 const document = { createElement: make, querySelector: () => null };
 const CSS = { escape: (x) => x };
 const $ = () => list;
@@ -276,12 +283,15 @@ const describe = (job) => {
   list.children = [];
   const [state, body] = row.children;
   const meta = body.children[1];
+  const title = body.children[0];
   return { status: row.dataset.status, icon: state.children[0].icon, tip: state.title,
-           title: body.children[0].textContent, meta: meta.children.map((c) => c.className + ":" + (c.textContent || c.children.map((x) => x.icon || x).join(""))) };
+           title: title.children[0].textContent, openable: title.classes.has("is-openable"), role: title.attrs.role || null,
+           chevron: title.children.length > 1, click: title.onclick ? (title.onclick(), "yes") : "no", meta: meta.children.map((c) => c.className + ":" + (c.textContent || c.children.map((x) => x.icon || x).join(""))) };
 };
 const out = ({
   done: describe({ id: "d1", kind: "text", status: "done", indexed: true, title: "Note", vault_path: "Knowledge/a.md" }),
   queued: describe({ id: "d2", kind: "markdown", status: "done", indexed: false, title: "Note", vault_path: "Knowledge/b.md" }),
+  openable: describe({ id: "o1", kind: "text", status: "done", indexed: true, title: "Note", vault_path: "Knowledge/c.md", source_id: "doc-1" }),
   running: describe({ id: "r1", kind: "youtube", status: "running", title: "Video" }),
   failed: describe({ id: "f1", kind: "screenshot", status: "failed", error: "Could not read the image.", title: "Shot" }),
   reloaded: describe({ id: "f2", kind: "screenshot", status: "failed", error: "x", title: "Shot" }),
@@ -307,16 +317,21 @@ const out = ({
   const other = list.children[0].children[1].children[1].children[1];
   await other.handlers.click();
   out.otherTab = { sent: sends.length - before, again: describe({ id: "g1", kind: "text", status: "failed", error: "x", title: "Note" }).meta };
+  out.opened = opened;
   console.log(JSON.stringify(out));
 })();"""
         out = _node(probe)
-        self.assertEqual(out["done"], {"status": "done", "icon": "saved", "tip": "Saved and searchable", "title": "Note",
+        self.assertEqual(out["done"], {"status": "done", "icon": "saved", "tip": "Saved and searchable", "title": "Note", "openable": False, "role": None, "chevron": False, "click": "no", 
                                        "meta": ["open-obsidian:Open in Obsidian", "type-pill:Text"]})
         self.assertEqual(out["queued"]["tip"], "Queued")  # the "searchable soon" detail lives in the tooltip
-        self.assertEqual(out["running"], {"status": "running", "icon": "saving", "tip": "Saving…", "title": "Video",
+        self.assertEqual(out["running"], {"status": "running", "icon": "saving", "tip": "Saving…", "title": "Video", "openable": False, "role": None, "chevron": False, "click": "no", 
                                           "meta": ["muted:Saving…", "type-pill:YouTube"]})
         self.assertEqual(out["failed"], {"status": "failed", "icon": "failed", "tip": "Failed: Could not read the image.",
-                                         "title": "Shot", "meta": ["type-pill:Screenshot", "retry-capture:retryRetry"]})
+                                         "title": "Shot", "openable": False, "role": None, "chevron": False, "click": "no", "meta": ["type-pill:Screenshot", "retry-capture:retryRetry"]})
+        # A done and indexed note with a source id opens on Sources from its title; the others are plain text.
+        self.assertEqual([out["openable"]["openable"], out["openable"]["role"], out["openable"]["chevron"], out["openable"]["click"]],
+                         [True, "link", True, "yes"])
+        self.assertEqual(out["opened"], ["doc-1"])
         self.assertEqual(out["reloaded"]["meta"], ["type-pill:Screenshot", "muted:Add it again"])
         self.assertEqual(out["restored"], ["type-pill:Text", "retry-capture:retryRetry"])
         self.assertEqual(out["otherTab"], {"sent": 0, "again": ["type-pill:Text", "muted:Add it again"]})

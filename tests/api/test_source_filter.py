@@ -95,6 +95,12 @@ class SourceFilterTests(unittest.TestCase):
         # Sources 3 and 4 carry both tags; "maple" is only on 4, "farming" on neither of them.
         self.assertEqual(sorted(out), [["maple", 1], ["maps", 2], ["markets", 2]])
 
+    def test_menu_rows_are_listed_a_to_z_whatever_their_counts(self) -> None:
+        out = run("""const c = f.counts(make(), SOURCES, NOW);
+          console.log(JSON.stringify({ tags: c.tags.map((r) => r.label), types: c.types.map((r) => r.label) }));""")
+        self.assertEqual(out["tags"], sorted(out["tags"], key=str.casefold))
+        self.assertEqual(out["types"], sorted(out["types"], key=str.casefold))
+
     def test_suggestions_are_capped_sorted_by_count_and_hide_zero_rows(self) -> None:
         out = run("""const groups = f.suggest("ma", make(), SOURCES, NOW);
           console.log(JSON.stringify(groups.map((g) => [g.kind, g.items.map((i) => [i.value, i.count])])));""")

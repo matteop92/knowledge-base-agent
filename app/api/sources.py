@@ -16,6 +16,7 @@ from app.agent.properties import to_source, to_sources
 from app.api.answers import obsidian_link
 from app.api.conversations import ConversationError
 from app.ingestion.card_facts import card_facts
+from app.storage import StorageError
 from app.storage.search import LABEL_METADATA, load_sources
 
 log = logging.getLogger(__name__)
@@ -260,8 +261,11 @@ class SourceStore:
         """Sources that entered the index in the last `days` days, shaped like a finished capture row, so Add to notes
         also lists notes that came from Obsidian."""
         since = datetime.now(timezone.utc) - timedelta(days=days)
-        with self.connect() as conn:
-            rows = load_sources(conn)
+        try:
+            with self.connect() as conn:
+                rows = load_sources(conn)
+        except StorageError:  # no search profile yet: nothing is indexed, so nothing was added
+            return []
         found = []
         for source in to_sources(rows):
             if source.added_at and source.added_at > since:

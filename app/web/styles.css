@@ -350,7 +350,7 @@ span.pick-tag { background: var(--paper); box-shadow: 0 0 0 1px rgba(29, 28, 26,
 .capture-item { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 14px; align-items: start; padding: 14px 2px; border-bottom: 1px solid var(--hairline); }
 .capture-state { display: inline-flex; margin-top: 1px; color: var(--ink-soft); }
 .capture-state .icon { width: 20px; height: 20px; }
-.capture-title.is-openable { display: inline-flex; align-items: center; gap: 2px; max-width: 100%; cursor: pointer; outline: none; transition: transform 0.14s; }
+.capture-title.is-openable { display: inline-flex; align-items: center; gap: 2px; max-width: 100%; cursor: pointer; border-radius: 4px; transition: transform 0.14s; }
 .capture-title.is-openable > span { overflow: hidden; text-overflow: ellipsis; }
 .capture-title.is-openable .icon { flex: none; width: 14px; height: 14px; margin-left: 2px; transform: translateX(-4px) rotate(-90deg); opacity: 0; transition: opacity 0.14s, transform 0.14s; }
 @media (hover: hover) { .capture-title.is-openable:hover { transform: translateX(3px); } .capture-title.is-openable:hover .icon { opacity: 1; transform: rotate(-90deg); } }
