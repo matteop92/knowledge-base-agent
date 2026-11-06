@@ -987,7 +987,7 @@
     reader.pushed = true;
     closeMenu(false);
     closeSuggest();
-    const card = opener.querySelector(".s-title");
+    const card = opener ? opener.querySelector(".s-title") : null;
     // The body loads once the page is drawn: a view transition runs its update a frame later and would clear it.
     transition(() => {
       if (!reader.open || reader.gen !== gen) return;  // Back came before the transition ran
@@ -1089,6 +1089,21 @@
     render();
   }
 
-  window.sourcesScreen = { show, leave, popped };
+  // The Sources tab pressed while a source is open: back to the list, never both on screen.
+  function home() {
+    if (reader.open) closeReader();
+  }
+
+  // Opens one source on its own page (a row on Add to notes); false when it is not in the index.
+  async function openById(id) {
+    if (reader.open) dropReader();
+    if (!view.sources.some((item) => item.id === id)) await load();
+    const source = view.sources.find((item) => item.id === id);
+    if (!source) return false;
+    openReader(source, null);
+    return true;
+  }
+
+  window.sourcesScreen = { show, leave, popped, home, openById, readerOpen: () => reader.open };
   document.addEventListener("DOMContentLoaded", init);
 })();

@@ -30,13 +30,17 @@ INDEX_WAIT_SECONDS = 30
 # index wait and an index pass.
 JOB_LIMIT = timedelta(minutes=20)
 INTERRUPTED = "interrupted: the server restarted while saving"
-JOB_SELECT = "select job_id, kind, status, vault_path, title, indexed, error, cost_usd, created_at, finished_at from knowledge.capture_jobs"
+JOB_SELECT = """select job_id, kind, status, vault_path, title, indexed, error, cost_usd, created_at, finished_at,
+    (select d.document_id from knowledge.documents d join knowledge.active_runs a on a.document_id=d.document_id
+      where d.relative_path=capture_jobs.vault_path limit 1)
+    from knowledge.capture_jobs"""
 
 
 def _job_dict(row) -> dict[str, Any]:
+    # `source_id` is set once the note is in the index: the web app then opens it on its own Sources page.
     return {"id": str(row[0]), "kind": row[1], "status": row[2], "vault_path": row[3], "title": row[4],
             "indexed": row[5], "error": row[6], "cost_usd": float(row[7]), "created_at": row[8].isoformat(),
-            "finished_at": row[9].isoformat() if row[9] else None}
+            "finished_at": row[9].isoformat() if row[9] else None, "source_id": row[10]}
 
 
 @dataclass
