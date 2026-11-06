@@ -68,7 +68,7 @@
 @media (pointer: coarse) { :root { --ctl: 44px; } }
 
 /* Base ------------------------------------------------------------------------------------------ */
-* { box-sizing: border-box; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; margin: 0; }
 body { background: var(--ground); color: var(--ink); font-variant-numeric: tabular-nums; }
 /* A landscape phone with a camera cut-out: keep content out from under it (needs viewport-fit=cover). */
