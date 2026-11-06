@@ -1097,10 +1097,13 @@
   // Opens one source on its own page (a row on Add to notes); false when it is not in the index.
   async function openById(id) {
     if (reader.open) dropReader();
+    // Find the source before anything changes on screen, then open its page and switch tab in one go, so the list
+    // is never drawn in between.
     if (!view.sources.some((item) => item.id === id)) await load();
     const source = view.sources.find((item) => item.id === id);
-    if (!source) return false;
+    if (!source) { await setView("sources"); return false; }
     openReader(source, null);
+    await setView("sources");
     return true;
   }
 
