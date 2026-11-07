@@ -6,14 +6,14 @@ import logging
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import Annotated, Any, Callable, Literal
 
 import psycopg
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 from app.api import images
 from app.api.answers import AnswerEngine, AnswerJobs, OpenRouterAnswerEngine
@@ -90,6 +90,11 @@ class CaptureRequest(BaseModel):
     title: str | None = Field(default=None, max_length=500)
     url: str | None = Field(default=None, max_length=2000, pattern=r"^https?://")
     tags: list[str] = Field(default_factory=list, max_length=10)
+    # Set on the Add card; the stored type values (the card shows Post for social_post and so on).
+    type: Literal["article", "book", "highlights", "meeting", "note", "other", "social_post", "quote", "reference",
+                  "transcript"] | None = None
+    authors: list[Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)]] = Field(
+        default_factory=list, max_length=10)
 
 
 def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
@@ -303,19 +308,26 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
         if body.kind == "screenshot":
             if not body.image or not IMAGE_DATA_URL.match(body.image):
                 raise ConversationError(422, "a screenshot must be a PNG, JPEG or WebP image")
-            return {"capture_id": captures.start(ScreenshotInput(body.image, body.title, body.tags))}
+            return {"capture_id": captures.start(ScreenshotInput(body.image, body.title, body.tags, type=body.type,
+                                                                 authors=body.authors))}
         if body.kind == "youtube":
             try:
                 url = video_url(body.url or body.content or "")
             except CaptureError as exc:
                 raise ConversationError(422, str(exc)) from None
-            return {"capture_id": captures.start(YouTubeInput(url, body.title, body.tags))}
+            return {"capture_id": captures.start(YouTubeInput(url, body.title, body.tags, type=body.type,
+                                                              authors=body.authors))}
         make = draft_from_text if body.kind == "text" else draft_from_markdown
         try:
-            draft = make(body.content or "", title=body.title, url=body.url, tags=body.tags)
+            draft = make(body.content or "", title=body.title, url=body.url, tags=body.tags, type_=body.type,
+                         authors=body.authors)
         except CaptureError as exc:
             raise ConversationError(422, str(exc)) from None
         return {"capture_id": captures.start(draft)}
+
+    @app.get("/api/capture-people")
+    def capture_people(_: Session = Depends(session)):
+        return {"people": captures.people()}
 
     @app.get("/api/captures")
     def recent_captures(_: Session = Depends(session)):

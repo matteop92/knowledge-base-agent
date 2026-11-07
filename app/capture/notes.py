@@ -67,19 +67,35 @@ def clean_tags(tags: list[str] | None) -> list[str]:
     return list(dict.fromkeys(tag for tag in cleaned if tag))[:10]
 
 
+def with_card_values(draft: Draft, type_: str | None, authors: list[str] | None) -> Draft:
+    """Apply what was set on the Add card. A set type or author list wins over the input's own properties (a Markdown
+    file's frontmatter) and over the classifier; an empty one adds nothing, so those still fill it in. A YouTube
+    video keeps its `author`, which is the channel, beside the card's authors."""
+    names = list(dict.fromkeys(" ".join(str(name).split()) for name in authors or [] if " ".join(str(name).split())))
+    if type_:
+        draft.own["type"] = type_
+    if names:
+        draft.own["authors"] = names
+        if draft.kind != "youtube":
+            draft.own.pop("author", None)
+    return draft
+
+
 def draft_from_text(text: str, *, title: str | None = None, url: str | None = None,
-                    tags: list[str] | None = None) -> Draft:
+                    tags: list[str] | None = None, type_: str | None = None,
+                    authors: list[str] | None = None) -> Draft:
     body = text.strip()
     if not body:
         raise CaptureError("there is no text to save")
     if len(body.encode("utf-8")) > MAX_TEXT_BYTES:
         raise CaptureError("the text is too long to save")
-    return Draft(kind="text", body=body, title=clean_title(title) or first_line_title(body),
-                 url=url, tags=clean_tags(tags))
+    return with_card_values(Draft(kind="text", body=body, title=clean_title(title) or first_line_title(body),
+                                  url=url, tags=clean_tags(tags)), type_, authors)
 
 
 def draft_from_markdown(markdown: str, *, title: str | None = None, url: str | None = None,
-                        tags: list[str] | None = None) -> Draft:
+                        tags: list[str] | None = None, type_: str | None = None,
+                        authors: list[str] | None = None) -> Draft:
     """A Markdown file keeps its own properties and its text; missing properties are added later."""
     text = markdown.lstrip("﻿")
     if len(text.encode("utf-8")) > MAX_TEXT_BYTES:
@@ -99,8 +115,8 @@ def draft_from_markdown(markdown: str, *, title: str | None = None, url: str | N
     if not body:
         raise CaptureError("the file has no text to save")
     own_title = own.get("title") if isinstance(own.get("title"), str) else None
-    return Draft(kind="markdown", body=body, title=clean_title(own_title) or clean_title(title) or first_line_title(body),
-                 own=own, url=url, tags=clean_tags(tags))
+    return with_card_values(Draft(kind="markdown", body=body, title=clean_title(own_title) or clean_title(title) or first_line_title(body),
+                                  own=own, url=url, tags=clean_tags(tags)), type_, authors)
 
 
 def folder_for(kind: str, source_type: str | None) -> str:
