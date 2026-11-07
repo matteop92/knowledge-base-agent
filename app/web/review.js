@@ -25,7 +25,9 @@
   const typeOf = (passage) => (Object.hasOwn(TYPES, passage.type) ? passage.type : "note");
 
   const view = { pages: [], current: 0, fetching: false, failed: false, stalled: false, loaded: false,
-    askOpen: false, observer: null, byElement: new Map() };
+    askOpen: false, observer: null, byElement: new Map(), list: null, saved: null };
+  const LIST_NAMES = { again: "Again", done: "Done" };
+  const LIST_BAR_PX = 36;       // list mode's top bar pushes the bars, kicker and passage box down by this much
 
   const h = (tag, cls, text) => {
     const node = document.createElement(tag);
@@ -39,7 +41,7 @@
     const [fallbackWidth, fallbackHeight] = phone.matches ? FALLBACK.phone : FALLBACK.wide;
     const width = pager.clientWidth || fallbackWidth;
     const height = pager.clientHeight || fallbackHeight;
-    const boxHeight = height - (phone.matches ? 112 + 256 : 122 + 260);  // the box with bars, the smaller one
+    const boxHeight = height - (phone.matches ? 112 + 256 : 122 + 260) - (view.list ? LIST_BAR_PX : 0);  // the box with bars, the smaller one
     const boxWidth = Math.min(640, width - (phone.matches ? 48 : 144));
     const lines = Math.max(1, Math.floor(boxHeight / LINE_PX));
     return Math.max(10, Math.floor(lines * (boxWidth / WORD_PX) * FILL));
@@ -189,6 +191,10 @@
     page.saving = page.saving.then(async () => {
       try {
         await (next ? api("PUT", url, { mark: next }) : api("DELETE", url));
+        // A shuffle passage held behind a list shows the same mark when the shuffle comes back.
+        for (const held of view.saved ? view.saved.pages : []) {
+          if (held.passage.passage_key === page.passage.passage_key) { held.mark = next; paintMarks(held); }
+        }
       } catch (error) {
         page.mark = before;
         paintMarks(page);
@@ -286,6 +292,7 @@
       loading: ["Loading passages…", ""],
       failed: ["Passages did not load.", "Check your connection and try again."],
       empty: ["Nothing to review yet.", "Highlights, quotes and short notes appear here once they are indexed."],
+      allDone: ["You have marked every passage Done.", ""],
     }[kind];
     box.append(h("p", "review-state-title", copy[0]));
     if (copy[1]) box.append(h("p", "review-state-sub", copy[1]));
@@ -294,6 +301,22 @@
       retry.type = "button";
       retry.addEventListener("click", () => fetchMore());
       box.append(retry);
+    }
+    if (kind === "allDone") {
+      const open = h("button", "link", "Open the Done list");
+      open.type = "button";
+      open.addEventListener("click", () => window.reviewSettings.openFromReview("done"));
+      box.append(open);
+    }
+  }
+
+  // Nothing to show: either an empty vault, or every passage marked Done (the Done list is one tap away).
+  async function emptyKind() {
+    try {
+      const counts = await api("GET", "/api/review/settings");
+      return counts.done > 0 ? "allDone" : "empty";
+    } catch (error) {
+      return "empty";
     }
   }
 
@@ -325,6 +348,52 @@
     }
   }
 
+  // List mode ----------------------------------------------------------------------------------------
+  // A passage opened from Settings > Review > Again or Done shows here, like Review, with the whole list in the pager.
+  // The shuffle's own state is set aside until the list is left; list mode never fetches, holds keys or logs shown.
+  function enterList(name, passages, index = 0) {
+    if (view.list) leaveList();
+    const pager = $("review-pager");
+    for (const page of view.pages) stopDwell(page);
+    view.saved = { pages: view.pages, current: view.current, byElement: view.byElement, tail: view.tail,
+      nodes: [...pager.children], scrollTop: pager.scrollTop };
+    if (view.observer) view.observer.disconnect();
+    pager.replaceChildren();
+    Object.assign(view, { pages: [], current: index, byElement: new Map(), tail: null, list: { name, total: passages.length, start: index } });
+    $("review").classList.add("is-list");
+    $("app").dataset.reviewList = "true";
+    setState(null);
+    for (const passage of passages) addPage(passage);
+    updateListBar();
+  }
+
+  function leaveList() {
+    if (!view.list) return;
+    const pager = $("review-pager");
+    const saved = view.saved;
+    if (view.observer) view.observer.disconnect();
+    pager.replaceChildren(...saved.nodes);
+    Object.assign(view, { pages: saved.pages, current: saved.current, byElement: saved.byElement, tail: saved.tail, list: null, saved: null });
+    if (view.observer) for (const page of view.pages) view.observer.observe(page.el);
+    pager.scrollTop = saved.scrollTop;
+    $("review").classList.remove("is-list");
+    delete $("app").dataset.reviewList;
+    $("review-listbar").hidden = true;
+    $("review-list-caption").hidden = true;
+    hideAsk();
+  }
+
+  function updateListBar() {
+    const { name, total } = view.list;
+    const last = view.current >= total - 1;
+    $("review-listbar").hidden = false;
+    $("review-list-name").textContent = LIST_NAMES[name];
+    $("review-list-count").textContent = `${view.current + 1} of ${total}`;
+    const caption = $("review-list-caption");
+    caption.hidden = false;
+    caption.textContent = last ? "End of list" : phone.matches ? "Swipe up for the next passage in this list" : "Down arrow for the next passage in this list";
+  }
+
   // Fetching ----------------------------------------------------------------------------------------
   // What the server must not hand out again: passages on screen or ahead that are not yet logged. Passages scrolled
   // past without a second on screen are let go (the list is capped at what the server accepts).
@@ -340,12 +409,13 @@
     drawTail();
     try {
       const data = await api("GET", `/api/review/next?count=${BATCH}&held=${heldKeys().join(",")}`);
+      if (view.list) return;  // a list was opened meanwhile: these belong to the shuffle, which asks again when it returns
       const passages = data.passages || [];
       view.loaded = true;
       for (const passage of passages) if (!view.pages.some((p) => !p.logged && p.passage.passage_key === passage.passage_key)) addPage(passage);
       // Nothing new while passages are held: wait for one to be shown. Nothing and nothing held: the pool is empty.
       if (!passages.length) view.stalled = true;
-      setState(!view.pages.length ? "empty" : null);
+      if (!view.pages.length) setState(await emptyKind()); else setState(null);
     } catch (error) {
       if (error.status === 401) return;
       view.failed = true;
@@ -366,13 +436,13 @@
   }
 
   function maybeFetch() {
-    if (view.fetching || view.stalled || view.failed) return;
+    if (view.list || view.fetching || view.stalled || view.failed) return;
     if (view.pages.length - 1 - view.current < AHEAD) fetchMore();
   }
 
   // Shown means on screen ----------------------------------------------------------------------------
   function startDwell(page) {
-    if (page.logged || page.timer !== null) return;
+    if (view.list || page.logged || page.timer !== null) return;  // list mode logs nothing as shown
     page.timer = setTimeout(() => { page.timer = null; markShown(page); }, DWELL_MS);
   }
 
@@ -407,6 +477,7 @@
         if (index !== view.current || !page.announced) {
           view.current = index;
           page.announced = true;
+          if (view.list) updateListBar();
           hideAsk();
           syncTone(page);
           $("review-live").textContent = `${page.passage.title}${page.passage.author ? `, ${page.passage.author}` : ""}`;
@@ -465,6 +536,15 @@
   // Screen ------------------------------------------------------------------------------------------
   function show() {
     for (const page of view.pages) fit(page);
+    if (view.list) {
+      // Opened from a list: land on the passage that was tapped, with no glide.
+      const start = view.pages[view.list.start];
+      if (start && start.el.scrollIntoView) start.el.scrollIntoView({ behavior: "instant", block: "start" });
+      view.current = view.list.start;
+      if (start) syncTone(start);
+      updateListBar();
+      return undefined;
+    }
     if (view.pages[view.current]) syncTone(view.pages[view.current]);
     if (!view.pages.length) {
       if (!view.fetching) fetchMore();
@@ -476,6 +556,7 @@
   }
 
   function leave() {
+    leaveList();
     hideAsk();
     delete $("app").dataset.reviewTone;
     delete $("app").dataset.reviewBars;
@@ -483,6 +564,9 @@
   }
 
   function init() {
+    $("review-list-back").addEventListener("click", () => {
+      if (view.list) window.reviewSettings.backToList(view.list.name);
+    });
     $("review-ask").addEventListener("click", () => {
       const page = view.pages[view.current];
       if (!page) return;
@@ -509,6 +593,6 @@
     }
   }
 
-  window.reviewScreen = { show, leave, paginate, budget, onVisible, toggleMark, pages: () => view.pages };
+  window.reviewScreen = { show, leave, paginate, budget, onVisible, toggleMark, enterList, leaveList, pages: () => view.pages };
   document.addEventListener("DOMContentLoaded", init);
 })();

@@ -18,17 +18,18 @@ function passage(n, extra = {}) {
 
 function boot({ phone = true, replies = [] } = {}) {
   const els = {};
-  for (const id of ["app", "review", "review-pager", "review-state", "review-ask", "review-live"]) {
+  for (const id of ["app", "review", "review-pager", "review-state", "review-ask", "review-live", "review-listbar", "review-list-back",
+    "review-list-name", "review-list-count", "review-list-caption"]) {
     els[id] = new El("div"); els[id].id = id;
   }
-  els["review-state"].hidden = true; els["review-ask"].hidden = true;
-  const calls = { api: [], asked: [], timers: [], notices: [] };
+  els["review-state"].hidden = true; els["review-ask"].hidden = true; els["review-listbar"].hidden = true; els["review-list-caption"].hidden = true;
+  const calls = { api: [], asked: [], timers: [], notices: [], opened: [], backed: [] };
   const queue = replies.slice();
   const stored = {};
-  class FakeObserver { constructor(cb) { this.cb = cb; this.watched = []; observers.push(this); } observe(el) { this.watched.push(el); } }
+  class FakeObserver { constructor(cb) { this.cb = cb; this.watched = []; observers.push(this); } observe(el) { this.watched.push(el); } disconnect() { this.watched = []; } }
   const observers = [];
   const context = {
-    console, document: documentStub, window: { readerBlocks: { inline: (tag, cls, text) => { const el = new El(tag); el.className = cls; el.textContent = text; return el; } } },
+    console, document: documentStub, window: { reviewSettings: { openFromReview: (name) => calls.opened.push(name), backToList: (name) => calls.backed.push(name) }, readerBlocks: { inline: (tag, cls, text) => { const el = new El(tag); el.className = cls; el.textContent = text; return el; } } },
     $: (id) => { if (!els[id]) throw new Error(`no element ${id}`); return els[id]; },
     icon: (name) => { const el = new El("svg"); el.dataset.name = name; return el; },
     phone: { matches: phone, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } },
@@ -309,6 +310,61 @@ const scenarios = {
     app.seen(0); app.fire(); await app.flush();
     return { filled, afterCircle, afterPassage, afterHide: app.els["review"].dataset.ask || null,
       shown: app.calls.api.filter(([m, path]) => m === "POST" && path === "/api/review/shown").map(([, , body]) => body) };
+  },
+  async listModeSetsTheShuffleAsideAndRestoresIt() {
+    const app = boot({ replies: [{ passages: [passage(1), passage(2), passage(3)] }, {}, {}, {}] });
+    app.screen.show(); await app.flush();
+    app.seen(1); await app.flush();
+    const before = { pages: app.screen.pages().map((p) => p.passage.passage_key), current: 1, children: app.els["review-pager"].children.length };
+    const apiBefore = app.calls.api.length;
+    const listed = [passage(11, { mark: "again", type: "quote" }), passage(12, { mark: "again" }), passage(13, { mark: "again" })];
+    app.screen.enterList("again", listed, 1);
+    app.screen.show();
+    const inList = { keys: app.screen.pages().map((p) => p.passage.passage_key), classes: app.els["review"].className, bar: app.els["review-listbar"].hidden,
+      name: app.els["review-list-name"].textContent, count: app.els["review-list-count"].textContent,
+      caption: app.els["review-list-caption"].textContent, appFlag: app.els.app.dataset.reviewList,
+      filled: app.screen.pages().map((p) => p.el.querySelector(".review-mark-again").getAttribute("aria-pressed")) };
+    app.seen(1); app.seen(2); await app.flush();
+    const atEnd = { count: app.els["review-list-count"].textContent, caption: app.els["review-list-caption"].textContent };
+    const timers = app.calls.timers.filter((t) => t.live && t.ms === 1000).length;
+    app.screen.leave();
+    const after = { pages: app.screen.pages().map((p) => p.passage.passage_key), children: app.els["review-pager"].children.length, classes: app.els["review"].className,
+      bar: app.els["review-listbar"].hidden, appFlag: app.els.app.dataset.reviewList || null };
+    return { before, inList, atEnd, timers, after, extraApi: app.calls.api.length - apiBefore };
+  },
+  async inAListAMarkClearedStaysOnScreenUnfilledAndBackGoesToTheList() {
+    const app = boot({ replies: [{ passages: [passage(1)] }, {}, {}] });
+    app.screen.show(); await app.flush();
+    app.screen.enterList("done", [passage(11, { mark: "done" }), passage(12, { mark: "done" })], 0);
+    app.screen.show();
+    const p = app.screen.pages()[0];
+    const done = p.el.querySelector(".review-mark-done");
+    const start = done.getAttribute("aria-pressed");
+    done.click(); await app.flush();
+    const writes = app.calls.api.filter(([m]) => m !== "GET").map(([m, path]) => [m, path.split("/").pop()]);
+    app.els["review-list-back"].click();
+    return { start, afterClear: [done.getAttribute("aria-pressed"), p.el.querySelector(".review-mark-again").getAttribute("aria-pressed")], onScreen: app.screen.pages().length,
+      writes, backed: app.calls.backed };
+  },
+  async anAnswerThatArrivesInAListIsDropped() {
+    let release; const gate = new Promise((r) => { release = r; });
+    const app = boot({ replies: [gate.then(() => ({ passages: [passage(1), passage(2)] }))] });
+    app.screen.show();
+    app.screen.enterList("again", [passage(11, { mark: "again" })], 0);
+    release(); await app.flush();
+    const inList = app.screen.pages().map((p) => p.passage.passage_key);
+    app.screen.leaveList();
+    return { inList, afterLeave: app.screen.pages().length };
+  },
+  async everyPassageDoneShowsItsOwnStateWithALinkToTheDoneList() {
+    const app = boot({ replies: [{ passages: [] }, { every: 10, again: 0, done: 4 }, { passages: [] }, { every: 10, again: 0, done: 0 }] });
+    app.screen.show(); await app.flush();
+    const box = app.els["review-state"];
+    const text = box.textContent; const link = box.querySelector("button");
+    link.click();
+    const second = boot({ replies: [{ passages: [] }, { every: 10, again: 0, done: 0 }] });
+    second.screen.show(); await second.flush();
+    return { text, shown: !box.hidden, opened: app.calls.opened, plain: second.els["review-state"].textContent };
   },
   async tailStaysPutWhileFetching() {
     const app = boot({ replies: [{ passages: [passage(1), passage(2)] }, { passages: [passage(3)] }] });

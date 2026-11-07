@@ -45,7 +45,7 @@ class ShellSourceTests(unittest.TestCase):
     def test_page_has_no_inline_styles_and_scripts_set_none(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")
         self.assertNotRegex(page, r"\sstyle=")
-        for name in ("app.js", "capture.js", "settings.js", "sources.js", "review.js", "reader-picks.js"):
+        for name in ("app.js", "capture.js", "settings.js", "sources.js", "review.js", "review-settings.js", "reader-picks.js"):
             script = (WEB / name).read_text(encoding="utf-8")
             with self.subTest(name=name):
                 self.assertNotIn('setAttribute("style"', script)
@@ -53,7 +53,7 @@ class ShellSourceTests(unittest.TestCase):
 
     def test_shell_cache_is_bumped_and_the_sidebar_choice_is_remembered(self) -> None:
         worker = (WEB / "sw.js").read_text(encoding="utf-8")
-        self.assertIn('const CACHE = "ka-shell-v29"', worker)
+        self.assertIn('const CACHE = "ka-shell-v30"', worker)
         # A deploy must reach an installed app: never answer from the browser's own HTTP cache.
         self.assertIn('fetch(event.request, { cache: "no-cache" })', worker)
         script = (WEB / "app.js").read_text(encoding="utf-8")
@@ -77,7 +77,7 @@ class ShellSourceTests(unittest.TestCase):
 
     def test_every_element_the_scripts_look_up_exists_in_the_page(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")
-        for name in ("app.js", "capture.js", "settings.js", "sources.js", "review.js", "reader-picks.js"):
+        for name in ("app.js", "capture.js", "settings.js", "sources.js", "review.js", "review-settings.js", "reader-picks.js"):
             script = (WEB / name).read_text(encoding="utf-8")
             for element_id in sorted(set(re.findall(r'\$\("([a-z-]+)"\)', script))):
                 with self.subTest(name=name, element_id=element_id):

@@ -96,6 +96,42 @@ class ReviewScreenTests(unittest.TestCase):
         self.assertIsNone(out["afterHide"])
         self.assertEqual(out["shown"], [{"passage_key": "0" * 31 + "1", "round": 1, "again": True}])
 
+    def test_list_mode_sets_the_shuffle_aside_logs_nothing_and_leaving_restores_it_exactly(self) -> None:
+        out = run("listModeSetsTheShuffleAsideAndRestoresIt")
+        self.assertEqual(out["extraApi"], 0, "no fetch, no shown log")
+        self.assertEqual(out["timers"], 0, "no dwell timers in a list")
+        self.assertEqual(out["inList"]["keys"], ["0" * 30 + "11", "0" * 30 + "12", "0" * 30 + "13"])
+        self.assertIn("is-list", out["inList"]["classes"])
+        self.assertEqual((out["inList"]["bar"], out["inList"]["name"], out["inList"]["count"]), (False, "Again", "2 of 3"))
+        self.assertEqual(out["inList"]["caption"], "Swipe up for the next passage in this list")
+        self.assertEqual(out["inList"]["appFlag"], "true")
+        self.assertEqual(out["inList"]["filled"], ["true", "true", "true"], "a list passage shows its mark")
+        self.assertEqual(out["atEnd"], {"count": "3 of 3", "caption": "End of list"})
+        self.assertEqual(out["after"]["pages"], out["before"]["pages"])
+        self.assertEqual(out["after"]["children"], out["before"]["children"])
+        self.assertNotIn("is-list", out["after"]["classes"])
+        self.assertEqual((out["after"]["bar"], out["after"]["appFlag"]), (True, None))
+
+    def test_a_mark_cleared_in_a_list_passage_leaves_it_on_screen_unfilled_and_back_names_the_list(self) -> None:
+        out = run("inAListAMarkClearedStaysOnScreenUnfilledAndBackGoesToTheList")
+        self.assertEqual(out["start"], "true")
+        self.assertEqual(out["afterClear"], ["false", "false"])
+        self.assertEqual(out["onScreen"], 2)
+        self.assertEqual(out["writes"], [["DELETE", "0" * 30 + "11"]])
+        self.assertEqual(out["backed"], ["done"])
+
+    def test_a_shuffle_answer_that_arrives_after_a_list_opened_is_dropped(self) -> None:
+        out = run("anAnswerThatArrivesInAListIsDropped")
+        self.assertEqual(out["inList"], ["0" * 30 + "11"])
+        self.assertEqual(out["afterLeave"], 0)
+
+    def test_with_every_passage_done_review_says_so_and_links_to_the_done_list(self) -> None:
+        out = run("everyPassageDoneShowsItsOwnStateWithALinkToTheDoneList")
+        self.assertTrue(out["shown"])
+        self.assertEqual(out["text"], "You have marked every passage Done.Open the Done list")
+        self.assertEqual(out["opened"], ["done"])
+        self.assertIn("Nothing to review yet", out["plain"])
+
     def test_the_note_shows_on_the_last_part_only(self) -> None:
         out = run("noteOnlyOnLastPart")
         self.assertEqual(out["notes"], [False] * (out["parts"] - 1) + [True])

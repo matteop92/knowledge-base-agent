@@ -158,9 +158,25 @@
     }
   }
 
+  // Tags and Review share the page; the tab chosen last stays chosen while the app is open.
+  let tab = "tags";
+  function selectTab(name) {
+    tab = name;
+    for (const id of ["tags", "review"]) {
+      const on = id === name;
+      $(`settings-panel-${id}`).hidden = !on;
+      if (on) $(`settings-tab-${id}`).setAttribute("aria-current", "page"); else $(`settings-tab-${id}`).removeAttribute("aria-current");
+    }
+    if (name === "review") return window.reviewSettings.show();
+    return undefined;
+  }
+
+  const chooseTab = (name) => { tab = name; };  // for the next time Settings is shown
+
   // Called by the shell when Settings is shown: load the suggestions.
   async function show() {
     message("");
+    selectTab(tab);
     const mine = ++loads;
     try {
       const data = await api("GET", "/api/tags");
@@ -174,5 +190,7 @@
   }
 
   $("tags-approve-all").addEventListener("click", approveAll);
-  window.settingsScreen = { show };
+  $("settings-tab-tags").addEventListener("click", () => selectTab("tags"));
+  $("settings-tab-review").addEventListener("click", () => selectTab("review"));
+  window.settingsScreen = { show, selectTab, chooseTab };
 })();

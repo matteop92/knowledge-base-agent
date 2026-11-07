@@ -19,6 +19,7 @@
   <script src="/static/reader-picks.js" defer></script>
   <script src="/static/sources.js" defer></script>
   <script src="/static/review.js" defer></script>
+  <script src="/static/review-settings.js" defer></script>
 </head>
 <body>
   <!-- Icons: one sprite, referenced with <use> -->
@@ -30,6 +31,8 @@
     <symbol id="i-down" viewBox="0 0 256 256"><path fill="currentColor" d="M128,26A102,102,0,1,0,230,128,102.12,102.12,0,0,0,128,26Zm0,192a90,90,0,1,1,90-90A90.1,90.1,0,0,1,128,218Zm46-58a6,6,0,0,1-6,6H88a6,6,0,0,1,0-12h80A6,6,0,0,1,174,160ZM82,108a10,10,0,1,1,10,10A10,10,0,0,1,82,108Zm92,0a10,10,0,1,1-10-10A10,10,0,0,1,174,108Z"/></symbol>
     <symbol id="i-paperclip" viewBox="0 0 256 256"><path fill="currentColor" d="M208.25,123.76a6,6,0,0,1,0,8.49l-82.06,82a54,54,0,0,1-76.36-76.39L149.1,37.14a38,38,0,1,1,53.77,53.72L103.59,191.54a22,22,0,1,1-31.15-31.09l83.28-84.67a6,6,0,0,1,8.56,8.42L81,168.91a10,10,0,1,0,14.11,14.18L194.35,82.4a26,26,0,1,0-36.74-36.8L58.33,146.28a42,42,0,1,0,59.37,59.44l82.06-82A6,6,0,0,1,208.25,123.76Z"/></symbol>
     <symbol id="i-settings" viewBox="0 0 256 256"><path fill="currentColor" d="M128,82a46,46,0,1,0,46,46A46.06,46.06,0,0,0,128,82Zm0,80a34,34,0,1,1,34-34A34,34,0,0,1,128,162ZM214,130.84c.06-1.89.06-3.79,0-5.68L229.33,106a6,6,0,0,0,1.11-5.29A105.34,105.34,0,0,0,219.76,74.9a6,6,0,0,0-4.53-3l-24.45-2.71q-1.93-2.07-4-4l-2.72-24.46a6,6,0,0,0-3-4.53,105.65,105.65,0,0,0-25.77-10.66A6,6,0,0,0,150,26.68l-19.2,15.37c-1.89-.06-3.79-.06-5.68,0L106,26.67a6,6,0,0,0-5.29-1.11A105.34,105.34,0,0,0,74.9,36.24a6,6,0,0,0-3,4.53L69.23,65.22q-2.07,1.94-4,4L40.76,72a6,6,0,0,0-4.53,3,105.65,105.65,0,0,0-10.66,25.77A6,6,0,0,0,26.68,106l15.37,19.2c-.06,1.89-.06,3.79,0,5.68L26.67,150.05a6,6,0,0,0-1.11,5.29A105.34,105.34,0,0,0,36.24,181.1a6,6,0,0,0,4.53,3l24.45,2.71q1.94,2.07,4,4L72,215.24a6,6,0,0,0,3,4.53,105.65,105.65,0,0,0,25.77,10.66,6,6,0,0,0,5.29-1.11L125.16,214c1.89.06,3.79.06,5.68,0l19.21,15.38a6,6,0,0,0,3.75,1.31,6.2,6.2,0,0,0,1.54-.2,105.34,105.34,0,0,0,25.76-10.68,6,6,0,0,0,3-4.53l2.71-24.45q2.07-1.93,4-4l24.46-2.72a6,6,0,0,0,4.53-3,105.49,105.49,0,0,0,10.66-25.77,6,6,0,0,0-1.11-5.29Zm-3.1,41.63-23.64,2.63a6,6,0,0,0-3.82,2,75.14,75.14,0,0,1-6.31,6.31,6,6,0,0,0-2,3.82l-2.63,23.63A94.28,94.28,0,0,1,155.14,218l-18.57-14.86a6,6,0,0,0-3.75-1.31h-.36a78.07,78.07,0,0,1-8.92,0,6,6,0,0,0-4.11,1.3L100.87,218a94.13,94.13,0,0,1-17.34-7.17L80.9,187.21a6,6,0,0,0-2-3.82,75.14,75.14,0,0,1-6.31-6.31,6,6,0,0,0-3.82-2l-23.63-2.63A94.28,94.28,0,0,1,38,155.14l14.86-18.57a6,6,0,0,0,1.3-4.11,78.07,78.07,0,0,1,0-8.92,6,6,0,0,0-1.3-4.11L38,100.87a94.13,94.13,0,0,1,7.17-17.34L68.79,80.9a6,6,0,0,0,3.82-2,75.14,75.14,0,0,1,6.31-6.31,6,6,0,0,0,2-3.82l2.63-23.63A94.28,94.28,0,0,1,100.86,38l18.57,14.86a6,6,0,0,0,4.11,1.3,78.07,78.07,0,0,1,8.92,0,6,6,0,0,0,4.11-1.3L155.13,38a94.13,94.13,0,0,1,17.34,7.17l2.63,23.64a6,6,0,0,0,2,3.82,75.14,75.14,0,0,1,6.31,6.31,6,6,0,0,0,3.82,2l23.63,2.63A94.28,94.28,0,0,1,218,100.86l-14.86,18.57a6,6,0,0,0-1.3,4.11,78.07,78.07,0,0,1,0,8.92,6,6,0,0,0,1.3,4.11L218,155.13A94.13,94.13,0,0,1,210.85,172.47Z"/></symbol>
+    <symbol id="i-step-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-step-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
     <symbol id="i-mark-cross" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7 7 17"/></symbol>
     <symbol id="i-mark-bookmark" viewBox="0 0 24 24"><path d="M7 4.5h10v15l-5-3.6-5 3.6z"/></symbol>
     <symbol id="i-check" viewBox="0 0 256 256"><path fill="currentColor" d="M228.24,76.24l-128,128a6,6,0,0,1-8.48,0l-56-56a6,6,0,0,1,8.48-8.48L96,191.51,219.76,67.76a6,6,0,0,1,8.48,8.48Z"/></symbol>
@@ -224,11 +227,14 @@
 
         <section id="settings" class="view view-settings" hidden aria-labelledby="settings-title">
           <div class="column">
+            <div id="settings-main">
             <button type="button" id="settings-back" class="icon-button settings-back" aria-label="Back"><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg></button>
             <h1 id="settings-title">Settings</h1>
             <nav class="settings-tabs" aria-label="Settings sections">
-              <button type="button" class="settings-tab" aria-current="page">Tags</button>
+              <button type="button" id="settings-tab-tags" class="settings-tab" aria-current="page">Tags</button>
+              <button type="button" id="settings-tab-review" class="settings-tab">Review</button>
             </nav>
+            <div id="settings-panel-tags">
             <p class="tags-intro"><span class="tags-intro-full">When several notes point at a topic your tag list doesn’t have, the agent suggests a new tag. Approve it to use it on notes you add from now on; block it to stop it coming back.</span><span class="tags-intro-short">New tags the agent suggests. Approve to use one from now on; block to stop it coming back.</span></p>
             <div id="tags-head" class="tags-head">
               <h2 id="tags-title" class="section-title" tabindex="-1">Suggested</h2>
@@ -247,6 +253,36 @@
             </div>
             <p id="tags-message" class="message" role="alert"></p>
             <p class="muted caption tags-note">Approved tags apply to notes you add from now on. Older notes keep their tags.</p>
+            </div>
+            <div id="settings-panel-review" hidden>
+              <p class="review-intro"><span class="review-intro-full">Mark a passage Again or Done while you review. Again passages come back more often; Done passages leave Review.</span><span class="review-intro-short">Again passages come back more often. Done passages leave Review.</span></p>
+              <h2 class="section-title review-section">How often Again passages come back</h2>
+              <div class="how-often">
+                <div class="how-row">
+                  <button type="button" id="every-less" class="step-button" aria-label="Less often"><svg class="icon" aria-hidden="true"><use href="#i-step-minus"/></svg></button>
+                  <div id="every-word" class="how-word" aria-live="polite"></div>
+                  <button type="button" id="every-more" class="step-button" aria-label="More often"><svg class="icon" aria-hidden="true"><use href="#i-step-plus"/></svg></button>
+                </div>
+                <div id="every-dots" class="how-dots" role="img"></div>
+                <div class="how-caption"><span class="how-caption-full">About 1 in <span id="every-n-full"></span> passages will be one you marked Again</span><span class="how-caption-short">About 1 in <span id="every-n-short"></span> passages</span></div>
+              </div>
+              <h2 class="section-title review-section">Your passages</h2>
+              <div class="mark-rows">
+                <button type="button" id="open-again" class="mark-row"><span class="mark-row-name">Again</span><span id="again-count" class="mark-row-count"></span><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg></button>
+                <button type="button" id="open-done" class="mark-row"><span class="mark-row-name">Done</span><span id="done-count" class="mark-row-count"></span><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg></button>
+              </div>
+              <p class="muted caption mark-note">Done passages never appear in Review. Open the list to bring one back.</p>
+              <p id="review-settings-message" class="message" role="alert"></p>
+            </div>
+            </div>
+            <div id="settings-list" class="settings-list" hidden>
+              <button type="button" id="list-back" class="list-back"><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg><span class="list-back-full">Review settings</span><span class="list-back-short">Settings</span></button>
+              <h1 id="list-title"></h1>
+              <p id="list-sub" class="list-sub"></p>
+              <ul id="list-rows" class="list-rows"></ul>
+              <p id="list-empty" class="list-empty" hidden>Nothing here yet.</p>
+              <p id="list-message" class="message" role="alert"></p>
+            </div>
           </div>
         </section>
 
@@ -287,6 +323,11 @@
 
         <section id="review" class="view view-review" hidden aria-label="Review">
           <div id="review-pager" class="review-pager" tabindex="0"></div>
+          <div id="review-listbar" class="review-listbar" hidden>
+            <button type="button" id="review-list-back" class="review-list-back"><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg><span id="review-list-name"></span></button>
+            <span id="review-list-count" class="review-list-count"></span>
+          </div>
+          <p id="review-list-caption" class="review-list-caption" hidden></p>
           <div id="review-state" class="review-state" hidden></div>
           <button type="button" id="review-ask" class="review-ask" hidden><svg class="icon" aria-hidden="true"><use href="#i-ask"/></svg><span>Ask about this</span></button>
           <p id="review-live" class="sr-only" aria-live="polite"></p>

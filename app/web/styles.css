@@ -990,6 +990,91 @@ h3.r-heading { font-size: 18.5px; }
   .app[data-view="review"][data-review-bars="true"] .topbar { top: 20px; }
 }
 
+/* Review in list mode: a top bar (back link and "n of N") pushes the bars, kicker and passage box down by 36 px. */
+.review-listbar { position: absolute; z-index: 5; left: 12px; right: 20px; top: 8px; display: flex; align-items: center; justify-content: space-between; }
+.review-list-back { height: 44px; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; border-radius: 8px; background: transparent; font-size: 14px; color: var(--ink-soft); }
+.review-list-back .icon { width: 18px; height: 18px; }
+.review-list-count { font-size: 12.5px; color: var(--muted); }
+.review-list-caption { position: absolute; left: 0; right: 0; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); margin: 0; text-align: center; font-size: 12px; color: var(--muted); }
+.review-listbar[hidden], .review-list-caption[hidden] { display: none; }
+.view-review[data-type="highlights"] .review-list-back { color: var(--paper); }
+.view-review[data-type="highlights"] .review-list-count { color: rgba(255, 253, 248, 0.72); }
+.view-review[data-type="highlights"] .review-list-caption { color: rgba(255, 253, 248, 0.6); }
+.view-review.is-list .review-bars { top: 56px; }
+.view-review.is-list .review-kicker { top: 106px; }
+.view-review.is-list .review-page.has-bars .review-kicker { top: 122px; }
+.view-review.is-list .review-body { margin-top: 136px; }
+.view-review.is-list .review-page.has-bars .review-body { margin-top: 148px; }
+.app[data-review-list="true"] .topbar { display: none; }
+@media (min-width: 900px) and (pointer: fine) {
+  .view-review.is-list .review-kicker { top: 116px; }
+  .view-review.is-list .review-page.has-bars .review-kicker { top: 132px; }
+  .view-review.is-list .review-body { margin-top: 146px; }
+  .view-review.is-list .review-page.has-bars .review-body { margin-top: 158px; }
+  .review-list-caption { bottom: 64px; }
+}
+
+/* Settings > Review (Review settings boards A1, A2, A3): the how-often card, the two rows, and a list as a page. */
+.review-intro { margin: 20px 0 0; font-size: 14.5px; line-height: 1.5; color: var(--muted); }
+.review-intro-short, .how-caption-short, .list-back-short { display: none; }
+.review-section { margin: 32px 0 10px; }
+.how-often { border-radius: 14px; background: var(--surface); box-shadow: var(--shadow-row); padding: 22px 24px 18px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.how-row { width: 320px; max-width: 100%; display: flex; align-items: center; justify-content: space-between; }
+.step-button { width: 32px; height: 32px; padding: 0; border-radius: 999px; background: var(--ground); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; }
+.step-button .icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+.step-button:disabled { opacity: 0.35; }
+.how-word { font-family: var(--serif); font-weight: 420; font-size: 40px; line-height: 1; }
+.how-dots { display: flex; gap: 6px; }
+.how-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--handle); }
+.how-dot.is-on { background: var(--ink); }
+.how-caption { font-size: 12.5px; color: var(--muted); }
+.mark-rows { border-radius: 14px; background: var(--surface); box-shadow: var(--shadow-row); overflow: hidden; }
+.mark-row { position: relative; width: 100%; height: 48px; padding: 0 14px 0 18px; display: flex; align-items: center; gap: 10px; border-radius: 0; background: transparent; font-size: 14px; text-align: left; }
+.mark-row + .mark-row::before { content: ""; position: absolute; left: 18px; right: 0; top: 0; height: 1px; background: rgba(29, 28, 26, 0.07); }
+.mark-row:hover:not(:disabled) { background: var(--row-active); }
+.mark-row-name { flex: 1; }
+.mark-row-count { color: var(--muted); }
+.mark-row .icon { width: 16px; height: 16px; color: var(--muted); transform: rotate(180deg); }
+.mark-note { margin: 10px 0 0; }
+.view-settings.is-list { padding-top: 40px; }
+.list-back { height: 32px; display: inline-flex; align-items: center; gap: 4px; margin-left: -6px; padding: 0 6px; border-radius: 8px; background: transparent; font-size: 14px; color: var(--ink-soft); }
+.list-back .icon { width: 16px; height: 16px; }
+.settings-list h1 { margin: 8px 0 0; }
+.list-sub { margin: 10px 0 24px; font-size: 14.5px; color: var(--muted); }
+.list-rows { list-style: none; margin: 0; padding: 0; }
+.list-row { display: flex; align-items: center; gap: 16px; margin: 0 -12px; padding: 0 12px; border-top: 1px solid rgba(29, 28, 26, 0.07); }
+.list-row:hover, .list-row:focus-within { background: var(--row-active); border-radius: 10px; border-top-color: transparent; }
+.list-open { flex: 1; min-width: 0; display: block; padding: 16px 0; border-radius: 0; background: transparent; text-align: left; }
+.list-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; font-family: var(--serif); font-size: 17.5px; line-height: 1.4; overflow-wrap: anywhere; }
+.list-meta { display: block; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+.list-acts { display: none; flex: none; gap: 4px; }
+.list-row:hover .list-acts, .list-row:focus-within .list-acts { display: flex; }
+.list-act { height: 28px; padding: 0 12px; border-radius: 999px; background: transparent; font-size: 12.5px; color: var(--ink-soft); }
+.list-act:hover:not(:disabled) { background: var(--hover); }
+.list-empty { margin: 8px 0; font-size: 14.5px; color: var(--muted); }
+.settings-list[hidden], .list-empty[hidden] { display: none; }
+@media (max-width: 899px) {
+  .review-intro { margin-top: 16px; font-size: 14px; }
+  .review-intro-full, .how-caption-full, .list-back-full { display: none; }
+  .review-intro-short, .how-caption-short, .list-back-short { display: inline; }
+  .review-section { margin: 26px 0 8px; }
+  .how-often { padding: 18px 14px 16px; gap: 8px; }
+  .how-row { width: 100%; }
+  .step-button { width: 44px; height: 44px; }
+  .step-button .icon { width: 18px; height: 18px; }
+  .how-word { font-size: 36px; }
+  .mark-row { height: 52px; padding: 0 12px 0 16px; }
+  .mark-row + .mark-row::before { left: 16px; }
+  .view-settings.is-list { padding-top: 8px; }
+  .list-back { height: 44px; margin-left: -8px; padding: 0 8px; }
+  .list-back .icon { width: 18px; height: 18px; }
+  .settings-list h1 { margin-top: 2px; }
+  .list-sub { margin: 8px 0 16px; font-size: 14px; }
+  .list-row { margin: 0 -20px; padding: 0 20px; }
+  .list-row:hover, .list-row:focus-within { border-radius: 0; }
+  .list-acts, .list-row:hover .list-acts, .list-row:focus-within .list-acts { display: none; }
+}
+
 /* The passage shown above the composer after "Ask about this" on a Review passage. */
 .passage-card { position: relative; max-width: 680px; margin: 0 auto 8px; padding: 12px 40px 10px 16px; border-radius: 12px; background: var(--paper); box-shadow: var(--shadow-row); pointer-events: auto; }
 .passage-card-text { max-height: 9em; overflow-y: auto; font-family: var(--serif); font-size: 17px; line-height: 1.5; }
