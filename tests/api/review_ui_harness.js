@@ -265,6 +265,26 @@ const scenarios = {
     return { initial, afterAgain, afterClear, afterSwitch, writes: writes(), labels: [done.getAttribute("aria-label"), again.getAttribute("aria-label")],
       keys: [done.getAttribute("aria-keyshortcuts"), again.getAttribute("aria-keyshortcuts")], titles: [done.title, again.title] };
   },
+  async aNewMarkMovesOnToTheNextPassageButClearingOrAListDoesNot() {
+    const app = boot({ replies: [{ passages: [passage(1), passage(2), passage(3)] }, {}, {}, {}, {}] });
+    app.screen.show(); await app.flush();
+    app.seen(0);
+    const advance = () => { const t = app.calls.timers.filter((x) => x.live && x.ms === 250)[0]; if (t) { t.live = false; t.fn(); } return !!t; };
+    const first = page(app, 0).el.querySelector(".review-mark-done");
+    first.click(); const set = advance();
+    const moved = page(app, 1).el.scrolledIntoView === true;
+    first.click(); const clearTimer = advance();  // clearing: no timer
+    app.seen(1);
+    page(app, 1).el.querySelector(".review-mark-again").click();
+    app.seen(2);  // the reader moved on by hand before the beat ended: nothing more happens
+    advance();
+    const stale = page(app, 2).el.scrolledIntoView === true;
+    app.screen.enterList("again", [passage(11, { mark: "again" }), passage(12, { mark: "again" })], 0);
+    const inList = app.screen.pages()[0].el.querySelector(".review-mark-done");
+    inList.click();
+    const listTimer = advance();
+    return { set, moved, clearTimer, stale, listTimer };
+  },
   async aMarkSetOnOnePartShowsOnTheOthers() {
     const app = boot({ replies: [{ passages: [passage(1, { text: sentences(110, 3) })] }] });
     app.screen.show(); await app.flush();

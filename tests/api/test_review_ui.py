@@ -71,6 +71,10 @@ class ReviewScreenTests(unittest.TestCase):
         self.assertEqual((out["labels"], out["keys"]), (["Done", "Show again"], ["X", "B"]))
         self.assertEqual(out["titles"], ["Done (X)", "Show again (B)"])
 
+    def test_a_new_mark_moves_on_to_the_next_passage_but_clearing_a_mark_or_reading_a_list_does_not(self) -> None:
+        out = run("aNewMarkMovesOnToTheNextPassageButClearingOrAListDoesNot")
+        self.assertEqual(out, {"set": True, "moved": True, "clearTimer": False, "stale": False, "listTimer": False})
+
     def test_a_mark_set_on_one_part_stays_filled_on_the_others(self) -> None:
         out = run("aMarkSetOnOnePartShowsOnTheOthers")
         self.assertGreater(out["parts"], 2)

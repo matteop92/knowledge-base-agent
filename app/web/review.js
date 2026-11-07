@@ -16,6 +16,7 @@
   const BATCH = 3;             // passages asked for at a time
   const AHEAD = 2;              // fetch more when fewer than this many passages are left after the current one
   const DWELL_MS = 1000;
+  const ADVANCE_MS = 250;       // how long a new mark shows filled before the next passage comes up
   const VISIBLE = 0.6;          // share of a page that must be on screen
   const WHEEL_QUIET_MS = 160;   // no wheel events for this long ends a gesture
   const MAX_HELD = 30;          // the most keys the server accepts in one request
@@ -186,6 +187,11 @@
     const next = before === kind ? null : kind;
     page.mark = next;
     paintMarks(page);
+    // Setting a mark moves on to the next passage after a beat, so the fill is seen. Clearing a mark stays put, and so does
+    // a list (there you are reading one passage after another by choice).
+    if (next && !view.list) {
+      setTimeout(() => { if (view.pages[view.current] === page) go(1); }, ADVANCE_MS);
+    }
     const url = `/api/review/marks/${encodeURIComponent(page.passage.passage_key)}`;
     // Saves for one passage go out in order, so quick taps cannot land the wrong way round.
     page.saving = page.saving.then(async () => {
