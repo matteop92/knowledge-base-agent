@@ -24,7 +24,7 @@ class ShellSourceTests(unittest.TestCase):
         self.assertIn('url.startsWith("obsidian://")', script)
 
     def test_capture_and_worker_scripts_never_insert_html(self) -> None:
-        for name in ("capture.js", "capture-fields.js", "settings.js", "sources.js", "review.js", "review-settings.js", "reader-blocks.js", "reader-picks.js", "source-filter.js", "sw.js"):
+        for name in ("capture.js", "capture-fields.js", "capture-row.js", "settings.js", "sources.js", "review.js", "review-settings.js", "reader-blocks.js", "reader-picks.js", "source-filter.js", "sw.js"):
             script = (WEB / name).read_text(encoding="utf-8")
             for unsafe in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
                 with self.subTest(name=name, unsafe=unsafe):
@@ -45,7 +45,7 @@ class ShellSourceTests(unittest.TestCase):
     def test_page_has_no_inline_styles_and_scripts_set_none(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")
         self.assertNotRegex(page, r"\sstyle=")
-        for name in ("app.js", "capture.js", "capture-fields.js", "settings.js", "sources.js", "review.js", "review-settings.js", "reader-picks.js"):
+        for name in ("app.js", "capture.js", "capture-fields.js", "capture-row.js", "settings.js", "sources.js", "review.js", "review-settings.js", "reader-picks.js"):
             script = (WEB / name).read_text(encoding="utf-8")
             with self.subTest(name=name):
                 self.assertNotIn('setAttribute("style"', script)
@@ -53,7 +53,7 @@ class ShellSourceTests(unittest.TestCase):
 
     def test_shell_cache_is_bumped_and_the_sidebar_choice_is_remembered(self) -> None:
         worker = (WEB / "sw.js").read_text(encoding="utf-8")
-        self.assertIn('const CACHE = "ka-shell-v31"', worker)
+        self.assertIn('const CACHE = "ka-shell-v32"', worker)
         # A deploy must reach an installed app: never answer from the browser's own HTTP cache.
         self.assertIn('fetch(event.request, { cache: "no-cache" })', worker)
         script = (WEB / "app.js").read_text(encoding="utf-8")
@@ -381,6 +381,7 @@ class PaperRefinementTests(unittest.TestCase):
         self.css = (WEB / "styles.css").read_text(encoding="utf-8")
         self.app = (WEB / "app.js").read_text(encoding="utf-8").replace("\r", "")
         self.capture = (WEB / "capture.js").read_text(encoding="utf-8").replace("\r", "")
+        self.row = (WEB / "capture-row.js").read_text(encoding="utf-8").replace("\r", "")
         self.page = (WEB / "index.html").read_text(encoding="utf-8")
 
     def _node(self, probe: str):
@@ -440,7 +441,7 @@ console.log(JSON.stringify({
     @unittest.skipUnless(shutil.which("node"), "needs node")
     def test_recent_times_and_tag_chips_run_as_written(self) -> None:
         age = re.search(r"function formatAge.*?\n  }\n", self.capture, re.S).group(0)
-        tags = re.search(r"function mergeTags.*?\n  }\n", self.capture, re.S).group(0)
+        tags = re.search(r"function mergeTags.*?\n  }\n", self.row, re.S).group(0)
         probe = "const MAX_TAGS = 10;\n" + age + tags + """
 const now = new Date(2026, 9, 21, 15, 0, 0);
 const ago = (ms) => new Date(now.getTime() - ms).toISOString();
@@ -631,17 +632,17 @@ async function openConversation(id) { seen.push({ openConversation: id }); }
 
     def test_the_optional_row_never_submits_the_form_and_the_request_keeps_its_shape(self) -> None:
         # Enter picks or commits and never sends the form; Escape closes the list and keeps the text.
-        keys = self.capture[self.capture.index("function onKey"):self.capture.index("function wireField")]
+        keys = self.row[self.row.index("function onKey"):self.row.index("function wireField")]
         self.assertIn('key === "Enter"', keys)
         self.assertIn("event.preventDefault();  // Enter never sends the form", keys)
         self.assertIn('key === "Escape"', keys)
-        self.assertIn("Remove tag ${tag}", self.capture)
+        self.assertIn("Remove tag ${tag}", self.row)
         # Save turns valid typed text into chips first; the type and the authors are sent only when set.
         save = self.capture[self.capture.index("async function save"):self.capture.index("// `fromForm`")]
-        self.assertLess(save.index("commitFields()"), save.index("requestBody()"))
-        body = self.capture[self.capture.index("function requestBody"):self.capture.index("async function save")]
-        self.assertIn("if (typeValue) extras.type = typeValue;", body)
-        self.assertIn("if (authorList.length) extras.authors = [...authorList];", body)
+        self.assertLess(save.index("row.commitFields()"), save.index("requestBody()"))
+        body = self.row[self.row.index("function extras"):self.row.index("function setTitle")]
+        self.assertIn("if (typeValue) out.type = typeValue;", body)
+        self.assertIn("if (authorList.length) out.authors = [...authorList];", body)
 
     def test_the_optional_row_is_an_accessible_combobox_with_one_list_and_no_ring(self) -> None:
         for name in ("capture-tags", "capture-author", "capture-type"):
@@ -652,10 +653,10 @@ async function openConversation(id) { seen.push({ openConversation: id }); }
                 self.assertIn('aria-controls="capture-suggest"', tag)
         self.assertRegex(self.page, r'<ul id="capture-suggest" class="cf-list" role="listbox"')
         for needle in ('setAttribute("role", "option")', '"aria-activedescendant"', '"aria-expanded"', '"aria-selected"'):
-            self.assertIn(needle, self.capture)
+            self.assertIn(needle, self.row)
         # Matching is the one list's job (capture-fields.js); the old tag field, its chips and its "In use" pick are gone.
         for gone in ("tag-chip", "tag-field", "capture-tag-pick", "capture-more"):
-            self.assertNotIn(gone, self.css + self.page + self.capture)
+            self.assertNotIn(gone, self.css + self.page + self.capture + self.row)
 
     def test_row_values_follow_the_board(self) -> None:
         css = self.css
@@ -745,7 +746,7 @@ class StaticRouteTests(unittest.TestCase):
             with self.subTest(needle=needle):
                 self.assertIn(needle, page)
         self.assertIn('"GET", "/api/starters"', (WEB / "app.js").read_text(encoding="utf-8"))
-        self.assertIn(".approved", (WEB / "capture.js").read_text(encoding="utf-8"))
+        self.assertIn(".approved", (WEB / "capture-row.js").read_text(encoding="utf-8"))
         self.assertIn("data.in_use", (WEB / "settings.js").read_text(encoding="utf-8"))
 
     def test_text_uses_only_the_agreed_type_scale(self) -> None:

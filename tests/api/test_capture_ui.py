@@ -110,5 +110,49 @@ class CaptureRowTests(unittest.TestCase):
         self.assertEqual(out["desktop"]["rest"], [])
 
 
+    def test_backspace_in_an_empty_tags_or_author_field_removes_the_last_chip(self) -> None:
+        out = run("backspaceOnAnEmptyFieldRemovesTheLastChip")
+        self.assertEqual(out["tagsBefore"], ["one", "two", "three"])
+        self.assertEqual(out["withText"], ["one", "two", "three"], "with text in the field Backspace only edits the text")
+        self.assertEqual(out["tagsAfterOne"], {"chips": ["one", "two"], "status": "Removed tag three", "open": True})
+        self.assertEqual(out["tagsAfterAll"], [])
+        self.assertEqual(out["tagsEmpty"], {"chips": [], "status": "Removed tag one"}, "with no chip left Backspace does nothing")
+        self.assertEqual(out["authorsBefore"], ["AuthorAda Lovelace", "Alan Turing"])
+        self.assertEqual(out["authorsAfterOne"], {"chips": ["AuthorAda Lovelace"], "status": "Removed author Alan Turing"})
+        self.assertEqual(out["authorsAfterAll"], [])
+        self.assertEqual(out["posts"][0]["tags"], [])
+        self.assertNotIn("authors", out["posts"][0])
+
+    def test_an_author_already_added_says_so_and_adds_no_chip(self) -> None:
+        out = run("anAuthorAlreadyAddedIsNotAddedTwice")
+        self.assertEqual(out["first"], ["AuthorPaul Graham"])
+        self.assertEqual(out["rows"], [], "a name already on the note is not offered again")
+        self.assertEqual(out["status"], "PAUL graham is already added")
+        self.assertEqual(out["after"], {"chips": ["AuthorPaul Graham"], "value": ""})
+        self.assertEqual(out["posts"][0]["authors"], ["Paul Graham"])
+
+    def test_a_note_keeps_ten_authors_and_the_add_button_goes_until_one_is_removed(self) -> None:
+        out = run("tenAuthorsIsTheLimit")
+        self.assertEqual((out["chips"], out["buttonHidden"], out["open"]), (10, True, False))
+        self.assertEqual(out["afterRemove"], {"chips": 9, "buttonHidden": False})
+        self.assertEqual(out["posts"][0]["authors"], [f"Person {i}" for i in range(1, 10)])
+
+    def test_an_invalid_tag_stays_in_the_field_with_a_status_and_is_not_sent(self) -> None:
+        out = run("anInvalidTagStaysInTheFieldAndIsNotSent")
+        self.assertEqual(out["rows"], [], "text that cannot be a tag has no Create row")
+        self.assertEqual(out["typed"], {"chips": [], "value": "#!", "status": "“#!” is not a valid tag", "open": True})
+        self.assertEqual(out["mixed"], {"chips": ["good"], "value": "#!", "status": "“#!” is not a valid tag"})
+        self.assertEqual(out["posts"][0]["tags"], ["good"])
+
+    def test_a_shared_title_becomes_a_title_chip_and_is_sent(self) -> None:
+        out = run("aSharedTitleBecomesATitleChipAndIsSent")
+        self.assertEqual(out["shown"], {"text": "Worth a read\nhttps://example.com/a", "chips": ["TitleA shared page"], "titleButtonHidden": True})
+        self.assertEqual(out["posts"][0]["title"], "A shared page")
+        self.assertEqual(out["posts"][0]["content"], "Worth a read\nhttps://example.com/a")
+
+    def test_a_shared_title_is_cut_to_two_hundred_characters(self) -> None:
+        self.assertEqual(run("aSharedTitleIsCutToTwoHundredCharacters")["length"], 200)
+
+
 if __name__ == "__main__":
     unittest.main()

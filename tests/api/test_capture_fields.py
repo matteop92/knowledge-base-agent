@@ -98,11 +98,10 @@ class CaptureFieldsTests(unittest.TestCase):
         self.assertTrue(all(pair[1] == label for label, pair in out.items()))
         self.assertEqual(run("""console.log(JSON.stringify([f.typeValue("Nope"), f.typeLabel("nope")]));"""), ["", ""])
 
-    def test_the_stored_values_are_the_ones_the_server_accepts(self) -> None:
-        main = Path("app/api/main.py").read_text(encoding="utf-8")
-        accepted = set(re.findall(r'"(\w+)"', re.search(r"type: Literal\[(.*?)\] \| None", main, re.S).group(1)))
+    def test_the_stored_values_are_the_classifiers_one_list_of_note_types(self) -> None:
+        from app.ingestion.properties import DEFAULT_SOURCE_TYPES
         stored = {entry["value"] for entry in run("""console.log(JSON.stringify(f.TYPES));""")}
-        self.assertEqual(stored, accepted)
+        self.assertEqual(stored, set(DEFAULT_SOURCE_TYPES))
 
     def test_the_module_is_loaded_by_the_page_and_the_offline_shell(self) -> None:
         self.assertIn('"/static/capture-fields.js"', (WEB / "sw.js").read_text(encoding="utf-8"))

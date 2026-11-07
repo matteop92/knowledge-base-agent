@@ -1,5 +1,5 @@
 "use strict";
-// Runs app/web/capture-fields.js and app/web/capture.js against the small fake DOM and prints what a scenario observed as
+// Runs app/web/capture-fields.js, capture-row.js and capture.js against the small fake DOM and prints what a scenario observed as
 // JSON. The Add card's optional row is built here in the shape index.html gives it. Usage: node tests/api/capture_ui_harness.js <scenario>
 const fs = require("fs");
 const vm = require("vm");
@@ -34,7 +34,7 @@ function el(tag, className) {
   return node;
 }
 
-function boot({ phone = false } = {}) {
+function boot({ phone = false, share = null } = {}) {
   const els = {};
   const timers = new Map();
   let timerId = 0;
@@ -87,12 +87,18 @@ function boot({ phone = false } = {}) {
     },
     setView: async () => {}, openConversation: async () => {},
     setTimeout: (fn, ms) => { timers.set(++timerId, { fn, ms }); return timerId; }, clearTimeout: (id) => { timers.delete(id); },
-    setInterval: () => 0, location: { search: "" }, history: { replaceState() {} },
+    setInterval: () => 0, location: { search: share ? "?share=1" : "" }, history: { replaceState() {} }, URLSearchParams,
     window: { addEventListener() {} },
   };
+  // The Android share sheet's kept item: the service worker's cache holds it until the app picks it up.
+  if (share) {
+    const kept = { "/share/meta": { json: async () => share } };
+    context.caches = { open: async () => ({ match: async (path) => kept[path] || null, delete: async (path) => { delete kept[path]; } }) };
+    context.window.caches = context.caches;
+  }
   context.globalThis = context;
   vm.createContext(context);
-  for (const file of ["capture-fields.js", "capture.js"]) vm.runInContext(fs.readFileSync(`app/web/${file}`, "utf8"), context, { filename: file });
+  for (const file of ["capture-fields.js", "capture-row.js", "capture.js"]) vm.runInContext(fs.readFileSync(`app/web/${file}`, "utf8"), context, { filename: file });
   for (const fn of documentStub.listeners.DOMContentLoaded || []) fn();
   documentStub.listeners = {};
   // Runs the short timers (the wait after a blur, the duplicate flash); the 2 s poll of a save is left alone.
@@ -110,7 +116,7 @@ function boot({ phone = false } = {}) {
   const atRest = () => ({ chips: FIELDS.map((f) => chips(f).join("|")), buttons: FIELDS.map((f) => !button(f).hidden), inputHidden: FIELDS.map((f) => slot(f).querySelector(".cf-input").hidden),
     collapsed: els.capture.classList.contains("is-collapsed"), listShown: !suggest.hidden });
   return {
-    els, posts, slot, input, button, chips, chipEls, list, atRest, runTimers, flush,
+    els, context, posts, slot, input, button, chips, chipEls, list, atRest, runTimers, flush,
     type: (field, text) => { input(field).value = text; input(field).dispatch("input"); },
     key: (field, name) => input(field).dispatch("keydown", { key: name }),
     rest: () => els["capture-rest"].children.filter((b) => !b.hidden).map((b) => b.textContent),
@@ -249,6 +255,94 @@ const scenarios = {
     await app.show();
     await app.save();
     return { posts: app.posts, keys: Object.keys(app.posts[0]).sort() };
+  },
+  async backspaceOnAnEmptyFieldRemovesTheLastChip() {
+    const app = boot();
+    await app.show();
+    app.button("tags").click();
+    for (const tag of ["one", "two", "three"]) { app.type("tags", tag); app.key("tags", "Enter"); app.key("tags", "Enter"); }
+    const tagsBefore = app.chips("tags");
+    app.type("tags", "x");  // text in the field: Backspace edits the text, it never takes a chip
+    app.key("tags", "Backspace");
+    const withText = app.chips("tags");
+    app.input("tags").value = "";
+    app.key("tags", "Backspace");
+    const tagsAfterOne = { chips: app.chips("tags"), status: app.els["capture-tag-status"].textContent, open: !app.slot("tags").querySelector(".cf-input").hidden };
+    app.key("tags", "Backspace");
+    app.key("tags", "Backspace");
+    const tagsAfterAll = app.chips("tags");
+    app.key("tags", "Backspace");  // nothing left: nothing happens
+    const tagsEmpty = { chips: app.chips("tags"), status: app.els["capture-tag-status"].textContent };
+    app.button("author").click();
+    for (const name of ["Ada Lovelace", "Alan Turing"]) { app.type("author", name); app.key("author", "Enter"); }
+    const authorsBefore = app.chips("author");
+    app.key("author", "Backspace");
+    const authorsAfterOne = { chips: app.chips("author"), status: app.els["capture-tag-status"].textContent };
+    app.key("author", "Backspace");
+    const authorsAfterAll = app.chips("author");
+    await app.save();
+    return { tagsBefore, withText, tagsAfterOne, tagsAfterAll, tagsEmpty, authorsBefore, authorsAfterOne, authorsAfterAll, posts: app.posts };
+  },
+  async anAuthorAlreadyAddedIsNotAddedTwice() {
+    const app = boot();
+    await app.show();
+    app.button("author").click();
+    app.type("author", "paul");
+    app.key("author", "Enter");  // Paul Graham, from the vault
+    const first = app.chips("author");
+    app.type("author", "PAUL   graham");  // same name, other letter case and spacing
+    const rows = app.list().rows;
+    app.key("author", "Enter");
+    const status = app.els["capture-tag-status"].textContent;
+    const after = { chips: app.chips("author"), value: app.input("author").value };
+    await app.save();
+    return { first, rows, status, after, posts: app.posts };
+  },
+  async tenAuthorsIsTheLimit() {
+    const app = boot();
+    await app.show();
+    app.button("author").click();
+    for (let i = 0; i < 12 && !app.slot("author").querySelector(".cf-input").hidden; i++) { app.type("author", `Person ${i}`); app.key("author", "Enter"); }
+    const out = { chips: app.chips("author").length, buttonHidden: app.button("author").hidden, open: !app.slot("author").querySelector(".cf-input").hidden,
+      status: app.els["capture-tag-status"].textContent };
+    app.chipEls("author")[0].children.find((c) => c.className === "cf-remove").click();
+    out.afterRemove = { chips: app.chips("author").length, buttonHidden: app.button("author").hidden };
+    await app.save();
+    out.posts = app.posts;
+    return out;
+  },
+  async anInvalidTagStaysInTheFieldAndIsNotSent() {
+    const app = boot();
+    await app.show();
+    app.button("tags").click();
+    app.type("tags", "#!");
+    const rows = app.list().rows;
+    app.key("tags", "Enter");
+    const typed = { chips: app.chips("tags"), value: app.input("tags").value, status: app.els["capture-tag-status"].textContent,
+      open: !app.slot("tags").querySelector(".cf-input").hidden };
+    app.input("tags").value = "good, #!";  // one valid, one not: the valid one becomes a chip, the other stays
+    app.key("tags", "Enter");
+    const mixed = { chips: app.chips("tags"), value: app.input("tags").value, status: app.els["capture-tag-status"].textContent };
+    await app.save();
+    return { rows, typed, mixed, posts: app.posts };
+  },
+  async aSharedTitleBecomesATitleChipAndIsSent() {
+    const app = boot({ share: { title: "  A shared page  ", text: "Worth a read", url: "https://example.com/a" } });
+    await app.show();
+    app.els["capture-text"].value = "";
+    await app.context.window.captureScreen.takeShared();
+    await app.flush();
+    const shown = { text: app.els["capture-text"].value, chips: app.chips("title"), titleButtonHidden: app.button("title").hidden };
+    await app.save();
+    return { shown, posts: app.posts };
+  },
+  async aSharedTitleIsCutToTwoHundredCharacters() {
+    const app = boot({ share: { title: "t".repeat(250), text: "x", url: "" } });
+    await app.show();
+    await app.context.window.captureScreen.takeShared();
+    await app.flush();
+    await app.save();
+    return { length: app.posts[0].title.length };
   },
   async onAPhoneAFocusedFieldCollapsesTheCardAndClosingRestoresIt() {
     const app = boot({ phone: true });

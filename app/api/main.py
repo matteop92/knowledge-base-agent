@@ -13,7 +13,7 @@ from fastapi import Depends, FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints, field_validator
 
 from app.api import images
 from app.api.answers import AnswerEngine, AnswerJobs, OpenRouterAnswerEngine
@@ -21,6 +21,7 @@ from app.api.capture import RECENT_LIMIT, CaptureJobs, Classifier, Extractor, Sc
 from app.api.auth import COOKIE_NAME, AuthError, RateLimiter, Session, SessionStore, SupabaseAuth
 from app.api.conversations import ConversationError, ConversationStore
 from app.api.review import MARKS, ReviewStore
+from app.ingestion.properties import DEFAULT_SOURCE_TYPES
 from app.api.scheduler import IndexScheduler, vault_settings_from_env
 from app.api.settings import Settings
 from app.api.sources import SourceStore
@@ -83,6 +84,15 @@ class FeedbackRequest(BaseModel):
 
 
 class CaptureRequest(BaseModel):
+    @field_validator("type")
+    @classmethod
+    def _known_type(cls, value: str | None) -> str | None:
+        # One list of note types: the classifier's (app/ingestion/properties.py). A label such as "Post" is refused.
+        if value is not None and value not in DEFAULT_SOURCE_TYPES:
+            raise ValueError("unknown note type")
+        return value
+
+
     kind: Literal["text", "markdown", "screenshot", "youtube"]
     content: str | None = Field(default=None, max_length=2_000_000)
     # A screenshot arrives as a data URL, already downscaled by the app.
@@ -91,8 +101,7 @@ class CaptureRequest(BaseModel):
     url: str | None = Field(default=None, max_length=2000, pattern=r"^https?://")
     tags: list[str] = Field(default_factory=list, max_length=10)
     # Set on the Add card; the stored type values (the card shows Post for social_post and so on).
-    type: Literal["article", "book", "highlights", "meeting", "note", "other", "social_post", "quote", "reference",
-                  "transcript"] | None = None
+    type: str | None = None
     authors: list[Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)]] = Field(
         default_factory=list, max_length=10)
 
