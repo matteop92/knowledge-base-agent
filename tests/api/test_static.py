@@ -576,6 +576,17 @@ async function openConversation(id) { seen.push({ openConversation: id }); }
         self.assertNotIn(".capture-form:focus-within", self.css)
         self.assertNotIn("box-shadow: 0 0 0 1.5px", self.css)
 
+    def test_every_review_passage_is_24px_and_its_note_17_5px_on_phone_and_desktop(self) -> None:
+        self.assertNotIn("is-short", self.css)
+        def sizes(name: str) -> set[str]:  # the quote mark on a quote (::before) has its own 44 px size
+            bodies = " ".join(body for selector, body in re.findall(r"([^{}]+)\{([^}]*)\}", self.css)
+                              if name in selector and "::before" not in selector)
+            return set(re.findall(r"font-size:\s*([\d.]+)px", bodies))
+        self.assertEqual(sizes(".review-text"), {"24"})
+        self.assertEqual(sizes(".review-note"), {"17.5"})
+        self.assertIn("line-height: 1.45", _rules(self.css, ".review-text"))
+        self.assertIn("line-height: 1.45", _rules(self.css, ".review-note"))
+
     def test_sidebar_history_foot_and_gear(self) -> None:
         self.assertIn("Add to notes", self.page)
         self.assertIn('class="history-toggle"', self.page)

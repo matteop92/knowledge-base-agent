@@ -38,6 +38,27 @@ class ReviewScreenTests(unittest.TestCase):
         self.assertLessEqual(out["withNote"][3] + 50, 110 * 1.15)
         self.assertEqual(out["ownNote"][-1], 0)  # an empty body: the last part holds only the note
 
+    def test_a_part_is_sized_from_the_passage_box_so_long_passages_split_into_more_parts(self) -> None:
+        out = run("partsForOnePassageSize")
+        self.assertEqual((out["long140"]["budget"], out["long140Wide"]["budget"]), (68, 119))
+        self.assertEqual(len(out["long140"]["parts"]), 3, "was 2 at the old 110-word budget")
+        self.assertEqual(len(out["long140Wide"]["parts"]), 2)
+        self.assertEqual(out["quote30"]["parts"], [30])
+        self.assertFalse(out["quote30"]["bars"])
+        self.assertTrue(out["long140"]["bars"])
+        self.assertFalse(any(case["short"] for case in out.values()), "one size for every passage: no is-short class")
+
+    def test_a_passage_and_its_note_are_checked_together_against_the_budget(self) -> None:
+        out = run("partsForOnePassageSize")["withNote"]
+        self.assertEqual(out["parts"], [60, 0])  # 60 words and a 60-word note do not fit one part of 68
+
+    def test_one_long_sentence_is_broken_at_word_boundaries_to_fit(self) -> None:
+        out = run("partsForOnePassageSize")
+        for case in ("oneSentence", "noPunctuation"):
+            parts, budget = out[case]["parts"], out[case]["budget"]
+            self.assertGreater(len(parts), 1, case)
+            self.assertLessEqual(max(parts), -(-budget * 115 // 100), (case, parts))
+
     def test_the_note_shows_on_the_last_part_only(self) -> None:
         out = run("noteOnlyOnLastPart")
         self.assertEqual(out["notes"], [False] * (out["parts"] - 1) + [True])

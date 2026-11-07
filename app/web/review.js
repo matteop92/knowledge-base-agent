@@ -5,11 +5,15 @@
 // computer). A passage counts as shown after about a second on screen. "Ask about this" opens Ask limited to the passage's
 // source. Every piece of text from the server is drawn with textContent or the reader's inline drawer, never as HTML.
 (() => {
-  const SHORT_WORDS = 60;       // at most this long: large type, one page
   const NOTE_OWN_WORDS = 60;    // a note longer than this gets a last part of its own
-  const PHONE_BUDGET = 110;     // words per part
-  const WIDE_BUDGET = 140;
-  const BATCH = 3;              // passages asked for at a time
+  // How many words a part may hold comes from the passage box (see the layout note in styles.css): the page's height less
+  // the space above the box (100 px, 112 with bars) and below it (the source line and the circles' band: 256 px, 260 on a
+  // computer). Every passage is 24 px type at 1.45, so a line is 34.8 px tall.
+  const LINE_PX = 24 * 1.45;
+  const WORD_PX = 58;           // a word and its space in 24 px type, on average
+  const FILL = 0.9;             // paragraph gaps, the quote mark and uneven line ends take the rest
+  const FALLBACK = { phone: [390, 844], wide: [1280, 800] };  // the boards' sizes, for a page that cannot be measured yet
+  const BATCH = 3;             // passages asked for at a time
   const AHEAD = 2;              // fetch more when fewer than this many passages are left after the current one
   const DWELL_MS = 1000;
   const VISIBLE = 0.6;          // share of a page that must be on screen
@@ -30,7 +34,16 @@
     return node;
   };
   const words = (text) => String(text || "").split(/\s+/).filter(Boolean).length;
-  const budget = () => (phone.matches ? PHONE_BUDGET : WIDE_BUDGET);
+  function budget() {
+    const pager = $("review-pager");
+    const [fallbackWidth, fallbackHeight] = phone.matches ? FALLBACK.phone : FALLBACK.wide;
+    const width = pager.clientWidth || fallbackWidth;
+    const height = pager.clientHeight || fallbackHeight;
+    const boxHeight = height - (phone.matches ? 112 + 256 : 122 + 260);  // the box with bars, the smaller one
+    const boxWidth = Math.min(640, width - (phone.matches ? 48 : 144));
+    const lines = Math.max(1, Math.floor(boxHeight / LINE_PX));
+    return Math.max(10, Math.floor(lines * (boxWidth / WORD_PX) * FILL));
+  }
 
   // Split a passage into parts that fit one screen: whole paragraphs first, then sentences, balanced so the last part is
   // not a stub. A note on the last part counts toward the split; a long note is a last part of its own (an empty body).
@@ -42,7 +55,19 @@
     const units = [];
     String(text).split(/\n\n+/).forEach((paragraph) => {
       if (words(paragraph) <= cap) { units.push({ t: paragraph, w: words(paragraph), lead: "\n\n" }); return; }
-      paragraph.split(/(?<=[.!?”"])\s+/).forEach((sentence, k) => units.push({ t: sentence, w: words(sentence), lead: k === 0 ? "\n\n" : " " }));
+      paragraph.split(/(?<=[.!?”"])\s+/).forEach((sentence, k) => {
+        const lead = k === 0 ? "\n\n" : " ";
+        const count = words(sentence);
+        if (count <= cap) { units.push({ t: sentence, w: count, lead }); return; }
+        // One sentence longer than a part: break it at word boundaries into even pieces.
+        const tokens = sentence.split(/\s+/).filter(Boolean);
+        const pieces = Math.ceil(count / cap);
+        const each = Math.ceil(count / pieces);
+        for (let i = 0; i < pieces; i++) {
+          const piece = tokens.slice(i * each, (i + 1) * each);
+          units.push({ t: piece.join(" "), w: piece.length, lead: i === 0 ? lead : " " });
+        }
+      });
     });
     if (!ownNote && noteWords) units.push({ t: "", w: noteWords, lead: "", note: true });
     // Break where a part is nearest the even size, or before a part would pass the cap.
@@ -70,12 +95,8 @@
     return ownNote ? [...bodies, ""] : bodies;
   }
 
-  function split(passage) {
-    const noteWords = words(passage.note);
-    const long = words(passage.text) > SHORT_WORDS;
-    if (!long && noteWords <= NOTE_OWN_WORDS) return [passage.text];
-    return paginate(passage.text, budget(), noteWords);
-  }
+  // The passage and its note always go through the budget together; one that fits comes back as a single part.
+  const split = (passage) => paginate(passage.text, budget(), words(passage.note));
 
   // Drawing ----------------------------------------------------------------------------------------
   const inlineText = (tag, cls, text) => window.readerBlocks.inline(tag, cls, text);
@@ -137,7 +158,7 @@
     page.parts = split(page.passage);
     page.part = keepPart ? Math.min(page.parts.length - 1, Math.floor(before * page.parts.length)) : 0;
     const paged = page.parts.length > 1;
-    page.el.classList.toggle("is-short", !paged && words(page.passage.text) <= SHORT_WORDS);
+    page.el.classList.toggle("has-bars", paged);
     const bars = page.el.querySelector(".review-bars");
     bars.hidden = !paged;
     bars.replaceChildren(...page.parts.map((_, index) => {
@@ -391,14 +412,22 @@
     $("review-pager").addEventListener("wheel", onWheel, { passive: false });
     document.addEventListener("keydown", onKey);
     document.addEventListener("visibilitychange", () => { if (document.hidden) leave(); else if (state.view === "review") show(); });
-    phone.addEventListener("change", () => {
-      for (const page of view.pages) layout(page, true);
-    });
+    const relayout = () => { for (const page of view.pages) layout(page, true); };
+    phone.addEventListener("change", relayout);
+    // A taller or shorter screen (a rotation, a resized window) changes how much a part holds.
+    let lastBudget = null;
+    if (typeof window.addEventListener === "function") {
+      window.addEventListener("resize", () => {
+        const now = budget();
+        if (lastBudget !== null && now !== lastBudget) relayout();
+        lastBudget = now;
+      });
+    }
     if (typeof IntersectionObserver === "function") {
       view.observer = new IntersectionObserver(onVisible, { root: $("review-pager"), threshold: [0, VISIBLE, 1] });
     }
   }
 
-  window.reviewScreen = { show, leave, paginate, onVisible, pages: () => view.pages };
+  window.reviewScreen = { show, leave, paginate, budget, onVisible, pages: () => view.pages };
   document.addEventListener("DOMContentLoaded", init);
 })();

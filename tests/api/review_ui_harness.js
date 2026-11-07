@@ -122,6 +122,22 @@ const scenarios = {
     tapAt(p.el, 390); const hiddenAfterTurn = app.els["review-ask"].hidden;
     return { parts, afterRight, afterLeft, middleShowsPill: !middle, hiddenAfterTurn };
   },
+  async partsForOnePassageSize() {
+    const run = async (extra, opts = {}) => {
+      const app = boot({ replies: [{ passages: [passage(1, extra)] }], ...opts });
+      app.screen.show(); await app.flush();
+      const p = page(app, 0);
+      return { parts: p.parts.map(count), budget: app.screen.budget(), bars: p.el.classList.contains("has-bars"), short: p.el.classList.contains("is-short") };
+    };
+    return {
+      long140: await run({ text: sentences(47, 3) }),
+      long140Wide: await run({ text: sentences(47, 3) }, { phone: false }),
+      quote30: await run({ text: words(30), type: "quote" }),
+      withNote: await run({ text: words(60), note: words(60) }),
+      oneSentence: await run({ text: `${words(120)}.` }),
+      noPunctuation: await run({ text: words(300) }),
+    };
+  },
   async oneLinePassageEdgesDoNothing() {
     const app = boot({ replies: [{ passages: [passage(1)] }] });
     app.screen.show(); await app.flush();
