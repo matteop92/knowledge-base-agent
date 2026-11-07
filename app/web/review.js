@@ -190,7 +190,7 @@
     // Setting a mark moves on to the next passage after a beat, so the fill is seen. Clearing a mark stays put, and so does
     // a list (there you are reading one passage after another by choice).
     if (next && !view.list) {
-      setTimeout(() => { if (view.pages[view.current] === page) go(1); }, ADVANCE_MS);
+      setTimeout(() => { if (page.mark === next && view.pages[view.current] === page) go(1); }, ADVANCE_MS);
     }
     const url = `/api/review/marks/${encodeURIComponent(page.passage.passage_key)}`;
     // Saves for one passage go out in order, so quick taps cannot land the wrong way round.

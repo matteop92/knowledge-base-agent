@@ -53,7 +53,7 @@ class ShellSourceTests(unittest.TestCase):
 
     def test_shell_cache_is_bumped_and_the_sidebar_choice_is_remembered(self) -> None:
         worker = (WEB / "sw.js").read_text(encoding="utf-8")
-        self.assertIn('const CACHE = "ka-shell-v37"', worker)
+        self.assertIn('const CACHE = "ka-shell-v38"', worker)
         # A deploy must reach an installed app: never answer from the browser's own HTTP cache.
         self.assertIn('fetch(event.request, { cache: "no-cache" })', worker)
         script = (WEB / "app.js").read_text(encoding="utf-8")
@@ -762,12 +762,12 @@ class StaticRouteTests(unittest.TestCase):
         band = re.search(r"^\.ticker \{([^}]*)\}", css, re.M).group(1)
         for declaration in ("position: absolute", "top: 0", "height: 36px", "background: var(--ink)", "color: var(--paper)"):
             self.assertIn(declaration, band)
-        # State is a fill, never a ring: the focused item gets a fill and no outline or box-shadow.
+        # Keyboard focus is a thin ring (in the paper colour on the dark band) plus a fill; never a box-shadow ring.
         focus = re.search(r"\.ticker-item:focus-visible \{([^}]*)\}", css).group(1)
-        self.assertIn("outline: none", focus)
+        self.assertIn("outline: 2px solid var(--paper)", focus)
         self.assertIn("background: rgba(255, 253, 248, 0.12)", focus)
         self.assertNotIn("box-shadow", focus)
-        self.assertNotRegex(css, r"\.ticker[^{]*\{[^}]*(box-shadow|outline: \d)")
+        self.assertNotRegex(css, r"\.ticker(?![^{]*:focus-visible)[^{]*\{[^}]*(box-shadow|outline: \d)")  # only the focus rule may have a ring
         # Reduced motion: no animation, scrolled by hand.
         reduced = css[css.index("@media (prefers-reduced-motion: reduce) {\n  .ticker"):]
         self.assertIn("overflow-x: auto", reduced)

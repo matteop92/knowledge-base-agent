@@ -265,6 +265,15 @@ const scenarios = {
     return { initial, afterAgain, afterClear, afterSwitch, writes: writes(), labels: [done.getAttribute("aria-label"), again.getAttribute("aria-label")],
       keys: [done.getAttribute("aria-keyshortcuts"), again.getAttribute("aria-keyshortcuts")], titles: [done.title, again.title] };
   },
+  async aMarkClearedBeforeTheBeatEndsDoesNotAdvance() {
+    const app = boot({ replies: [{ passages: [passage(1), passage(2)] }, {}, {}, {}] });
+    app.screen.show(); await app.flush();
+    app.seen(0);
+    const done = page(app, 0).el.querySelector(".review-mark-done");
+    done.click(); done.click();  // set, then undo a slip inside the 250 ms beat
+    for (const t of app.calls.timers.filter((x) => x.live && x.ms === 250)) { t.live = false; t.fn(); }
+    return { moved: page(app, 1).el.scrolledIntoView === true, mark: page(app, 0).mark };
+  },
   async aNewMarkMovesOnToTheNextPassageButClearingOrAListDoesNot() {
     const app = boot({ replies: [{ passages: [passage(1), passage(2), passage(3)] }, {}, {}, {}, {}] });
     app.screen.show(); await app.flush();

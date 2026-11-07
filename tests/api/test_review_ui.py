@@ -71,6 +71,9 @@ class ReviewScreenTests(unittest.TestCase):
         self.assertEqual((out["labels"], out["keys"]), (["Done", "Show again"], ["X", "B"]))
         self.assertEqual(out["titles"], ["Done (X)", "Show again (B)"])
 
+    def test_undoing_a_mark_inside_the_beat_stays_on_the_passage(self) -> None:
+        self.assertEqual(run("aMarkClearedBeforeTheBeatEndsDoesNotAdvance"), {"moved": False, "mark": None})
+
     def test_a_new_mark_moves_on_to_the_next_passage_but_clearing_a_mark_or_reading_a_list_does_not(self) -> None:
         out = run("aNewMarkMovesOnToTheNextPassageButClearingOrAListDoesNot")
         self.assertEqual(out, {"set": True, "moved": True, "clearTimer": False, "stale": False, "listTimer": False})

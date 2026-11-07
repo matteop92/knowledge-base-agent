@@ -84,15 +84,6 @@ class FeedbackRequest(BaseModel):
 
 
 class CaptureRequest(BaseModel):
-    @field_validator("type")
-    @classmethod
-    def _known_type(cls, value: str | None) -> str | None:
-        # One list of note types: the classifier's (app/ingestion/properties.py). A label such as "Post" is refused.
-        if value is not None and value not in DEFAULT_SOURCE_TYPES:
-            raise ValueError("unknown note type")
-        return value
-
-
     kind: Literal["text", "markdown", "screenshot", "youtube"]
     content: str | None = Field(default=None, max_length=2_000_000)
     # A screenshot arrives as a data URL, already downscaled by the app.
@@ -104,6 +95,14 @@ class CaptureRequest(BaseModel):
     type: str | None = None
     authors: list[Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)]] = Field(
         default_factory=list, max_length=10)
+
+    @field_validator("type")
+    @classmethod
+    def _known_type(cls, value: str | None) -> str | None:
+        # One list of note types: the classifier's (app/ingestion/properties.py). A label such as "Post" is refused.
+        if value is not None and value not in DEFAULT_SOURCE_TYPES:
+            raise ValueError("unknown note type")
+        return value
 
 
 def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,

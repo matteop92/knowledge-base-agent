@@ -4,10 +4,6 @@
 // the field being typed in is an input with a type-ahead list. capture.js starts it with init() and reads the row back through
 // extras(); matching and the type list live in capture-fields.js. Every piece of text is inserted with textContent, never as HTML.
 (() => {
-  // The optional row: Type, Author, Tags and Title. A set value is a chip, an unset field is a "+ Field" button, and the
-  // field being typed in is an input with a type-ahead list. Matching and the type list live in capture-fields.js.
-  // Splits on commas and new lines, trims, and drops repeats (any letter case); a repeat of a tag already there comes back in
-  // `duplicates` so its chip can flash. The server accepts ten tags, so a note keeps the first ten and `full` says some were left out.
   const CF = window.captureFields;
   const MAX_TAGS = 10;
   const MAX_AUTHORS = 10;
@@ -15,6 +11,8 @@
   const INPUT_IDS = { type: "capture-type", author: "capture-author", tags: "capture-tags", title: "capture-title" };
   const LIST_LABELS = { type: "Types", author: "Matching people", tags: "Matching tags" };
   const BLUR_MS = 120;  // a tap on another control moves focus first; the card must not change shape under that tap
+  // Splits on commas and new lines, trims, and drops repeats (any letter case); a repeat of a tag already there comes back in
+  // `duplicates` so its chip can flash. The server accepts ten tags, so a note keeps the first ten and `full` says some were left out.
   function mergeTags(current, text) {
     const tags = [...current];
     const duplicates = [];
