@@ -24,7 +24,7 @@ class ShellSourceTests(unittest.TestCase):
         self.assertIn('url.startsWith("obsidian://")', script)
 
     def test_capture_and_worker_scripts_never_insert_html(self) -> None:
-        for name in ("capture.js", "capture-fields.js", "settings.js", "sources.js", "review.js", "reader-blocks.js", "reader-picks.js", "source-filter.js", "sw.js"):
+        for name in ("capture.js", "capture-fields.js", "settings.js", "sources.js", "review.js", "review-settings.js", "reader-blocks.js", "reader-picks.js", "source-filter.js", "sw.js"):
             script = (WEB / name).read_text(encoding="utf-8")
             for unsafe in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
                 with self.subTest(name=name, unsafe=unsafe):

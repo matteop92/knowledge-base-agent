@@ -1,4 +1,4 @@
--- Review marks: Matt's Done and Again marks on single passages, and how often Again passages come back.
+-- Review marks: the owner's Done and Again marks on single passages, and how often Again passages come back.
 -- A mark belongs to a passage key (the same key `knowledge.feed_passages` derives), so a passage whose words change
 -- in the vault gets a new key and loses its mark. last_served_at is when the interleave last handed an Again
 -- passage out; it orders the Again passages so they take turns.

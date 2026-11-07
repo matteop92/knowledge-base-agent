@@ -216,7 +216,8 @@
   function fit(page) {
     const body = page.el.querySelector(".review-body");
     if (!body.clientHeight) return;  // not on screen yet
-    const overflows = () => page.parts.some((_, index) => {
+    const overflows = () => page.parts.some((text, index) => {
+      if (!text && page.passage.note) return false;  // a part holding only the note: splitting the text cannot shorten it
       page.part = index;
       drawPart(page);
       return body.scrollHeight > body.clientHeight + 1;
@@ -555,6 +556,11 @@
     return undefined;
   }
 
+  function pause() {
+    hideAsk();
+    for (const page of view.pages) stopDwell(page);
+  }
+
   function leave() {
     leaveList();
     hideAsk();
@@ -576,15 +582,16 @@
     $("review-pager").addEventListener("scroll", hideAsk, { passive: true });
     $("review-pager").addEventListener("wheel", onWheel, { passive: false });
     document.addEventListener("keydown", onKey);
-    document.addEventListener("visibilitychange", () => { if (document.hidden) leave(); else if (state.view === "review") show(); });
-    const relayout = () => { for (const page of view.pages) layout(page, true); };
+    // Switching apps pauses the screen; only leaving the view (leave) ends list mode.
+    document.addEventListener("visibilitychange", () => { if (document.hidden) pause(); else if (state.view === "review") show(); });
+    const relayout = () => { for (const page of view.pages) { page.scale = 1; layout(page, true); } };
     phone.addEventListener("change", relayout);
     // A taller or shorter screen (a rotation, a resized window) changes how much a part holds.
-    let lastBudget = null;
+    let lastBudget = budget();
     if (typeof window.addEventListener === "function") {
       window.addEventListener("resize", () => {
         const now = budget();
-        if (lastBudget !== null && now !== lastBudget) relayout();
+        if (now !== lastBudget) relayout();
         lastBudget = now;
       });
     }

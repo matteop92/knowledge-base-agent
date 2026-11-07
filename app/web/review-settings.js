@@ -52,8 +52,9 @@
       try {
         await api("PUT", "/api/review/settings", { every: LEVELS[next].every });
       } catch (error) {
-        state.data.every = before;
-        paintHow();
+        // A later queued save may have landed, so show what the server holds rather than rolling back to a stale value.
+        if (error.status !== 401) message(SAVE_FAILED);
+        await loadSettings();
         if (error.status !== 401) message(SAVE_FAILED);
       }
     });
@@ -141,6 +142,7 @@
       if (error.status !== 401) listMessage(SAVE_FAILED);
       return;
     }
+    if (!state.list) return;  // the list was left while this was saving; the mark is saved and the next load shows it
     const name = state.list.name;
     state.list.passages = state.list.passages.filter((one) => one.passage_key !== passage.passage_key);
     if (state.data) { state.data[name] -= 1; state.data[other] += 1; }

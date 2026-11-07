@@ -34,9 +34,11 @@ NEXT_SQL = """select passage_key, document_id, kind, start_char, end_char, text,
     limit %(limit)s"""
 PASSAGE_COLUMNS = "p.passage_key, p.document_id, p.kind, p.start_char, p.end_char, p.text, p.note, p.type, p.title, p.author, p.locator"
 EVERY_SQL = "select again_every from knowledge.feed_settings"
-# Shuffle passages shown since an Again passage was last served (the interleave's gap counter starts from it).
+# Shuffle passages shown since an Again passage was last served or marked (the interleave's gap counter starts from it, so
+# a fresh mark waits its turn instead of coming straight back on a vault with a long shown log).
 SINCE_SERVE_SQL = """select count(*) from knowledge.feed_shown
-    where shown_at > coalesce((select max(last_served_at) from knowledge.feed_marks), '-infinity'::timestamptz)"""
+    where shown_at > coalesce((select greatest(max(last_served_at), max(marked_at)) from knowledge.feed_marks where mark = 'again'),
+                              '-infinity'::timestamptz)"""
 AGAIN_SQL = f"""select {PASSAGE_COLUMNS}
     from knowledge.feed_marks m join knowledge.feed_passages p on p.passage_key = m.passage_key
     where m.mark = 'again' and not (m.passage_key = any(%s::text[]))

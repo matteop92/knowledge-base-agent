@@ -167,7 +167,7 @@ class CaptureApiTests(unittest.TestCase):
                             .json()["capture_id"])
         self.assertEqual(job["vault_path"], "Knowledge/Articles/2026-10-19-essay.md")
 
-    def note_text(self, response) -> str:
+    def note_text(self, response) -> tuple[str, str]:
         self.assertEqual(response.status_code, 202, response.text)
         job = self.finished(response.json()["capture_id"])
         self.assertEqual(job["status"], "done", job)

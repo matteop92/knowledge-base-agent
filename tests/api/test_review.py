@@ -462,6 +462,18 @@ class ReviewApiTests(unittest.TestCase):
         batch_three = self.next(2, held=held)
         self.assertEqual([p["again"] for p in batch_three], [False, False], "the only Again passage is held")
 
+    def test_a_fresh_again_mark_waits_its_turn_on_a_vault_with_a_long_shown_log(self) -> None:
+        self.highlights(*[f"Thought {n}." for n in range(14)])
+        order = self.order(1)
+        self.log(1, order[:8])  # a long history, and no Again passage has ever been served
+        again = order[9]
+        self.marked(again, "again")
+        self.set_every(5)
+        first = self.next(5)
+        self.assertEqual([p["again"] for p in first], [False] * 4 + [True], "the new mark waits four slots, not none")
+        for passage in first:
+            self.serve_log(passage)
+
     def test_two_again_passages_take_turns(self) -> None:
         self.highlights(*[f"Thought {n}." for n in range(12)])
         first, second = self.order(1)[:2]

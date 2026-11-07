@@ -60,7 +60,7 @@ const scenarios = {
     const optimistic = app.els["every-word"].textContent;
     await app.flush();
     const saved = app.calls.api.filter(([m]) => m === "PUT").map(([, , body]) => body);
-    const failing = boot({ routes: { "GET /api/review/settings": SETTINGS(5), "PUT /api/review/settings": fail() } });
+    const failing = boot({ routes: { "GET /api/review/settings": () => SETTINGS(5), "PUT /api/review/settings": fail() } });
     await failing.win.reviewSettings.show(); await failing.flush();
     failing.els["every-less"].click();
     const during = failing.els["every-word"].textContent;
