@@ -20,7 +20,7 @@ from app.api.answers import AnswerEngine, AnswerJobs, OpenRouterAnswerEngine
 from app.api.capture import RECENT_LIMIT, CaptureJobs, Classifier, Extractor, ScreenshotInput, YouTubeInput
 from app.api.auth import COOKIE_NAME, AuthError, RateLimiter, Session, SessionStore, SupabaseAuth
 from app.api.conversations import ConversationError, ConversationStore
-from app.api.review import ReviewStore
+from app.api.review import MARKS, ReviewStore
 from app.api.scheduler import IndexScheduler, vault_settings_from_env
 from app.api.settings import Settings
 from app.api.sources import SourceStore
@@ -67,6 +67,15 @@ class PickRequest(BaseModel):
 class ShownRequest(BaseModel):
     passage_key: str = Field(max_length=64)
     round: int = Field(ge=1, le=1_000_000)
+    again: bool = False  # an Again passage served again: recorded on its mark, not in the shown log
+
+
+class MarkRequest(BaseModel):
+    mark: Literal["again", "done"]
+
+
+class ReviewSettingsRequest(BaseModel):
+    every: Literal[10, 5, 3, 2]
 
 
 class FeedbackRequest(BaseModel):
@@ -342,8 +351,31 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
 
     @app.post("/api/review/shown")
     def review_shown(body: ShownRequest, _: Session = Depends(session)):
-        review.shown(body.passage_key, body.round)
+        review.shown(body.passage_key, body.round, body.again)
         return {"status": "ok"}
+
+    @app.put("/api/review/marks/{passage_key}")
+    def review_set_mark(passage_key: str, body: MarkRequest, _: Session = Depends(session)):
+        return review.set_mark(passage_key, body.mark)
+
+    @app.delete("/api/review/marks/{passage_key}")
+    def review_clear_mark(passage_key: str, _: Session = Depends(session)):
+        review.clear_mark(passage_key)
+        return {"status": "ok"}
+
+    @app.get("/api/review/marks/{mark}")
+    def review_marked(mark: str, _: Session = Depends(session)):
+        if mark not in MARKS:
+            raise ConversationError(404, "no such list")
+        return review.marked(mark)
+
+    @app.get("/api/review/settings")
+    def review_settings(_: Session = Depends(session)):
+        return review.settings()
+
+    @app.put("/api/review/settings")
+    def review_update_settings(body: ReviewSettingsRequest, _: Session = Depends(session)):
+        return review.set_every(body.every)
 
     @app.post("/api/review/picks")
     def review_add_pick(body: PickRequest, _: Session = Depends(session)):
