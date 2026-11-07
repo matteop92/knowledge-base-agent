@@ -24,7 +24,7 @@ class ShellSourceTests(unittest.TestCase):
         self.assertIn('url.startsWith("obsidian://")', script)
 
     def test_capture_and_worker_scripts_never_insert_html(self) -> None:
-        for name in ("capture.js", "settings.js", "sources.js", "review.js", "reader-blocks.js", "reader-picks.js", "source-filter.js", "sw.js"):
+        for name in ("capture.js", "capture-fields.js", "settings.js", "sources.js", "review.js", "reader-blocks.js", "reader-picks.js", "source-filter.js", "sw.js"):
             script = (WEB / name).read_text(encoding="utf-8")
             for unsafe in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
                 with self.subTest(name=name, unsafe=unsafe):
@@ -45,7 +45,7 @@ class ShellSourceTests(unittest.TestCase):
     def test_page_has_no_inline_styles_and_scripts_set_none(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")
         self.assertNotRegex(page, r"\sstyle=")
-        for name in ("app.js", "capture.js", "settings.js", "sources.js", "review.js", "review-settings.js", "reader-picks.js"):
+        for name in ("app.js", "capture.js", "capture-fields.js", "settings.js", "sources.js", "review.js", "review-settings.js", "reader-picks.js"):
             script = (WEB / name).read_text(encoding="utf-8")
             with self.subTest(name=name):
                 self.assertNotIn('setAttribute("style"', script)
@@ -53,7 +53,7 @@ class ShellSourceTests(unittest.TestCase):
 
     def test_shell_cache_is_bumped_and_the_sidebar_choice_is_remembered(self) -> None:
         worker = (WEB / "sw.js").read_text(encoding="utf-8")
-        self.assertIn('const CACHE = "ka-shell-v30"', worker)
+        self.assertIn('const CACHE = "ka-shell-v31"', worker)
         # A deploy must reach an installed app: never answer from the browser's own HTTP cache.
         self.assertIn('fetch(event.request, { cache: "no-cache" })', worker)
         script = (WEB / "app.js").read_text(encoding="utf-8")
@@ -195,7 +195,10 @@ console.log(JSON.stringify(splitGaps([
             with self.subTest(label=label):
                 self.assertIn(label, capture)
         self.assertIn('id="capture-attach"', page)
-        self.assertRegex(page, r'<details id="capture-more"')
+        # One row of optional fields (Type, Author, Tags, Title) replaced the folded "Title and tags".
+        self.assertNotIn("capture-more", page)
+        self.assertNotIn("<details", page[page.index('id="capture-form"'):page.index('id="capture-message"')])
+        self.assertRegex(page, r'id="capture-row"')
         self.assertRegex(page, r'id="capture-save"[^>]*disabled')
 
 
@@ -566,7 +569,8 @@ async function openConversation(id) { seen.push({ openConversation: id }); }
 
     def test_open_states_are_fills_never_rings_or_outlines(self) -> None:
         for names in ((".marker.is-active",), (".source-number.is-active", ".gap-chip.is-active"), (".drop-target",), (".tag-row.is-active",),
-                      (".tag-approve", ".tag-block", ".chip-button"), (".tag-chip",), (".settings-tab[aria-current",)):
+                      (".tag-approve", ".tag-block", ".chip-button"), (".cf-chip",), (".cf-add",), (".cf-input",), (".cf-option",),
+                      (".settings-tab[aria-current",)):
             body = _rules(self.css, *names)
             with self.subTest(names=names):
                 self.assertTrue(body, "no rule matched: the selector was renamed")
@@ -625,11 +629,57 @@ async function openConversation(id) { seen.push({ openConversation: id }); }
         send = self.capture[self.capture.index("async function send"):self.capture.index("const KINDS")]
         self.assertIn("leaveGap()", send)
 
-    def test_tag_chips_never_submit_the_form_and_the_request_keeps_its_shape(self) -> None:
-        self.assertIn('event.key === "Enter" || event.key === ","', self.capture)
-        self.assertIn("event.preventDefault(); commitTags();", self.capture)
-        self.assertIn("mergeTags(tagList, $(\"capture-tags\").value).tags", self.capture)
-        self.assertIn('aria-label", `Remove tag ${tag}`', self.capture)
+    def test_the_optional_row_never_submits_the_form_and_the_request_keeps_its_shape(self) -> None:
+        # Enter picks or commits and never sends the form; Escape closes the list and keeps the text.
+        keys = self.capture[self.capture.index("function onKey"):self.capture.index("function wireField")]
+        self.assertIn('key === "Enter"', keys)
+        self.assertIn("event.preventDefault();  // Enter never sends the form", keys)
+        self.assertIn('key === "Escape"', keys)
+        self.assertIn("Remove tag ${tag}", self.capture)
+        # Save turns valid typed text into chips first; the type and the authors are sent only when set.
+        save = self.capture[self.capture.index("async function save"):self.capture.index("// `fromForm`")]
+        self.assertLess(save.index("commitFields()"), save.index("requestBody()"))
+        body = self.capture[self.capture.index("function requestBody"):self.capture.index("async function save")]
+        self.assertIn("if (typeValue) extras.type = typeValue;", body)
+        self.assertIn("if (authorList.length) extras.authors = [...authorList];", body)
+
+    def test_the_optional_row_is_an_accessible_combobox_with_one_list_and_no_ring(self) -> None:
+        for name in ("capture-tags", "capture-author", "capture-type"):
+            tag = re.search(rf'<input id="{name}"[^>]*>', self.page).group(0)
+            with self.subTest(name=name):
+                self.assertIn('role="combobox"', tag)
+                self.assertIn('aria-expanded="false"', tag)
+                self.assertIn('aria-controls="capture-suggest"', tag)
+        self.assertRegex(self.page, r'<ul id="capture-suggest" class="cf-list" role="listbox"')
+        for needle in ('setAttribute("role", "option")', '"aria-activedescendant"', '"aria-expanded"', '"aria-selected"'):
+            self.assertIn(needle, self.capture)
+        # Matching is the one list's job (capture-fields.js); the old tag field, its chips and its "In use" pick are gone.
+        for gone in ("tag-chip", "tag-field", "capture-tag-pick", "capture-more"):
+            self.assertNotIn(gone, self.css + self.page + self.capture)
+
+    def test_row_values_follow_the_board(self) -> None:
+        css = self.css
+        self.assertRegex(css, r"\.cf-chip \{[^}]*height: 28px[^}]*border-radius: 8px[^}]*background: var\(--chip\)[^}]*font-size: 13\.5px")
+        self.assertRegex(css, r"\.cf-add \{[^}]*height: 28px[^}]*color: var\(--ink-soft\)[^}]*font-size: 13\.5px")
+        self.assertRegex(css, r"\.cf-input \{[^}]*border-radius: 8px[^}]*background: var\(--row-active\)")
+        self.assertRegex(css, r"\.cf-option \{[^}]*height: 32px[^}]*font-size: 14px")
+        self.assertRegex(css, r"\.cf-list \{[^}]*padding: 6px[^}]*border-radius: 12px[^}]*box-shadow: var\(--shadow-panel\)")
+        phone = css[css.index(".cf-row { padding-top: 10px"):]
+        phone = phone[:phone.index("\n}\n")]
+        for rule in (".cf-chip { height: 32px; }", ".cf-add { height: 44px; min-height: 44px; }", ".cf-option { height: 44px;", ".cf-list { padding: 4px; }",
+                     ".cf-input .cf-field { height: 32px; font-size: 16px; }"):
+            self.assertIn(rule, phone)
+        self.assertIn("font-weight: 500", _rules(css, ".cf-hit"))
+
+    def test_settings_in_use_tags_wrap_in_a_row_and_only_the_readers_picks_stack(self) -> None:
+        # Both lists use the class pick-list; the reader's stacking rule must not reach Settings' tags.
+        inuse = _rules(self.css, ".tags-inuse .pick-list")
+        self.assertIn("display: flex", inuse)
+        self.assertIn("flex-wrap: wrap", inuse)
+        self.assertNotIn("flex-direction", inuse)
+        stacking = [selector.strip().splitlines()[-1] for selector, body in re.findall(r"([^{}]+)\{([^}]*)\}", self.css) if "flex-direction: column" in body and "pick-list" in selector]
+        self.assertEqual(stacking, [".sheet-scroll .pick-list"])
+        self.assertNotRegex(self.css, r"(?m)^\.pick-list\b")
 
     def test_drag_target_clears_on_every_way_a_drag_can_end(self) -> None:
         for needle in ('addEventListener("dragend", endDrag)', 'event.key === "Escape") endDrag()', "if (!event.relatedTarget) endDrag();", "setTimeout(endDrag, DRAG_IDLE_MS)"):
@@ -691,7 +741,7 @@ class StaticRouteTests(unittest.TestCase):
 
     def test_starters_and_approved_tags_are_wired_to_the_server(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")
-        for needle in ('id="starters"', 'id="capture-tag-pick"', 'id="tags-inuse"'):
+        for needle in ('id="starters"', 'id="capture-fields"', 'id="tags-inuse"'):
             with self.subTest(needle=needle):
                 self.assertIn(needle, page)
         self.assertIn('"GET", "/api/starters"', (WEB / "app.js").read_text(encoding="utf-8"))

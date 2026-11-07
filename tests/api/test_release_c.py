@@ -110,6 +110,7 @@ class El {
   replaceChildren(...items) { this.children = items; }
   append(...items) { this.children.push(...items); }
   setAttribute() {}
+  removeAttribute() {}
   addEventListener(name, fn) { this.handlers[name] = fn; }
   contains() { return false; }
   focus() {}

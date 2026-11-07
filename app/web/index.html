@@ -12,6 +12,7 @@
   <link rel="preload" href="/static/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/styles.css">
   <script src="/static/app.js" defer></script>
+  <script src="/static/capture-fields.js" defer></script>
   <script src="/static/capture.js" defer></script>
   <script src="/static/settings.js" defer></script>
   <script src="/static/source-filter.js" defer></script>
@@ -34,6 +35,7 @@
     <symbol id="i-step-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
     <symbol id="i-step-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
     <symbol id="i-mark-cross" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7 7 17"/></symbol>
+    <symbol id="i-chip-cross" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
     <symbol id="i-mark-bookmark" viewBox="0 0 24 24"><path d="M7 4.5h10v15l-5-3.6-5 3.6z"/></symbol>
     <symbol id="i-check" viewBox="0 0 256 256"><path fill="currentColor" d="M228.24,76.24l-128,128a6,6,0,0,1-8.48,0l-56-56a6,6,0,0,1,8.48-8.48L96,191.51,219.76,67.76a6,6,0,0,1,8.48,8.48Z"/></symbol>
     <symbol id="i-back" viewBox="0 0 256 256"><path fill="currentColor" d="M164.24,203.76a6,6,0,1,1-8.48,8.48l-80-80a6,6,0,0,1,0-8.48l80-80a6,6,0,0,1,8.48,8.48L88.49,128Z"/></symbol>
@@ -177,6 +179,7 @@
             <form id="capture-form" class="capture-form card">
               <label for="capture-text" class="sr-only">Paste text or a link</label>
               <textarea id="capture-text" rows="2" placeholder="Paste or type here…"></textarea>
+              <div id="capture-line" class="cf-line" aria-hidden="true"></div>
               <img id="capture-preview" class="capture-preview" alt="Screenshot to be saved" hidden>
               <div id="capture-detect" class="detect" aria-live="polite" hidden>
                 <span class="detect-icon"><svg class="icon" aria-hidden="true"><use id="capture-detect-icon" href="#i-doc"/></svg></span>
@@ -185,28 +188,36 @@
                   <span id="capture-detect-sub" class="detect-sub"></span>
                 </div>
               </div>
-              <details id="capture-more" class="more">
-                <summary>Title and tags<span class="muted">&nbsp;· optional</span><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
-                <div class="more-fields">
-                  <label class="field">Title
-                    <input id="capture-title" maxlength="200">
-                  </label>
-                  <div class="field" role="group" aria-labelledby="capture-tags-label">
-                    <span id="capture-tags-label">Tags</span>
-                    <div id="capture-tag-field" class="tag-field">
-                      <ul id="capture-tag-chips" class="tag-chips"></ul>
-                      <input id="capture-tags" maxlength="400" placeholder="Add a tag" aria-labelledby="capture-tags-label">
-                    </div>
-                    <div id="capture-tag-pick" class="tag-pick" hidden>
-                      <span class="kicker">In use</span>
-                      <ul id="capture-tag-pick-list" class="pick-list"></ul>
-                    </div>
-                  </div>
-                  <p id="capture-tag-status" class="sr-only" aria-live="polite"></p>
+              <div id="capture-fields" class="cf">
+                <div id="capture-row" class="cf-row" role="group" aria-label="Optional details">
+                <span id="capture-slot-type" class="cf-slot">
+                  <span class="cf-chips"></span>
+                  <button type="button" class="cf-add" data-field="type" aria-label="Add type" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-step-plus"/></svg>Type</button>
+                  <span class="cf-input" hidden><label class="sr-only" for="capture-type">Type</label><input id="capture-type" class="cf-field" role="combobox" aria-autocomplete="list" aria-controls="capture-suggest" aria-expanded="false" readonly placeholder="Choose a type" autocomplete="off"></span>
+                </span>
+                <span id="capture-slot-author" class="cf-slot">
+                  <span class="cf-chips"></span>
+                  <button type="button" class="cf-add" data-field="author" aria-label="Add author" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-step-plus"/></svg>Author</button>
+                  <span class="cf-input" hidden><label class="sr-only" for="capture-author">Add an author</label><input id="capture-author" size="6" class="cf-field" role="combobox" aria-autocomplete="list" aria-controls="capture-suggest" aria-expanded="false" maxlength="120" placeholder="Author" autocomplete="off" autocapitalize="words" spellcheck="false"></span>
+                </span>
+                <span id="capture-slot-tags" class="cf-slot">
+                  <span class="cf-chips"></span>
+                  <button type="button" class="cf-add" data-field="tags" aria-label="Add tags" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-step-plus"/></svg>Tags</button>
+                  <span class="cf-input" hidden><label class="sr-only" for="capture-tags">Add a tag</label><input id="capture-tags" size="6" class="cf-field" role="combobox" aria-autocomplete="list" aria-controls="capture-suggest" aria-expanded="false" maxlength="400" placeholder="Tag" autocomplete="off" autocapitalize="none" spellcheck="false"></span>
+                </span>
+                <span id="capture-slot-title" class="cf-slot">
+                  <span class="cf-chips"></span>
+                  <button type="button" class="cf-add" data-field="title" aria-label="Add title" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-step-plus"/></svg>Title</button>
+                  <span class="cf-input" hidden><label class="sr-only" for="capture-title">Title</label><input id="capture-title" class="cf-field" maxlength="200" placeholder="Title" autocomplete="off"></span>
+                </span>
                 </div>
-              </details>
+                <div id="capture-list-slot" class="cf-list-slot"></div>
+                <ul id="capture-suggest" class="cf-list" role="listbox" hidden></ul>
+                <p id="capture-tag-status" class="sr-only" aria-live="polite"></p>
+              </div>
               <input id="capture-kind" type="hidden" value="text">
               <div class="card-actions">
+                <span id="capture-rest" class="cf-rest"></span>
                 <button type="button" id="capture-attach" class="attach" aria-label="Attach a screenshot or .md file"><svg class="icon" aria-hidden="true"><use href="#i-paperclip"/></svg></button>
                 <span id="capture-drop-hint" class="drop-hint">or drop a file anywhere</span>
                 <input id="capture-file" type="file" hidden accept="image/png,image/jpeg,image/webp,.md,.markdown,.txt,text/markdown,text/plain">
