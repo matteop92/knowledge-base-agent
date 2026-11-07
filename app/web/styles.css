@@ -262,7 +262,6 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 .ticker-icon { display: block; color: rgba(255, 253, 248, 0.78); }
 .ticker-title, .ticker-author { display: block; line-height: 1; white-space: nowrap; }
 .ticker-author { font-size: 12px; color: rgba(255, 253, 248, 0.64); }
-.ticker-dot { display: block; flex: none; width: 3px; height: 3px; border-radius: 999px; background: rgba(255, 253, 248, 0.45); }
 @media (prefers-reduced-motion: reduce) {
   .ticker { overflow-x: auto; scrollbar-width: none; }
   .ticker::-webkit-scrollbar { display: none; }

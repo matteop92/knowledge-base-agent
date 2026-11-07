@@ -30,9 +30,6 @@
     mark.classList.add("ticker-icon");
     button.append(mark, part("span", "ticker-title", source.title));
     if (source.author) button.append(part("span", "ticker-author", source.author));
-    const dot = part("span", "ticker-dot");
-    dot.setAttribute("aria-hidden", "true");
-    button.append(dot);
     button.addEventListener("click", () => { window.sourcesScreen.openById(source.id); });
     return button;
   }

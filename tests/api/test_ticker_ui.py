@@ -35,13 +35,13 @@ class TickerTests(unittest.TestCase):
             self.assertEqual(item["label"], f"Open {item['title']}")
             self.assertIsNone(item["tabindex"])
 
-    def test_the_author_is_left_out_when_there_is_none_and_the_dot_always_ends_the_item(self) -> None:
+    def test_the_author_is_left_out_when_there_is_none(self) -> None:
         items = {item["title"]: item for item in run("mixed")["items"]}
         self.assertEqual(items["A post on X"]["author"], "Ada Stone")
         self.assertIsNone(items["A Reddit thread"]["author"])
         self.assertIsNone(items["A note"]["author"])
-        self.assertEqual(items["A post on X"]["parts"], ["svg.ticker-icon", "span.ticker-title", "span.ticker-author", "span.ticker-dot"])
-        self.assertEqual(items["A note"]["parts"], ["svg.ticker-icon", "span.ticker-title", "span.ticker-dot"])
+        self.assertEqual(items["A post on X"]["parts"], ["svg.ticker-icon", "span.ticker-title", "span.ticker-author"])
+        self.assertEqual(items["A note"]["parts"], ["svg.ticker-icon", "span.ticker-title"])
 
     def test_each_title_is_a_real_item_plus_one_aria_hidden_copy_when_the_items_do_not_fit(self) -> None:
         out = run("mixed")
