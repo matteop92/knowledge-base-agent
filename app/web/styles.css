@@ -944,6 +944,20 @@ h3.r-heading { font-size: 18.5px; }
 .review-prev { left: 12px; }
 .review-next { right: 12px; }
 .review-next .icon { transform: rotate(180deg); }
+@media (pointer: fine) { .review-pager { scroll-snap-type: none; } }
+/* Done (cross) and Again (bookmark): two quiet circles in the band at the foot (Review buttons I2). Chosen is a solid fill;
+   on a light page (not drawn on the board) it is the ink with the paper inside, the same inversion as the dark page. */
+.review-band { position: absolute; left: 0; right: 0; bottom: calc(112px + env(safe-area-inset-bottom, 0px)); display: flex; justify-content: space-around; padding: 0 60px; }
+.review-mark { width: 52px; height: 52px; padding: 0; border: 0; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: rgba(29, 28, 26, 0.05); color: var(--ink-soft); }
+.review-mark .icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round; }
+.review-mark:hover { background: rgba(29, 28, 26, 0.09); }
+.review-mark[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.review-mark-again[aria-pressed="true"] .icon { fill: currentColor; }
+.review-page.is-highlights .review-mark { background: rgba(255, 253, 248, 0.08); color: rgba(255, 253, 248, 0.8); }
+.review-page.is-highlights .review-mark:hover { background: rgba(255, 253, 248, 0.14); }
+.review-page.is-highlights .review-mark[aria-pressed="true"] { background: var(--paper); color: var(--cover-0); }
+.review-source { transition: opacity 120ms ease; }
+.view-review[data-ask="open"] .review-source { opacity: 0; }
 /* Desktop (Review buttons, Desktop board): kicker at 80, box from 110, source at 556, circles' band at 652 of 800. */
 @media (min-width: 900px) and (pointer: fine) {
   .review-arrow:not([hidden]) { display: inline-flex; }
@@ -954,8 +968,10 @@ h3.r-heading { font-size: 18.5px; }
   .review-body { margin: 110px auto 16px; }
   .review-page.has-bars .review-body { margin-top: 122px; }
   .review-source { height: 96px; }
+  .review-band { bottom: 104px; justify-content: center; gap: 48px; padding: 0; }
+  .review-mark { width: 44px; height: 44px; }
+  .review-mark .icon { width: 18px; height: 18px; }
 }
-@media (pointer: fine) { .review-pager { scroll-snap-type: none; } }
 .review-tail[hidden] { display: none; }
 .review-tail { align-items: center; justify-content: center; text-align: center; gap: 12px; }
 .review-state { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center; background: var(--ground); }
@@ -964,12 +980,14 @@ h3.r-heading { font-size: 18.5px; }
 .view-review[data-type="highlights"] .review-ask { background: var(--paper); color: var(--ink); }
 .view-review[data-type="highlights"] .review-ask:hover:not(:disabled) { background: var(--surface); }
 .app[data-review-tone="dark"] .topbar .icon-button { color: var(--paper); }
-.review-ask { position: absolute; z-index: 3; left: 50%; bottom: 64px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 10px; height: var(--ctl); padding: 0 22px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 14px; font-weight: 400; white-space: nowrap; box-shadow: 0 10px 28px rgba(29, 28, 26, 0.28); }
+.review-ask { position: absolute; z-index: 3; left: 50%; bottom: calc(176px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: inline-flex; align-items: center; gap: 10px; height: var(--ctl); padding: 0 22px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 14px; font-weight: 400; white-space: nowrap; box-shadow: 0 10px 28px rgba(29, 28, 26, 0.28); }
 .review-ask:hover:not(:disabled) { background: var(--ink-hover); }
 .review-ask[hidden] { display: none; }
 .review-ask .icon { width: 16px; height: 16px; }
+@media (min-width: 900px) and (pointer: fine) { .review-ask { bottom: 160px; } }
 @media (max-width: 899px) {
   .app[data-view="review"] .topbar { position: absolute; z-index: 5; }
+  .app[data-view="review"][data-review-bars="true"] .topbar { top: 20px; }
 }
 
 /* The passage shown above the composer after "Ask about this" on a Review passage. */

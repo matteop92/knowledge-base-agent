@@ -59,6 +59,43 @@ class ReviewScreenTests(unittest.TestCase):
             self.assertGreater(len(parts), 1, case)
             self.assertLessEqual(max(parts), -(-budget * 115 // 100), (case, parts))
 
+    def test_the_two_circles_fill_clear_and_switch_and_carry_their_names_and_keys(self) -> None:
+        out = run("marksFillTapAgainClearsAndSwitches")
+        self.assertEqual(out["initial"], ["false", "false"])
+        self.assertEqual(out["afterAgain"], ["false", "true"])
+        self.assertEqual(out["afterClear"], ["false", "false"])
+        self.assertEqual(out["afterSwitch"], ["true", "false"])
+        key = "0" * 31 + "1"
+        self.assertEqual(out["writes"], [["PUT", key, {"mark": "again"}], ["DELETE", key, None], ["PUT", key, {"mark": "again"}],
+                                         ["PUT", key, {"mark": "done"}]])
+        self.assertEqual((out["labels"], out["keys"]), (["Done", "Show again"], ["X", "B"]))
+        self.assertEqual(out["titles"], ["Done (X)", "Show again (B)"])
+
+    def test_a_mark_set_on_one_part_stays_filled_on_the_others(self) -> None:
+        out = run("aMarkSetOnOnePartShowsOnTheOthers")
+        self.assertGreater(out["parts"], 2)
+        self.assertEqual(set(out["pressed"]), {"true"})
+
+    def test_x_and_b_mark_and_are_ignored_while_typing_and_the_arrows_still_turn_parts(self) -> None:
+        out = run("keysXAndBMarkOnDesktopAndAreIgnoredWhileTyping")
+        key = "0" * 31 + "1"
+        self.assertEqual(out["writes"], [["PUT", {"mark": "done"}], ["PUT", {"mark": "again"}]])
+        self.assertEqual(out["part"], 1)
+        self.assertEqual(out["pressed"], ["false", "true"])
+
+    def test_a_failed_save_puts_the_fill_back_and_says_so(self) -> None:
+        out = run("aFailedSaveGivesTheFillBack")
+        self.assertEqual((out["during"], out["after"]), ("true", "false"))
+        self.assertEqual(out["notices"], ["The mark was not saved. Try again."])
+
+    def test_circles_never_show_the_ask_pill_the_passage_does_and_an_again_serve_starts_filled(self) -> None:
+        out = run("circlesNeverShowThePillButThePassageDoesAndAnAgainServeStartsFilled")
+        self.assertEqual(out["filled"], "true")
+        self.assertTrue(out["afterCircle"], "the pill stays hidden after a circle tap")
+        self.assertEqual(out["afterPassage"], {"hidden": False, "ask": "open"})
+        self.assertIsNone(out["afterHide"])
+        self.assertEqual(out["shown"], [{"passage_key": "0" * 31 + "1", "round": 1, "again": True}])
+
     def test_the_note_shows_on_the_last_part_only(self) -> None:
         out = run("noteOnlyOnLastPart")
         self.assertEqual(out["notes"], [False] * (out["parts"] - 1) + [True])

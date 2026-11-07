@@ -96,7 +96,7 @@
   }
 
   // The passage and its note always go through the budget together; one that fits comes back as a single part.
-  const split = (passage) => paginate(passage.text, budget(), words(passage.note));
+  const split = (passage, scale = 1) => paginate(passage.text, Math.max(10, Math.floor(budget() * scale)), words(passage.note));
 
   // Drawing ----------------------------------------------------------------------------------------
   const inlineText = (tag, cls, text) => window.readerBlocks.inline(tag, cls, text);
@@ -127,7 +127,7 @@
     el.dataset.key = passage.passage_key;
     const type = typeOf(passage);
     el.classList.add(`is-${type}`);
-    const page = { passage, type, el, parts: [], part: 0, logged: false, timer: null };
+    const page = { passage, type, el, parts: [], part: 0, logged: false, timer: null, mark: passage.mark || null, saving: Promise.resolve(), scale: 1 };
     const bars = h("div", "review-bars");
     const kicker = h("div", "review-kicker", TYPES[type][0]);
     const body = h("div", "review-body");
@@ -136,6 +136,8 @@
     source.append(h("div", "review-source-title", passage.title));
     const byline = [passage.author, passage.locator].filter(Boolean).join(" · ");
     if (byline) source.append(h("div", "review-source-author", byline));
+    const band = h("div", "review-band");
+    for (const kind of ["done", "again"]) band.append(markButton(page, kind));
     const prev = h("button", "icon-button review-arrow review-prev");
     const next = h("button", "icon-button review-arrow review-next");
     for (const [button, label, name] of [[prev, "Previous part", "i-back"], [next, "Next part", "i-back"]]) {
@@ -146,16 +148,85 @@
     next.classList.add("is-forward");
     prev.addEventListener("click", (event) => { event.stopPropagation(); turn(page, -1); });
     next.addEventListener("click", (event) => { event.stopPropagation(); turn(page, 1); });
-    el.append(bars, kicker, body, source, prev, next);
+    el.append(bars, kicker, body, source, prev, next, band);
+    paintMarks(page);
     el.addEventListener("click", (event) => tap(page, event));
     layout(page);
     return page;
   }
 
+  // Marks -------------------------------------------------------------------------------------------
+  // Done (cross) and Again (bookmark) cover the whole passage and can be set from any part. The chosen circle is filled;
+  // tapping it clears the mark and tapping the other switches. The fill changes at once and goes back if the save fails.
+  const MARKS = { done: ["Done", "X", "i-mark-cross"], again: ["Show again", "B", "i-mark-bookmark"] };
+
+  function markButton(page, kind) {
+    const [label, key, symbol] = MARKS[kind];
+    const button = h("button", `review-mark review-mark-${kind}`);
+    button.type = "button";
+    button.dataset.mark = kind;
+    button.setAttribute("aria-label", label);
+    button.setAttribute("aria-keyshortcuts", key);
+    button.title = `${label} (${key})`;
+    button.append(icon(symbol.slice(2)));
+    button.addEventListener("click", (event) => { event.stopPropagation(); toggleMark(page, kind); });
+    return button;
+  }
+
+  function paintMarks(page) {
+    for (const button of page.el.querySelectorAll(".review-mark")) {
+      button.setAttribute("aria-pressed", String(page.mark === button.dataset.mark));
+    }
+  }
+
+  function toggleMark(page, kind) {
+    const before = page.mark;
+    const next = before === kind ? null : kind;
+    page.mark = next;
+    paintMarks(page);
+    const url = `/api/review/marks/${encodeURIComponent(page.passage.passage_key)}`;
+    // Saves for one passage go out in order, so quick taps cannot land the wrong way round.
+    page.saving = page.saving.then(async () => {
+      try {
+        await (next ? api("PUT", url, { mark: next }) : api("DELETE", url));
+      } catch (error) {
+        page.mark = before;
+        paintMarks(page);
+        if (error.status !== 401 && typeof notify === "function") notify("The mark was not saved. Try again.");
+      }
+    });
+    return page.saving;
+  }
+
   // (Re)split the passage for the current screen width and redraw its bars and first part.
   function layout(page, keepPart = false) {
+    resplit(page, keepPart);
+    drawPart(page);
+    fit(page);
+  }
+
+  // The word budget is a first guess: long words and a quote mark take more room than the average. Once the page is on
+  // screen, each part is measured against the passage box and the passage is split finer until none overflows.
+  function fit(page) {
+    const body = page.el.querySelector(".review-body");
+    if (!body.clientHeight) return;  // not on screen yet
+    const overflows = () => page.parts.some((_, index) => {
+      page.part = index;
+      drawPart(page);
+      return body.scrollHeight > body.clientHeight + 1;
+    });
+    const at = page.part / page.parts.length;
+    for (let tries = 0; tries < 16 && page.scale > 0.3 && overflows(); tries++) {
+      page.scale *= 0.93;
+      resplit(page, false);
+    }
+    page.part = Math.min(page.parts.length - 1, Math.floor(at * page.parts.length));
+    drawPart(page);
+  }
+
+  function resplit(page, keepPart) {
     const before = page.parts.length ? page.part / page.parts.length : 0;
-    page.parts = split(page.passage);
+    page.parts = split(page.passage, page.scale);
     page.part = keepPart ? Math.min(page.parts.length - 1, Math.floor(before * page.parts.length)) : 0;
     const paged = page.parts.length > 1;
     page.el.classList.toggle("has-bars", paged);
@@ -168,7 +239,6 @@
       return bar;
     }));
     for (const arrow of page.el.querySelectorAll(".review-arrow")) arrow.hidden = !paged;
-    drawPart(page);
   }
 
   function turn(page, step) {
@@ -193,14 +263,17 @@
     if (view.askOpen) hideAsk(); else showAsk();
   }
 
+  // The pill sits just above the circles, over the source line, which fades while it shows.
   function showAsk() {
     view.askOpen = true;
     $("review-ask").hidden = false;
+    $("review").dataset.ask = "open";
   }
 
   function hideAsk() {
     view.askOpen = false;
     $("review-ask").hidden = true;
+    delete $("review").dataset.ask;
   }
 
   // States ------------------------------------------------------------------------------------------
@@ -287,6 +360,7 @@
     const page = buildPage(passage);
     view.pages.push(page);
     $("review-pager").insertBefore(page.el, view.tail || null);
+    fit(page);
     view.byElement.set(page.el, page);
     if (view.observer) view.observer.observe(page.el);
   }
@@ -310,7 +384,9 @@
     if (page.logged || page.posting) return;
     page.posting = true;  // stays held until the server has it
     try {
-      await api("POST", "/api/review/shown", { passage_key: page.passage.passage_key, round: page.passage.round });
+      const body = { passage_key: page.passage.passage_key, round: page.passage.round };
+      if (page.passage.again) body.again = true;  // an Again serve is recorded on its mark, not in the shown log
+      await api("POST", "/api/review/shown", body);
       page.logged = true;
     } catch (error) {
       page.posting = false;  // the next second on screen tries again
@@ -369,6 +445,8 @@
     const moves = { ArrowDown: 1, PageDown: 1, ArrowUp: -1, PageUp: -1 };
     if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
       if (page) turn(page, event.key === "ArrowRight" ? 1 : -1);
+    } else if (event.key.toLowerCase() === "x" || event.key.toLowerCase() === "b") {
+      if (page) toggleMark(page, event.key.toLowerCase() === "x" ? "done" : "again");
     } else if (event.key in moves) {
       go(moves[event.key]);
     } else {
@@ -381,10 +459,12 @@
   function syncTone(page) {
     $("review").dataset.type = page.type;
     $("app").dataset.reviewTone = TYPES[page.type][1];
+    $("app").dataset.reviewBars = String(page.parts.length > 1);  // the menu button drops under the part bars
   }
 
   // Screen ------------------------------------------------------------------------------------------
   function show() {
+    for (const page of view.pages) fit(page);
     if (view.pages[view.current]) syncTone(view.pages[view.current]);
     if (!view.pages.length) {
       if (!view.fetching) fetchMore();
@@ -398,6 +478,7 @@
   function leave() {
     hideAsk();
     delete $("app").dataset.reviewTone;
+    delete $("app").dataset.reviewBars;
     for (const page of view.pages) stopDwell(page);
   }
 
@@ -428,6 +509,6 @@
     }
   }
 
-  window.reviewScreen = { show, leave, paginate, budget, onVisible, pages: () => view.pages };
+  window.reviewScreen = { show, leave, paginate, budget, onVisible, toggleMark, pages: () => view.pages };
   document.addEventListener("DOMContentLoaded", init);
 })();

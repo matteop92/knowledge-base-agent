@@ -22,7 +22,7 @@ function boot({ phone = true, replies = [] } = {}) {
     els[id] = new El("div"); els[id].id = id;
   }
   els["review-state"].hidden = true; els["review-ask"].hidden = true;
-  const calls = { api: [], asked: [], timers: [] };
+  const calls = { api: [], asked: [], timers: [], notices: [] };
   const queue = replies.slice();
   const stored = {};
   class FakeObserver { constructor(cb) { this.cb = cb; this.watched = []; observers.push(this); } observe(el) { this.watched.push(el); } }
@@ -33,6 +33,7 @@ function boot({ phone = true, replies = [] } = {}) {
     icon: (name) => { const el = new El("svg"); el.dataset.name = name; return el; },
     phone: { matches: phone, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } },
     state: { view: "review" }, sheet: { open: false },
+    notify: (message) => calls.notices.push(message),
     api: async (method, path, body) => {
       calls.api.push([method, path, body || null]);
       const next = queue.shift();
@@ -248,6 +249,66 @@ const scenarios = {
     const second = page(app, 2).el.scrolledIntoView === true;
     wheel(2);  // too small to count
     return { prevented: e1.prevented === true, flipped, extra, second };
+  },
+  async marksFillTapAgainClearsAndSwitches() {
+    const app = boot({ replies: [{ passages: [passage(1, { type: "quote" })] }] });
+    app.screen.show(); await app.flush();
+    const el = page(app, 0).el;
+    const [done, again] = [el.querySelector(".review-mark-done"), el.querySelector(".review-mark-again")];
+    const state = () => [done.getAttribute("aria-pressed"), again.getAttribute("aria-pressed")];
+    const initial = state();
+    const writes = () => app.calls.api.filter(([m]) => m !== "GET").map(([m, path, body]) => [m, path.split("/").pop(), body]);
+    again.click(); await app.flush(); const afterAgain = state();
+    again.click(); await app.flush(); const afterClear = state();
+    again.click(); await app.flush(); done.click(); await app.flush(); const afterSwitch = state();
+    return { initial, afterAgain, afterClear, afterSwitch, writes: writes(), labels: [done.getAttribute("aria-label"), again.getAttribute("aria-label")],
+      keys: [done.getAttribute("aria-keyshortcuts"), again.getAttribute("aria-keyshortcuts")], titles: [done.title, again.title] };
+  },
+  async aMarkSetOnOnePartShowsOnTheOthers() {
+    const app = boot({ replies: [{ passages: [passage(1, { text: sentences(110, 3) })] }] });
+    app.screen.show(); await app.flush();
+    const p = page(app, 0);
+    p.el.querySelector(".review-mark-again").click(); await app.flush();
+    const pressed = [];
+    for (let i = 0; i < p.parts.length; i++) { pressed.push(p.el.querySelector(".review-mark-again").getAttribute("aria-pressed")); p.el.querySelector(".review-next").click(); }
+    return { parts: p.parts.length, pressed };
+  },
+  async keysXAndBMarkOnDesktopAndAreIgnoredWhileTyping() {
+    const app = boot({ phone: false, replies: [{ passages: [passage(1, { text: sentences(150, 3) }), passage(2)] }] });
+    app.screen.show(); await app.flush();
+    const press = (key, target = new El("div")) => { const e = { key, target, preventDefault() { this.prevented = true; } }; for (const fn of documentStub.listeners.keydown) fn(e); return e; };
+    const p = page(app, 0);
+    press("x"); await app.flush();
+    press("B"); await app.flush();
+    const typing = new El("input"); typing.tagName = "input";
+    press("x", typing); await app.flush();
+    press("ArrowRight"); const part = p.part;
+    return { writes: app.calls.api.filter(([m]) => m !== "GET").map(([m, , body]) => [m, body]), part,
+      pressed: [p.el.querySelector(".review-mark-done").getAttribute("aria-pressed"), p.el.querySelector(".review-mark-again").getAttribute("aria-pressed")] };
+  },
+  async aFailedSaveGivesTheFillBack() {
+    const fail = Object.assign(new Error("x"), { status: 500 });
+    const app = boot({ replies: [{ passages: [passage(1)] }, fail] });
+    app.screen.show(); await app.flush();
+    const again = page(app, 0).el.querySelector(".review-mark-again");
+    again.click();
+    const during = again.getAttribute("aria-pressed");
+    await app.flush();
+    return { during, after: again.getAttribute("aria-pressed"), notices: app.calls.notices };
+  },
+  async circlesNeverShowThePillButThePassageDoesAndAnAgainServeStartsFilled() {
+    const app = boot({ replies: [{ passages: [passage(1, { mark: "again", again: true }), passage(2)] }, {}, {}] });
+    app.screen.show(); await app.flush();
+    const el = page(app, 0).el; const pill = app.els["review-ask"];
+    const filled = el.querySelector(".review-mark-again").getAttribute("aria-pressed");
+    el.querySelector(".review-mark-done").click();
+    const afterCircle = pill.hidden;
+    tapAt(el, 200);
+    const afterPassage = { hidden: pill.hidden, ask: app.els["review"].dataset.ask };
+    tapAt(el, 200);
+    app.seen(0); app.fire(); await app.flush();
+    return { filled, afterCircle, afterPassage, afterHide: app.els["review"].dataset.ask || null,
+      shown: app.calls.api.filter(([m, path]) => m === "POST" && path === "/api/review/shown").map(([, , body]) => body) };
   },
   async tailStaysPutWhileFetching() {
     const app = boot({ replies: [{ passages: [passage(1), passage(2)] }, { passages: [passage(3)] }] });
