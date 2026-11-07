@@ -53,7 +53,7 @@ class ShellSourceTests(unittest.TestCase):
 
     def test_shell_cache_is_bumped_and_the_sidebar_choice_is_remembered(self) -> None:
         worker = (WEB / "sw.js").read_text(encoding="utf-8")
-        self.assertIn('const CACHE = "ka-shell-v35"', worker)
+        self.assertIn('const CACHE = "ka-shell-v36"', worker)
         # A deploy must reach an installed app: never answer from the browser's own HTTP cache.
         self.assertIn('fetch(event.request, { cache: "no-cache" })', worker)
         script = (WEB / "app.js").read_text(encoding="utf-8")
@@ -755,7 +755,7 @@ class StaticRouteTests(unittest.TestCase):
         self.assertIn('"GET", "/api/sources/recent"', (WEB / "ticker.js").read_text(encoding="utf-8"))
         for name in ("index.html", "app.js", "styles.css"):
             self.assertNotRegex((WEB / name).read_text(encoding="utf-8"), r"(?i)starter", name)
-        for symbol in ("newspaper", "book-open", "book", "pencil-simple", "ph-quotes", "mic", "xlogo", "linkedin", "reddit", "globe"):
+        for symbol in ("browser", "book-open", "books", "notepad", "ph-quotes", "mic", "xlogo", "linkedin", "reddit", "globe"):
             self.assertRegex(page, rf'<symbol id="i-{symbol}" viewBox="0 0 256 256"><path fill="currentColor" d="[^"]+"/></symbol>')
         # The band is only there on an empty Ask page, is 36 px high, and sits over the top edge so nothing else moves.
         self.assertIn(".view-ask:not(.is-empty) .ticker { display: none; }", css)

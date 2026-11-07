@@ -3,13 +3,13 @@
 // A click opens that note's own Sources page. A failure or an empty list leaves the band hidden.
 (() => {
   const SPEED = 40;  // pixels per second
-  const BY_TYPE = { article: "newspaper", highlights: "book-open", book: "book", note: "pencil-simple", quote: "ph-quotes", transcript: "mic" };
+  const BY_TYPE = { article: "browser", highlights: "book-open", book: "books", note: "notepad", quote: "ph-quotes", transcript: "mic" };
   const BY_PLATFORM = { x: "xlogo", linkedin: "linkedin", reddit: "reddit" };
 
   // Pure helpers (no DOM).
   function iconName(source) {
     if (source.type === "social_post") return BY_PLATFORM[source.platform] || "globe";
-    return BY_TYPE[source.type] || "pencil-simple";
+    return BY_TYPE[source.type] || "notepad";
   }
   const needsScroll = (trackWidth, bandWidth) => trackWidth > bandWidth;
   const durationFor = (trackWidth) => Math.max(1, trackWidth / SPEED);

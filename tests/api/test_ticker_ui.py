@@ -26,8 +26,8 @@ class TickerTests(unittest.TestCase):
         icons = {item["title"]: item["icon"] for item in out["items"]}
         self.assertEqual(icons, {
             "A post on X": "xlogo", "A LinkedIn post": "linkedin", "A Reddit thread": "reddit", "A post on the web": "globe",
-            "An article": "newspaper", "A book": "book", "Some highlights": "book-open", "A note": "pencil-simple",
-            "A quote": "ph-quotes", "A talk": "mic", "A new kind": "pencil-simple",
+            "An article": "browser", "A book": "books", "Some highlights": "book-open", "A note": "notepad",
+            "A quote": "ph-quotes", "A talk": "mic", "A new kind": "notepad",
         })
         self.assertEqual(len(out["items"]), 11)
         for item in out["items"]:
