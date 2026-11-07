@@ -275,6 +275,31 @@ class SourceStore:
                               "source_id": source.document_id})
         return found
 
+    def recent(self, days: int = 7, limit: int = 30) -> dict[str, Any]:
+        """The Ask page's banner: sources added in the last `days` days, newest first, with one author each and nothing
+        else about the note (no description, tags or text)."""
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+        try:
+            with self.connect() as conn:
+                rows = load_sources(conn)
+        except StorageError:  # no search profile yet: nothing is indexed
+            return {"sources": []}
+        found = [(source, row) for row, source in zip(rows, to_sources(rows)) if source.added_at and source.added_at > since]
+        found.sort(key=lambda pair: pair[0].added_at, reverse=True)
+        result = []
+        for source, row in found[:limit]:
+            facts = card_facts(row["metadata"], row["relative_path"], source.added_at)
+            item = {"id": source.document_id, "title": source.title,
+                    "type": "social_post" if facts["type"] == "post" else facts["type"]}  # the capture form's name for it
+            if facts.get("platform"):
+                item["platform"] = facts["platform"]
+            people = facts["authors"] or facts["guests"]
+            if people:
+                item["author"] = people[0]
+            item["added_at"] = source.added_at.isoformat()
+            result.append(item)
+        return {"sources": result}
+
     def list(self) -> dict[str, Any]:
         with self.connect() as conn:
             rows = load_sources(conn)

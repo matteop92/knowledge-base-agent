@@ -22,6 +22,7 @@
   <script src="/static/sources.js" defer></script>
   <script src="/static/review.js" defer></script>
   <script src="/static/review-settings.js" defer></script>
+  <script src="/static/ticker.js" defer></script>
 </head>
 <body>
   <!-- Icons: one sprite, referenced with <use> -->
@@ -71,6 +72,11 @@
     <symbol id="i-person" viewBox="0 0 256 256"><path fill="currentColor" d="M229.19,213c-15.81-27.32-40.63-46.49-69.47-54.62a70,70,0,1,0-63.44,0C67.44,166.5,42.62,185.67,26.81,213a6,6,0,1,0,10.38,6C56.4,185.81,90.34,166,128,166s71.6,19.81,90.81,53a6,6,0,1,0,10.38-6ZM70,96a58,58,0,1,1,58,58A58.07,58.07,0,0,1,70,96Z"/></symbol>
     <symbol id="i-calendar" viewBox="0 0 256 256"><path fill="currentColor" d="M208,34H182V24a6,6,0,0,0-12,0V34H86V24a6,6,0,0,0-12,0V34H48A14,14,0,0,0,34,48V208a14,14,0,0,0,14,14H208a14,14,0,0,0,14-14V48A14,14,0,0,0,208,34ZM48,46H74V56a6,6,0,0,0,12,0V46h84V56a6,6,0,0,0,12,0V46h26a2,2,0,0,1,2,2V82H46V48A2,2,0,0,1,48,46ZM208,210H48a2,2,0,0,1-2-2V94H210V208A2,2,0,0,1,208,210Z"/></symbol>
     <symbol id="i-stack" viewBox="0 0 256 256"><path fill="currentColor" d="M13,109.21l112,64a6,6,0,0,0,6,0l112-64a6,6,0,0,0,0-10.42l-112-64a6,6,0,0,0-6,0l-112,64a6,6,0,0,0,0,10.42Zm115-62.3L227.91,104,128,161.09,28.09,104ZM245.21,141a6,6,0,0,1-2.23,8.19l-112,64a6,6,0,0,1-6,0l-112-64a6,6,0,0,1,6-10.42l109,62.3,109-62.3A6,6,0,0,1,245.21,141Z"/></symbol>
+    <symbol id="i-newspaper" viewBox="0 0 256 256"><path fill="currentColor" d="M182,112a6,6,0,0,1-6,6H96a6,6,0,0,1,0-12h80A6,6,0,0,1,182,112Zm-6,26H96a6,6,0,0,0,0,12h80a6,6,0,0,0,0-12Zm54-74V184a22,22,0,0,1-22,22H32a22,22,0,0,1-22-21.91V88a6,6,0,0,1,12,0v96a10,10,0,0,0,20,0V64A14,14,0,0,1,56,50H216A14,14,0,0,1,230,64Zm-12,0a2,2,0,0,0-2-2H56a2,2,0,0,0-2,2V184a21.84,21.84,0,0,1-2.41,10H208a10,10,0,0,0,10-10Z"/></symbol>
+    <symbol id="i-book-open" viewBox="0 0 256 256"><path fill="currentColor" d="M232,50H160a38,38,0,0,0-32,17.55A38,38,0,0,0,96,50H24a6,6,0,0,0-6,6V200a6,6,0,0,0,6,6H96a26,26,0,0,1,26,26,6,6,0,0,0,12,0,26,26,0,0,1,26-26h72a6,6,0,0,0,6-6V56A6,6,0,0,0,232,50ZM96,194H30V62H96a26,26,0,0,1,26,26V204.31A37.86,37.86,0,0,0,96,194Zm130,0H160a37.87,37.87,0,0,0-26,10.32V88a26,26,0,0,1,26-26h66Z"/></symbol>
+    <symbol id="i-book" viewBox="0 0 256 256"><path fill="currentColor" d="M208,26H72A30,30,0,0,0,42,56V224a6,6,0,0,0,6,6H192a6,6,0,0,0,0-12H54v-2a18,18,0,0,1,18-18H208a6,6,0,0,0,6-6V32A6,6,0,0,0,208,26Zm-6,160H72a29.87,29.87,0,0,0-18,6V56A18,18,0,0,1,72,38H202Z"/></symbol>
+    <symbol id="i-pencil-simple" viewBox="0 0 256 256"><path fill="currentColor" d="M225.9,74.78,181.21,30.09a14,14,0,0,0-19.8,0L38.1,153.41a13.94,13.94,0,0,0-4.1,9.9V208a14,14,0,0,0,14,14H92.69a13.94,13.94,0,0,0,9.9-4.1L225.9,94.58a14,14,0,0,0,0-19.8ZM94.1,209.41a2,2,0,0,1-1.41.59H48a2,2,0,0,1-2-2V163.31a2,2,0,0,1,.59-1.41L136,72.48,183.51,120ZM217.41,86.1,192,111.51,144.49,64,169.9,38.58a2,2,0,0,1,2.83,0l44.68,44.69a2,2,0,0,1,0,2.83Z"/></symbol>
+    <symbol id="i-ph-quotes" viewBox="0 0 256 256"><path fill="currentColor" d="M100,58H40A14,14,0,0,0,26,72v64a14,14,0,0,0,14,14h62v10a34,34,0,0,1-34,34,6,6,0,0,0,0,12,46.06,46.06,0,0,0,46-46V72A14,14,0,0,0,100,58Zm2,80H40a2,2,0,0,1-2-2V72a2,2,0,0,1,2-2h60a2,2,0,0,1,2,2ZM216,58H156a14,14,0,0,0-14,14v64a14,14,0,0,0,14,14h62v10a34,34,0,0,1-34,34,6,6,0,0,0,0,12,46.06,46.06,0,0,0,46-46V72A14,14,0,0,0,216,58Zm2,80H156a2,2,0,0,1-2-2V72a2,2,0,0,1,2-2h60a2,2,0,0,1,2,2Z"/></symbol>
     <symbol id="i-quotes" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><rect x="30" y="64" width="76" height="68" rx="14"/><path d="M106 132v14a34 34 0 0 1-34 34"/><rect x="150" y="64" width="76" height="68" rx="14"/><path d="M226 132v14a34 34 0 0 1-34 34"/></symbol>
   </svg>
 
@@ -135,13 +141,13 @@
 
       <div class="views">
         <section id="view-ask" class="view view-ask" aria-label="Ask">
+          <div id="ticker" class="ticker" role="region" aria-label="Added in the last 7 days" hidden><div id="ticker-track" class="ticker-track"></div></div>
           <main class="thread">
             <div class="column">
               <section id="empty-state" class="empty-state">
                 <p id="empty-date" class="empty-date"></p>
                 <h1>Ask your notes anything.</h1>
                 <p class="muted">Answers cite the exact passages they used.</p>
-                <ul id="starters-compact" class="starters starters-compact" aria-label="Suggested questions" hidden></ul>
               </section>
               <ol id="turns" class="turns"></ol>
             </div>
@@ -161,7 +167,6 @@
               <textarea id="question" rows="1" placeholder="Ask a question" required></textarea>
               <button type="submit" id="ask" class="send" aria-label="Ask"><svg class="icon"><use href="#i-send"/></svg></button>
             </div>
-            <ul id="starters" class="starters" aria-label="Suggested questions" hidden></ul>
             <p class="composer-hint">Enter to ask · Shift + Enter for a new line</p>
           </form>
         </section>

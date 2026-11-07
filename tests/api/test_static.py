@@ -24,7 +24,7 @@ class ShellSourceTests(unittest.TestCase):
         self.assertIn('url.startsWith("obsidian://")', script)
 
     def test_capture_and_worker_scripts_never_insert_html(self) -> None:
-        for name in ("capture.js", "capture-fields.js", "capture-row.js", "settings.js", "sources.js", "review.js", "review-settings.js", "reader-blocks.js", "reader-picks.js", "source-filter.js", "sw.js"):
+        for name in ("capture.js", "capture-fields.js", "capture-row.js", "settings.js", "sources.js", "review.js", "review-settings.js", "reader-blocks.js", "reader-picks.js", "source-filter.js", "ticker.js", "sw.js"):
             script = (WEB / name).read_text(encoding="utf-8")
             for unsafe in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
                 with self.subTest(name=name, unsafe=unsafe):
@@ -45,7 +45,7 @@ class ShellSourceTests(unittest.TestCase):
     def test_page_has_no_inline_styles_and_scripts_set_none(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")
         self.assertNotRegex(page, r"\sstyle=")
-        for name in ("app.js", "capture.js", "capture-fields.js", "capture-row.js", "settings.js", "sources.js", "review.js", "review-settings.js", "reader-picks.js"):
+        for name in ("app.js", "capture.js", "capture-fields.js", "capture-row.js", "settings.js", "sources.js", "review.js", "review-settings.js", "reader-picks.js", "ticker.js"):
             script = (WEB / name).read_text(encoding="utf-8")
             with self.subTest(name=name):
                 self.assertNotIn('setAttribute("style"', script)
@@ -53,7 +53,7 @@ class ShellSourceTests(unittest.TestCase):
 
     def test_shell_cache_is_bumped_and_the_sidebar_choice_is_remembered(self) -> None:
         worker = (WEB / "sw.js").read_text(encoding="utf-8")
-        self.assertIn('const CACHE = "ka-shell-v32"', worker)
+        self.assertIn('const CACHE = "ka-shell-v33"', worker)
         # A deploy must reach an installed app: never answer from the browser's own HTTP cache.
         self.assertIn('fetch(event.request, { cache: "no-cache" })', worker)
         script = (WEB / "app.js").read_text(encoding="utf-8")
@@ -77,7 +77,7 @@ class ShellSourceTests(unittest.TestCase):
 
     def test_every_element_the_scripts_look_up_exists_in_the_page(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")
-        for name in ("app.js", "capture.js", "settings.js", "sources.js", "review.js", "review-settings.js", "reader-picks.js"):
+        for name in ("app.js", "capture.js", "settings.js", "sources.js", "review.js", "review-settings.js", "reader-picks.js", "ticker.js"):
             script = (WEB / name).read_text(encoding="utf-8")
             for element_id in sorted(set(re.findall(r'\$\("([a-z-]+)"\)', script))):
                 with self.subTest(name=name, element_id=element_id):
@@ -740,14 +740,38 @@ class StaticRouteTests(unittest.TestCase):
             self.assertIn(call, script)
         self.assertEqual(self.client.get("/static/settings.js").status_code, 200)
 
-    def test_starters_and_approved_tags_are_wired_to_the_server(self) -> None:
+    def test_approved_tags_are_wired_to_the_server(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")
-        for needle in ('id="starters"', 'id="capture-fields"', 'id="tags-inuse"'):
+        for needle in ('id="capture-fields"', 'id="tags-inuse"'):
             with self.subTest(needle=needle):
                 self.assertIn(needle, page)
-        self.assertIn('"GET", "/api/starters"', (WEB / "app.js").read_text(encoding="utf-8"))
         self.assertIn(".approved", (WEB / "capture-row.js").read_text(encoding="utf-8"))
         self.assertIn("data.in_use", (WEB / "settings.js").read_text(encoding="utf-8"))
+
+    def test_the_ask_page_has_a_ticker_band_and_no_starters(self) -> None:
+        page = (WEB / "index.html").read_text(encoding="utf-8")
+        css = (WEB / "styles.css").read_text(encoding="utf-8")
+        self.assertRegex(page, r'<div id="ticker" class="ticker" role="region" aria-label="Added in the last 7 days" hidden>')
+        self.assertIn('"GET", "/api/sources/recent"', (WEB / "ticker.js").read_text(encoding="utf-8"))
+        for name in ("index.html", "app.js", "styles.css"):
+            self.assertNotRegex((WEB / name).read_text(encoding="utf-8"), r"(?i)starter", name)
+        for symbol in ("newspaper", "book-open", "book", "pencil-simple", "ph-quotes", "mic", "xlogo", "linkedin", "reddit", "globe"):
+            self.assertRegex(page, rf'<symbol id="i-{symbol}" viewBox="0 0 256 256"><path fill="currentColor" d="[^"]+"/></symbol>')
+        # The band is only there on an empty Ask page, is 36 px high, and sits over the top edge so nothing else moves.
+        self.assertIn(".view-ask:not(.is-empty) .ticker { display: none; }", css)
+        band = re.search(r"^\.ticker \{([^}]*)\}", css, re.M).group(1)
+        for declaration in ("position: absolute", "top: 0", "height: 36px", "background: var(--ink)", "color: var(--paper)"):
+            self.assertIn(declaration, band)
+        # State is a fill, never a ring: the focused item gets a fill and no outline or box-shadow.
+        focus = re.search(r"\.ticker-item:focus-visible \{([^}]*)\}", css).group(1)
+        self.assertIn("outline: none", focus)
+        self.assertIn("background: rgba(255, 253, 248, 0.12)", focus)
+        self.assertNotIn("box-shadow", focus)
+        self.assertNotRegex(css, r"\.ticker[^{]*\{[^}]*(box-shadow|outline: \d)")
+        # Reduced motion: no animation, scrolled by hand.
+        reduced = css[css.index("@media (prefers-reduced-motion: reduce) {\n  .ticker"):]
+        self.assertIn("overflow-x: auto", reduced)
+        self.assertIn("animation: none", reduced)
 
     def test_text_uses_only_the_agreed_type_scale(self) -> None:
         css = (WEB / "styles.css").read_text(encoding="utf-8")

@@ -362,6 +362,10 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
     def list_sources(_: Session = Depends(session)):
         return sources.list()
 
+    @app.get("/api/sources/recent")
+    def recent_sources(_: Session = Depends(session)):
+        return sources.recent()
+
     @app.get("/api/sources/{document_id}")
     def source_detail(document_id: str, _: Session = Depends(session)):
         return sources.detail(document_id)
@@ -425,10 +429,6 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
         for cookie in renewal.headers.getlist("set-cookie"):
             response.headers.append("set-cookie", cookie)
         return response
-
-    @app.get("/api/starters")
-    def starters(_: Session = Depends(session)):
-        return {"starters": tags.starters()}
 
     @app.post("/api/tags/{name:path}/approve")
     def approve_tag(name: str, _: Session = Depends(session)):
