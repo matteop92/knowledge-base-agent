@@ -6,21 +6,22 @@ import logging
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import Annotated, Any, Callable, Literal
 
 import psycopg
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints, field_validator
 
 from app.api import images
 from app.api.answers import AnswerEngine, AnswerJobs, OpenRouterAnswerEngine
 from app.api.capture import RECENT_LIMIT, CaptureJobs, Classifier, Extractor, ScreenshotInput, YouTubeInput
 from app.api.auth import COOKIE_NAME, AuthError, RateLimiter, Session, SessionStore, SupabaseAuth
 from app.api.conversations import ConversationError, ConversationStore
-from app.api.review import ReviewStore
+from app.api.review import MARKS, ReviewStore
+from app.ingestion.properties import DEFAULT_SOURCE_TYPES
 from app.api.scheduler import IndexScheduler, vault_settings_from_env
 from app.api.settings import Settings
 from app.api.sources import SourceStore
@@ -67,6 +68,15 @@ class PickRequest(BaseModel):
 class ShownRequest(BaseModel):
     passage_key: str = Field(max_length=64)
     round: int = Field(ge=1, le=1_000_000)
+    again: bool = False  # an Again passage served again: recorded on its mark, not in the shown log
+
+
+class MarkRequest(BaseModel):
+    mark: Literal["again", "done"]
+
+
+class ReviewSettingsRequest(BaseModel):
+    every: Literal[10, 5, 3, 2]
 
 
 class FeedbackRequest(BaseModel):
@@ -81,6 +91,18 @@ class CaptureRequest(BaseModel):
     title: str | None = Field(default=None, max_length=500)
     url: str | None = Field(default=None, max_length=2000, pattern=r"^https?://")
     tags: list[str] = Field(default_factory=list, max_length=10)
+    # Set on the Add card; the stored type values (the card shows Post for social_post and so on).
+    type: str | None = None
+    authors: list[Annotated[str, StringConstraints(strip_whitespace=True, max_length=120)]] = Field(
+        default_factory=list, max_length=10)
+
+    @field_validator("type")
+    @classmethod
+    def _known_type(cls, value: str | None) -> str | None:
+        # One list of note types: the classifier's (app/ingestion/properties.py). A label such as "Post" is refused.
+        if value is not None and value not in DEFAULT_SOURCE_TYPES:
+            raise ValueError("unknown note type")
+        return value
 
 
 def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
@@ -294,19 +316,26 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
         if body.kind == "screenshot":
             if not body.image or not IMAGE_DATA_URL.match(body.image):
                 raise ConversationError(422, "a screenshot must be a PNG, JPEG or WebP image")
-            return {"capture_id": captures.start(ScreenshotInput(body.image, body.title, body.tags))}
+            return {"capture_id": captures.start(ScreenshotInput(body.image, body.title, body.tags, type=body.type,
+                                                                 authors=body.authors))}
         if body.kind == "youtube":
             try:
                 url = video_url(body.url or body.content or "")
             except CaptureError as exc:
                 raise ConversationError(422, str(exc)) from None
-            return {"capture_id": captures.start(YouTubeInput(url, body.title, body.tags))}
+            return {"capture_id": captures.start(YouTubeInput(url, body.title, body.tags, type=body.type,
+                                                              authors=body.authors))}
         make = draft_from_text if body.kind == "text" else draft_from_markdown
         try:
-            draft = make(body.content or "", title=body.title, url=body.url, tags=body.tags)
+            draft = make(body.content or "", title=body.title, url=body.url, tags=body.tags, type_=body.type,
+                         authors=body.authors)
         except CaptureError as exc:
             raise ConversationError(422, str(exc)) from None
         return {"capture_id": captures.start(draft)}
+
+    @app.get("/api/capture-people")
+    def capture_people(_: Session = Depends(session)):
+        return {"people": captures.people()}
 
     @app.get("/api/captures")
     def recent_captures(_: Session = Depends(session)):
@@ -332,6 +361,10 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
     def list_sources(_: Session = Depends(session)):
         return sources.list()
 
+    @app.get("/api/sources/recent")
+    def recent_sources(_: Session = Depends(session)):
+        return sources.recent()
+
     @app.get("/api/sources/{document_id}")
     def source_detail(document_id: str, _: Session = Depends(session)):
         return sources.detail(document_id)
@@ -342,8 +375,31 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
 
     @app.post("/api/review/shown")
     def review_shown(body: ShownRequest, _: Session = Depends(session)):
-        review.shown(body.passage_key, body.round)
+        review.shown(body.passage_key, body.round, body.again)
         return {"status": "ok"}
+
+    @app.put("/api/review/marks/{passage_key}")
+    def review_set_mark(passage_key: str, body: MarkRequest, _: Session = Depends(session)):
+        return review.set_mark(passage_key, body.mark)
+
+    @app.delete("/api/review/marks/{passage_key}")
+    def review_clear_mark(passage_key: str, _: Session = Depends(session)):
+        review.clear_mark(passage_key)
+        return {"status": "ok"}
+
+    @app.get("/api/review/marks/{mark}")
+    def review_marked(mark: str, _: Session = Depends(session)):
+        if mark not in MARKS:
+            raise ConversationError(404, "no such list")
+        return review.marked(mark)
+
+    @app.get("/api/review/settings")
+    def review_settings(_: Session = Depends(session)):
+        return review.settings()
+
+    @app.put("/api/review/settings")
+    def review_update_settings(body: ReviewSettingsRequest, _: Session = Depends(session)):
+        return review.set_every(body.every)
 
     @app.post("/api/review/picks")
     def review_add_pick(body: PickRequest, _: Session = Depends(session)):
@@ -372,10 +428,6 @@ def create_app(settings: Settings, *, connect: Callable[[], Any] | None = None,
         for cookie in renewal.headers.getlist("set-cookie"):
             response.headers.append("set-cookie", cookie)
         return response
-
-    @app.get("/api/starters")
-    def starters(_: Session = Depends(session)):
-        return {"starters": tags.starters()}
 
     @app.post("/api/tags/{name:path}/approve")
     def approve_tag(name: str, _: Session = Depends(session)):

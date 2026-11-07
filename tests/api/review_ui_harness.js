@@ -18,21 +18,23 @@ function passage(n, extra = {}) {
 
 function boot({ phone = true, replies = [] } = {}) {
   const els = {};
-  for (const id of ["app", "review", "review-pager", "review-state", "review-ask", "review-live"]) {
+  for (const id of ["app", "review", "review-pager", "review-state", "review-ask", "review-live", "review-listbar", "review-list-back",
+    "review-list-name", "review-list-count", "review-list-caption"]) {
     els[id] = new El("div"); els[id].id = id;
   }
-  els["review-state"].hidden = true; els["review-ask"].hidden = true;
-  const calls = { api: [], asked: [], timers: [] };
+  els["review-state"].hidden = true; els["review-ask"].hidden = true; els["review-listbar"].hidden = true; els["review-list-caption"].hidden = true;
+  const calls = { api: [], asked: [], timers: [], notices: [], opened: [], backed: [] };
   const queue = replies.slice();
   const stored = {};
-  class FakeObserver { constructor(cb) { this.cb = cb; this.watched = []; observers.push(this); } observe(el) { this.watched.push(el); } }
+  class FakeObserver { constructor(cb) { this.cb = cb; this.watched = []; observers.push(this); } observe(el) { this.watched.push(el); } disconnect() { this.watched = []; } }
   const observers = [];
   const context = {
-    console, document: documentStub, window: { readerBlocks: { inline: (tag, cls, text) => { const el = new El(tag); el.className = cls; el.textContent = text; return el; } } },
+    console, document: documentStub, window: { reviewSettings: { openFromReview: (name) => calls.opened.push(name), backToList: (name) => calls.backed.push(name) }, readerBlocks: { inline: (tag, cls, text) => { const el = new El(tag); el.className = cls; el.textContent = text; return el; } } },
     $: (id) => { if (!els[id]) throw new Error(`no element ${id}`); return els[id]; },
     icon: (name) => { const el = new El("svg"); el.dataset.name = name; return el; },
     phone: { matches: phone, listeners: [], addEventListener(type, fn) { this.listeners.push(fn); } },
     state: { view: "review" }, sheet: { open: false },
+    notify: (message) => calls.notices.push(message),
     api: async (method, path, body) => {
       calls.api.push([method, path, body || null]);
       const next = queue.shift();
@@ -121,6 +123,22 @@ const scenarios = {
     tapAt(p.el, 200); const middle = app.els["review-ask"].hidden;
     tapAt(p.el, 390); const hiddenAfterTurn = app.els["review-ask"].hidden;
     return { parts, afterRight, afterLeft, middleShowsPill: !middle, hiddenAfterTurn };
+  },
+  async partsForOnePassageSize() {
+    const run = async (extra, opts = {}) => {
+      const app = boot({ replies: [{ passages: [passage(1, extra)] }], ...opts });
+      app.screen.show(); await app.flush();
+      const p = page(app, 0);
+      return { parts: p.parts.map(count), budget: app.screen.budget(), bars: p.el.classList.contains("has-bars"), short: p.el.classList.contains("is-short") };
+    };
+    return {
+      long140: await run({ text: sentences(47, 3) }),
+      long140Wide: await run({ text: sentences(47, 3) }, { phone: false }),
+      quote30: await run({ text: words(30), type: "quote" }),
+      withNote: await run({ text: words(60), note: words(60) }),
+      oneSentence: await run({ text: `${words(120)}.` }),
+      noPunctuation: await run({ text: words(300) }),
+    };
   },
   async oneLinePassageEdgesDoNothing() {
     const app = boot({ replies: [{ passages: [passage(1)] }] });
@@ -232,6 +250,150 @@ const scenarios = {
     const second = page(app, 2).el.scrolledIntoView === true;
     wheel(2);  // too small to count
     return { prevented: e1.prevented === true, flipped, extra, second };
+  },
+  async marksFillTapAgainClearsAndSwitches() {
+    const app = boot({ replies: [{ passages: [passage(1, { type: "quote" })] }] });
+    app.screen.show(); await app.flush();
+    const el = page(app, 0).el;
+    const [done, again] = [el.querySelector(".review-mark-done"), el.querySelector(".review-mark-again")];
+    const state = () => [done.getAttribute("aria-pressed"), again.getAttribute("aria-pressed")];
+    const initial = state();
+    const writes = () => app.calls.api.filter(([m]) => m !== "GET").map(([m, path, body]) => [m, path.split("/").pop(), body]);
+    again.click(); await app.flush(); const afterAgain = state();
+    again.click(); await app.flush(); const afterClear = state();
+    again.click(); await app.flush(); done.click(); await app.flush(); const afterSwitch = state();
+    return { initial, afterAgain, afterClear, afterSwitch, writes: writes(), labels: [done.getAttribute("aria-label"), again.getAttribute("aria-label")],
+      keys: [done.getAttribute("aria-keyshortcuts"), again.getAttribute("aria-keyshortcuts")], titles: [done.title, again.title] };
+  },
+  async aMarkClearedBeforeTheBeatEndsDoesNotAdvance() {
+    const app = boot({ replies: [{ passages: [passage(1), passage(2)] }, {}, {}, {}] });
+    app.screen.show(); await app.flush();
+    app.seen(0);
+    const done = page(app, 0).el.querySelector(".review-mark-done");
+    done.click(); done.click();  // set, then undo a slip inside the 250 ms beat
+    for (const t of app.calls.timers.filter((x) => x.live && x.ms === 250)) { t.live = false; t.fn(); }
+    return { moved: page(app, 1).el.scrolledIntoView === true, mark: page(app, 0).mark };
+  },
+  async aNewMarkMovesOnToTheNextPassageButClearingOrAListDoesNot() {
+    const app = boot({ replies: [{ passages: [passage(1), passage(2), passage(3)] }, {}, {}, {}, {}] });
+    app.screen.show(); await app.flush();
+    app.seen(0);
+    const advance = () => { const t = app.calls.timers.filter((x) => x.live && x.ms === 250)[0]; if (t) { t.live = false; t.fn(); } return !!t; };
+    const first = page(app, 0).el.querySelector(".review-mark-done");
+    first.click(); const set = advance();
+    const moved = page(app, 1).el.scrolledIntoView === true;
+    first.click(); const clearTimer = advance();  // clearing: no timer
+    app.seen(1);
+    page(app, 1).el.querySelector(".review-mark-again").click();
+    app.seen(2);  // the reader moved on by hand before the beat ended: nothing more happens
+    advance();
+    const stale = page(app, 2).el.scrolledIntoView === true;
+    app.screen.enterList("again", [passage(11, { mark: "again" }), passage(12, { mark: "again" })], 0);
+    const inList = app.screen.pages()[0].el.querySelector(".review-mark-done");
+    inList.click();
+    const listTimer = advance();
+    return { set, moved, clearTimer, stale, listTimer };
+  },
+  async aMarkSetOnOnePartShowsOnTheOthers() {
+    const app = boot({ replies: [{ passages: [passage(1, { text: sentences(110, 3) })] }] });
+    app.screen.show(); await app.flush();
+    const p = page(app, 0);
+    p.el.querySelector(".review-mark-again").click(); await app.flush();
+    const pressed = [];
+    for (let i = 0; i < p.parts.length; i++) { pressed.push(p.el.querySelector(".review-mark-again").getAttribute("aria-pressed")); p.el.querySelector(".review-next").click(); }
+    return { parts: p.parts.length, pressed };
+  },
+  async keysXAndBMarkOnDesktopAndAreIgnoredWhileTyping() {
+    const app = boot({ phone: false, replies: [{ passages: [passage(1, { text: sentences(150, 3) }), passage(2)] }] });
+    app.screen.show(); await app.flush();
+    const press = (key, target = new El("div")) => { const e = { key, target, preventDefault() { this.prevented = true; } }; for (const fn of documentStub.listeners.keydown) fn(e); return e; };
+    const p = page(app, 0);
+    press("x"); await app.flush();
+    press("B"); await app.flush();
+    const typing = new El("input"); typing.tagName = "input";
+    press("x", typing); await app.flush();
+    press("ArrowRight"); const part = p.part;
+    return { writes: app.calls.api.filter(([m]) => m !== "GET").map(([m, , body]) => [m, body]), part,
+      pressed: [p.el.querySelector(".review-mark-done").getAttribute("aria-pressed"), p.el.querySelector(".review-mark-again").getAttribute("aria-pressed")] };
+  },
+  async aFailedSaveGivesTheFillBack() {
+    const fail = Object.assign(new Error("x"), { status: 500 });
+    const app = boot({ replies: [{ passages: [passage(1)] }, fail] });
+    app.screen.show(); await app.flush();
+    const again = page(app, 0).el.querySelector(".review-mark-again");
+    again.click();
+    const during = again.getAttribute("aria-pressed");
+    await app.flush();
+    return { during, after: again.getAttribute("aria-pressed"), notices: app.calls.notices };
+  },
+  async circlesNeverShowThePillButThePassageDoesAndAnAgainServeStartsFilled() {
+    const app = boot({ replies: [{ passages: [passage(1, { mark: "again", again: true }), passage(2)] }, {}, {}] });
+    app.screen.show(); await app.flush();
+    const el = page(app, 0).el; const pill = app.els["review-ask"];
+    const filled = el.querySelector(".review-mark-again").getAttribute("aria-pressed");
+    el.querySelector(".review-mark-done").click();
+    const afterCircle = pill.hidden;
+    tapAt(el, 200);
+    const afterPassage = { hidden: pill.hidden, ask: app.els["review"].dataset.ask };
+    tapAt(el, 200);
+    app.seen(0); app.fire(); await app.flush();
+    return { filled, afterCircle, afterPassage, afterHide: app.els["review"].dataset.ask || null,
+      shown: app.calls.api.filter(([m, path]) => m === "POST" && path === "/api/review/shown").map(([, , body]) => body) };
+  },
+  async listModeSetsTheShuffleAsideAndRestoresIt() {
+    const app = boot({ replies: [{ passages: [passage(1), passage(2), passage(3)] }, {}, {}, {}] });
+    app.screen.show(); await app.flush();
+    app.seen(1); await app.flush();
+    const before = { pages: app.screen.pages().map((p) => p.passage.passage_key), current: 1, children: app.els["review-pager"].children.length };
+    const apiBefore = app.calls.api.length;
+    const listed = [passage(11, { mark: "again", type: "quote" }), passage(12, { mark: "again" }), passage(13, { mark: "again" })];
+    app.screen.enterList("again", listed, 1);
+    app.screen.show();
+    const inList = { keys: app.screen.pages().map((p) => p.passage.passage_key), classes: app.els["review"].className, bar: app.els["review-listbar"].hidden,
+      name: app.els["review-list-name"].textContent, count: app.els["review-list-count"].textContent,
+      caption: app.els["review-list-caption"].textContent, appFlag: app.els.app.dataset.reviewList,
+      filled: app.screen.pages().map((p) => p.el.querySelector(".review-mark-again").getAttribute("aria-pressed")) };
+    app.seen(1); app.seen(2); await app.flush();
+    const atEnd = { count: app.els["review-list-count"].textContent, caption: app.els["review-list-caption"].textContent };
+    const timers = app.calls.timers.filter((t) => t.live && t.ms === 1000).length;
+    app.screen.leave();
+    const after = { pages: app.screen.pages().map((p) => p.passage.passage_key), children: app.els["review-pager"].children.length, classes: app.els["review"].className,
+      bar: app.els["review-listbar"].hidden, appFlag: app.els.app.dataset.reviewList || null };
+    return { before, inList, atEnd, timers, after, extraApi: app.calls.api.length - apiBefore };
+  },
+  async inAListAMarkClearedStaysOnScreenUnfilledAndBackGoesToTheList() {
+    const app = boot({ replies: [{ passages: [passage(1)] }, {}, {}] });
+    app.screen.show(); await app.flush();
+    app.screen.enterList("done", [passage(11, { mark: "done" }), passage(12, { mark: "done" })], 0);
+    app.screen.show();
+    const p = app.screen.pages()[0];
+    const done = p.el.querySelector(".review-mark-done");
+    const start = done.getAttribute("aria-pressed");
+    done.click(); await app.flush();
+    const writes = app.calls.api.filter(([m]) => m !== "GET").map(([m, path]) => [m, path.split("/").pop()]);
+    app.els["review-list-back"].click();
+    return { start, afterClear: [done.getAttribute("aria-pressed"), p.el.querySelector(".review-mark-again").getAttribute("aria-pressed")], onScreen: app.screen.pages().length,
+      writes, backed: app.calls.backed };
+  },
+  async anAnswerThatArrivesInAListIsDropped() {
+    let release; const gate = new Promise((r) => { release = r; });
+    const app = boot({ replies: [gate.then(() => ({ passages: [passage(1), passage(2)] }))] });
+    app.screen.show();
+    app.screen.enterList("again", [passage(11, { mark: "again" })], 0);
+    release(); await app.flush();
+    const inList = app.screen.pages().map((p) => p.passage.passage_key);
+    app.screen.leaveList();
+    return { inList, afterLeave: app.screen.pages().length };
+  },
+  async everyPassageDoneShowsItsOwnStateWithALinkToTheDoneList() {
+    const app = boot({ replies: [{ passages: [] }, { every: 10, again: 0, done: 4 }, { passages: [] }, { every: 10, again: 0, done: 0 }] });
+    app.screen.show(); await app.flush();
+    const box = app.els["review-state"];
+    const text = box.textContent; const link = box.querySelector("button");
+    link.click();
+    const second = boot({ replies: [{ passages: [] }, { every: 10, again: 0, done: 0 }] });
+    second.screen.show(); await second.flush();
+    return { text, shown: !box.hidden, opened: app.calls.opened, plain: second.els["review-state"].textContent };
   },
   async tailStaysPutWhileFetching() {
     const app = boot({ replies: [{ passages: [passage(1), passage(2)] }, { passages: [passage(3)] }] });

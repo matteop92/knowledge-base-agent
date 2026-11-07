@@ -38,6 +38,107 @@ class ReviewScreenTests(unittest.TestCase):
         self.assertLessEqual(out["withNote"][3] + 50, 110 * 1.15)
         self.assertEqual(out["ownNote"][-1], 0)  # an empty body: the last part holds only the note
 
+    def test_a_part_is_sized_from_the_passage_box_so_long_passages_split_into_more_parts(self) -> None:
+        out = run("partsForOnePassageSize")
+        self.assertEqual((out["long140"]["budget"], out["long140Wide"]["budget"]), (68, 119))
+        self.assertEqual(len(out["long140"]["parts"]), 3, "was 2 at the old 110-word budget")
+        self.assertEqual(len(out["long140Wide"]["parts"]), 2)
+        self.assertEqual(out["quote30"]["parts"], [30])
+        self.assertFalse(out["quote30"]["bars"])
+        self.assertTrue(out["long140"]["bars"])
+        self.assertFalse(any(case["short"] for case in out.values()), "one size for every passage: no is-short class")
+
+    def test_a_passage_and_its_note_are_checked_together_against_the_budget(self) -> None:
+        out = run("partsForOnePassageSize")["withNote"]
+        self.assertEqual(out["parts"], [60, 0])  # 60 words and a 60-word note do not fit one part of 68
+
+    def test_one_long_sentence_is_broken_at_word_boundaries_to_fit(self) -> None:
+        out = run("partsForOnePassageSize")
+        for case in ("oneSentence", "noPunctuation"):
+            parts, budget = out[case]["parts"], out[case]["budget"]
+            self.assertGreater(len(parts), 1, case)
+            self.assertLessEqual(max(parts), -(-budget * 115 // 100), (case, parts))
+
+    def test_the_two_circles_fill_clear_and_switch_and_carry_their_names_and_keys(self) -> None:
+        out = run("marksFillTapAgainClearsAndSwitches")
+        self.assertEqual(out["initial"], ["false", "false"])
+        self.assertEqual(out["afterAgain"], ["false", "true"])
+        self.assertEqual(out["afterClear"], ["false", "false"])
+        self.assertEqual(out["afterSwitch"], ["true", "false"])
+        key = "0" * 31 + "1"
+        self.assertEqual(out["writes"], [["PUT", key, {"mark": "again"}], ["DELETE", key, None], ["PUT", key, {"mark": "again"}],
+                                         ["PUT", key, {"mark": "done"}]])
+        self.assertEqual((out["labels"], out["keys"]), (["Done", "Show again"], ["X", "B"]))
+        self.assertEqual(out["titles"], ["Done (X)", "Show again (B)"])
+
+    def test_undoing_a_mark_inside_the_beat_stays_on_the_passage(self) -> None:
+        self.assertEqual(run("aMarkClearedBeforeTheBeatEndsDoesNotAdvance"), {"moved": False, "mark": None})
+
+    def test_a_new_mark_moves_on_to_the_next_passage_but_clearing_a_mark_or_reading_a_list_does_not(self) -> None:
+        out = run("aNewMarkMovesOnToTheNextPassageButClearingOrAListDoesNot")
+        self.assertEqual(out, {"set": True, "moved": True, "clearTimer": False, "stale": False, "listTimer": False})
+
+    def test_a_mark_set_on_one_part_stays_filled_on_the_others(self) -> None:
+        out = run("aMarkSetOnOnePartShowsOnTheOthers")
+        self.assertGreater(out["parts"], 2)
+        self.assertEqual(set(out["pressed"]), {"true"})
+
+    def test_x_and_b_mark_and_are_ignored_while_typing_and_the_arrows_still_turn_parts(self) -> None:
+        out = run("keysXAndBMarkOnDesktopAndAreIgnoredWhileTyping")
+        key = "0" * 31 + "1"
+        self.assertEqual(out["writes"], [["PUT", {"mark": "done"}], ["PUT", {"mark": "again"}]])
+        self.assertEqual(out["part"], 1)
+        self.assertEqual(out["pressed"], ["false", "true"])
+
+    def test_a_failed_save_puts_the_fill_back_and_says_so(self) -> None:
+        out = run("aFailedSaveGivesTheFillBack")
+        self.assertEqual((out["during"], out["after"]), ("true", "false"))
+        self.assertEqual(out["notices"], ["The mark was not saved. Try again."])
+
+    def test_circles_never_show_the_ask_pill_the_passage_does_and_an_again_serve_starts_filled(self) -> None:
+        out = run("circlesNeverShowThePillButThePassageDoesAndAnAgainServeStartsFilled")
+        self.assertEqual(out["filled"], "true")
+        self.assertTrue(out["afterCircle"], "the pill stays hidden after a circle tap")
+        self.assertEqual(out["afterPassage"], {"hidden": False, "ask": "open"})
+        self.assertIsNone(out["afterHide"])
+        self.assertEqual(out["shown"], [{"passage_key": "0" * 31 + "1", "round": 1, "again": True}])
+
+    def test_list_mode_sets_the_shuffle_aside_logs_nothing_and_leaving_restores_it_exactly(self) -> None:
+        out = run("listModeSetsTheShuffleAsideAndRestoresIt")
+        self.assertEqual(out["extraApi"], 0, "no fetch, no shown log")
+        self.assertEqual(out["timers"], 0, "no dwell timers in a list")
+        self.assertEqual(out["inList"]["keys"], ["0" * 30 + "11", "0" * 30 + "12", "0" * 30 + "13"])
+        self.assertIn("is-list", out["inList"]["classes"])
+        self.assertEqual((out["inList"]["bar"], out["inList"]["name"], out["inList"]["count"]), (False, "Again", "2 of 3"))
+        self.assertEqual(out["inList"]["caption"], "Swipe up for the next passage in this list")
+        self.assertEqual(out["inList"]["appFlag"], "true")
+        self.assertEqual(out["inList"]["filled"], ["true", "true", "true"], "a list passage shows its mark")
+        self.assertEqual(out["atEnd"], {"count": "3 of 3", "caption": "End of list"})
+        self.assertEqual(out["after"]["pages"], out["before"]["pages"])
+        self.assertEqual(out["after"]["children"], out["before"]["children"])
+        self.assertNotIn("is-list", out["after"]["classes"])
+        self.assertEqual((out["after"]["bar"], out["after"]["appFlag"]), (True, None))
+
+    def test_a_mark_cleared_in_a_list_passage_leaves_it_on_screen_unfilled_and_back_names_the_list(self) -> None:
+        out = run("inAListAMarkClearedStaysOnScreenUnfilledAndBackGoesToTheList")
+        self.assertEqual(out["start"], "true")
+        self.assertEqual(out["afterClear"], ["false", "false"])
+        self.assertEqual(out["onScreen"], 2)
+        self.assertEqual(out["writes"], [["DELETE", "0" * 30 + "11"]])
+        self.assertEqual(out["backed"], ["done"])
+
+    def test_a_shuffle_answer_that_arrives_after_a_list_opened_is_dropped(self) -> None:
+        out = run("anAnswerThatArrivesInAListIsDropped")
+        self.assertEqual(out["inList"], ["0" * 30 + "11"])
+        self.assertEqual(out["afterLeave"], 0)
+
+    def test_with_every_passage_done_review_says_so_and_links_to_the_done_list(self) -> None:
+        out = run("everyPassageDoneShowsItsOwnStateWithALinkToTheDoneList")
+        self.assertTrue(out["shown"])
+        self.assertEqual(out["text"], "You have marked every passage Done.Open the Done list")
+        self.assertEqual(out["opened"], ["done"])
+        self.assertIn("Nothing to review yet", out["plain"])
+
     def test_the_note_shows_on_the_last_part_only(self) -> None:
         out = run("noteOnlyOnLastPart")
         self.assertEqual(out["notes"], [False] * (out["parts"] - 1) + [True])

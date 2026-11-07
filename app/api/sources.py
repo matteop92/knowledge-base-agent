@@ -260,20 +260,39 @@ class SourceStore:
     def recently_added(self, days: int = 7) -> list[dict[str, Any]]:
         """Sources that entered the index in the last `days` days, shaped like a finished capture row, so Add to notes
         also lists notes that came from Obsidian."""
+        return [{"id": f"source-{source.document_id}", "kind": None, "status": "done",
+                 "vault_path": source.relative_path, "title": source.title, "indexed": True, "error": None,
+                 "cost_usd": 0.0, "created_at": source.added_at.isoformat(), "finished_at": None,
+                 "source_id": source.document_id} for source, _ in self._added_since(days)]
+
+    def _added_since(self, days: int) -> list[tuple[Any, dict[str, Any]]]:
+        """(source, row) pairs for sources whose first load was in the last `days` days; none when nothing is indexed yet."""
         since = datetime.now(timezone.utc) - timedelta(days=days)
         try:
             with self.connect() as conn:
                 rows = load_sources(conn)
         except StorageError:  # no search profile yet: nothing is indexed, so nothing was added
             return []
-        found = []
-        for source in to_sources(rows):
-            if source.added_at and source.added_at > since:
-                found.append({"id": f"source-{source.document_id}", "kind": None, "status": "done",
-                              "vault_path": source.relative_path, "title": source.title, "indexed": True, "error": None,
-                              "cost_usd": 0.0, "created_at": source.added_at.isoformat(), "finished_at": None,
-                              "source_id": source.document_id})
-        return found
+        return [(source, row) for row, source in zip(rows, to_sources(rows)) if source.added_at and source.added_at > since]
+
+    def recent(self, days: int = 7, limit: int = 30) -> dict[str, Any]:
+        """The Ask page's banner: sources added in the last `days` days, newest first, with one author each and nothing
+        else about the note (no description, tags or text)."""
+        found = self._added_since(days)
+        found.sort(key=lambda pair: pair[0].added_at, reverse=True)
+        result = []
+        for source, row in found[:limit]:
+            facts = card_facts(row["metadata"], row["relative_path"], source.added_at)
+            item = {"id": source.document_id, "title": source.title,
+                    "type": "social_post" if facts["type"] == "post" else facts["type"]}  # the capture form's name for it
+            if facts.get("platform"):
+                item["platform"] = facts["platform"]
+            people = facts["authors"] or facts["guests"]
+            if people:
+                item["author"] = people[0]
+            item["added_at"] = source.added_at.isoformat()
+            result.append(item)
+        return {"sources": result}
 
     def list(self) -> dict[str, Any]:
         with self.connect() as conn:

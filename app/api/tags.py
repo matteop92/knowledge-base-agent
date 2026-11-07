@@ -27,18 +27,6 @@ SUGGESTIONS_SQL = """select p.proposed_tag, r.document_id, d.relative_path, r.pa
 
 APPROVED_SQL = "select name from knowledge.tags where status='approved' order by position"
 
-# Notes whose current revision was loaded in the last seven days, newest first.
-RECENT_SQL = """select d.relative_path, r.parsed->'metadata', p.properties
-    from knowledge.corpus_state state
-    join knowledge.active_runs a on a.profile_id=state.profile_id
-    join knowledge.runs r on r.run_id=a.run_id
-    join knowledge.documents d on d.document_id=r.document_id
-    left join knowledge.document_properties p on p.document_id=r.document_id and p.source_sha256=r.source_sha256
-        and p.status='ready'
-    where r.loaded_at >= now() - interval '7 days'
-    order by r.loaded_at desc
-    limit 3"""
-
 
 def _kind(metadata: dict[str, Any], properties: dict[str, Any]) -> str | None:
     frontmatter = metadata.get("frontmatter") if isinstance(metadata.get("frontmatter"), dict) else {}
@@ -91,19 +79,6 @@ class TagStore:
                 if tag not in blocked:
                     counts[tag] = counts.get(tag, 0) + 1
         return [{"name": name, "count": count} for name, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))]
-
-    def starters(self) -> list[dict[str, str]]:
-        """Up to three questions, one per note added or changed this week."""
-        with self.connect() as conn:
-            rows = conn.execute(RECENT_SQL).fetchall()
-        starters = []
-        for relative_path, metadata, properties in rows:
-            metadata = metadata if isinstance(metadata, dict) else {}
-            properties = properties if isinstance(properties, dict) else {}
-            title, _, _ = source_label({**metadata, "generated": properties}, relative_path)
-            starters.append({"title": title, "question": f"What do my notes say about {title}?",
-                             "source_type": _kind(metadata, properties)})
-        return starters
 
     def decide(self, name: str, status: str) -> None:
         if status not in ("approved", "blocked"):

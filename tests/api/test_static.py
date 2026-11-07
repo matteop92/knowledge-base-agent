@@ -24,7 +24,7 @@ class ShellSourceTests(unittest.TestCase):
         self.assertIn('url.startsWith("obsidian://")', script)
 
     def test_capture_and_worker_scripts_never_insert_html(self) -> None:
-        for name in ("capture.js", "settings.js", "sources.js", "review.js", "reader-blocks.js", "reader-picks.js", "source-filter.js", "sw.js"):
+        for name in ("capture.js", "capture-fields.js", "capture-row.js", "settings.js", "sources.js", "review.js", "review-settings.js", "reader-blocks.js", "reader-picks.js", "source-filter.js", "ticker.js", "sw.js"):
             script = (WEB / name).read_text(encoding="utf-8")
             for unsafe in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
                 with self.subTest(name=name, unsafe=unsafe):
@@ -45,7 +45,7 @@ class ShellSourceTests(unittest.TestCase):
     def test_page_has_no_inline_styles_and_scripts_set_none(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")
         self.assertNotRegex(page, r"\sstyle=")
-        for name in ("app.js", "capture.js", "settings.js", "sources.js", "review.js", "reader-picks.js"):
+        for name in ("app.js", "capture.js", "capture-fields.js", "capture-row.js", "settings.js", "sources.js", "review.js", "review-settings.js", "reader-picks.js", "ticker.js"):
             script = (WEB / name).read_text(encoding="utf-8")
             with self.subTest(name=name):
                 self.assertNotIn('setAttribute("style"', script)
@@ -53,7 +53,7 @@ class ShellSourceTests(unittest.TestCase):
 
     def test_shell_cache_is_bumped_and_the_sidebar_choice_is_remembered(self) -> None:
         worker = (WEB / "sw.js").read_text(encoding="utf-8")
-        self.assertIn('const CACHE = "ka-shell-v29"', worker)
+        self.assertIn('const CACHE = "ka-shell-v38"', worker)
         # A deploy must reach an installed app: never answer from the browser's own HTTP cache.
         self.assertIn('fetch(event.request, { cache: "no-cache" })', worker)
         script = (WEB / "app.js").read_text(encoding="utf-8")
@@ -77,7 +77,7 @@ class ShellSourceTests(unittest.TestCase):
 
     def test_every_element_the_scripts_look_up_exists_in_the_page(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")
-        for name in ("app.js", "capture.js", "settings.js", "sources.js", "review.js", "reader-picks.js"):
+        for name in ("app.js", "capture.js", "settings.js", "sources.js", "review.js", "review-settings.js", "reader-picks.js", "ticker.js"):
             script = (WEB / name).read_text(encoding="utf-8")
             for element_id in sorted(set(re.findall(r'\$\("([a-z-]+)"\)', script))):
                 with self.subTest(name=name, element_id=element_id):
@@ -195,7 +195,10 @@ console.log(JSON.stringify(splitGaps([
             with self.subTest(label=label):
                 self.assertIn(label, capture)
         self.assertIn('id="capture-attach"', page)
-        self.assertRegex(page, r'<details id="capture-more"')
+        # One row of optional fields (Type, Author, Tags, Title) replaced the folded "Title and tags".
+        self.assertNotIn("capture-more", page)
+        self.assertNotIn("<details", page[page.index('id="capture-form"'):page.index('id="capture-message"')])
+        self.assertRegex(page, r'id="capture-row"')
         self.assertRegex(page, r'id="capture-save"[^>]*disabled')
 
 
@@ -378,6 +381,7 @@ class PaperRefinementTests(unittest.TestCase):
         self.css = (WEB / "styles.css").read_text(encoding="utf-8")
         self.app = (WEB / "app.js").read_text(encoding="utf-8").replace("\r", "")
         self.capture = (WEB / "capture.js").read_text(encoding="utf-8").replace("\r", "")
+        self.row = (WEB / "capture-row.js").read_text(encoding="utf-8").replace("\r", "")
         self.page = (WEB / "index.html").read_text(encoding="utf-8")
 
     def _node(self, probe: str):
@@ -437,7 +441,7 @@ console.log(JSON.stringify({
     @unittest.skipUnless(shutil.which("node"), "needs node")
     def test_recent_times_and_tag_chips_run_as_written(self) -> None:
         age = re.search(r"function formatAge.*?\n  }\n", self.capture, re.S).group(0)
-        tags = re.search(r"function mergeTags.*?\n  }\n", self.capture, re.S).group(0)
+        tags = re.search(r"function mergeTags.*?\n  }\n", self.row, re.S).group(0)
         probe = "const MAX_TAGS = 10;\n" + age + tags + """
 const now = new Date(2026, 9, 21, 15, 0, 0);
 const ago = (ms) => new Date(now.getTime() - ms).toISOString();
@@ -566,7 +570,8 @@ async function openConversation(id) { seen.push({ openConversation: id }); }
 
     def test_open_states_are_fills_never_rings_or_outlines(self) -> None:
         for names in ((".marker.is-active",), (".source-number.is-active", ".gap-chip.is-active"), (".drop-target",), (".tag-row.is-active",),
-                      (".tag-approve", ".tag-block", ".chip-button"), (".tag-chip",), (".settings-tab[aria-current",)):
+                      (".tag-approve", ".tag-block", ".chip-button"), (".cf-chip",), (".cf-add",), (".cf-input",), (".cf-option",),
+                      (".settings-tab[aria-current",)):
             body = _rules(self.css, *names)
             with self.subTest(names=names):
                 self.assertTrue(body, "no rule matched: the selector was renamed")
@@ -575,6 +580,17 @@ async function openConversation(id) { seen.push({ openConversation: id }); }
         # The Add box and the composer take no extra ring while typing into the Add box.
         self.assertNotIn(".capture-form:focus-within", self.css)
         self.assertNotIn("box-shadow: 0 0 0 1.5px", self.css)
+
+    def test_every_review_passage_is_24px_and_its_note_17_5px_on_phone_and_desktop(self) -> None:
+        self.assertNotIn("is-short", self.css)
+        def sizes(name: str) -> set[str]:  # the quote mark on a quote (::before) has its own 44 px size
+            bodies = " ".join(body for selector, body in re.findall(r"([^{}]+)\{([^}]*)\}", self.css)
+                              if name in selector and "::before" not in selector)
+            return set(re.findall(r"font-size:\s*([\d.]+)px", bodies))
+        self.assertEqual(sizes(".review-text"), {"24"})
+        self.assertEqual(sizes(".review-note"), {"17.5"})
+        self.assertIn("line-height: 1.45", _rules(self.css, ".review-text"))
+        self.assertIn("line-height: 1.45", _rules(self.css, ".review-note"))
 
     def test_sidebar_history_foot_and_gear(self) -> None:
         self.assertIn("Add to notes", self.page)
@@ -614,11 +630,57 @@ async function openConversation(id) { seen.push({ openConversation: id }); }
         send = self.capture[self.capture.index("async function send"):self.capture.index("const KINDS")]
         self.assertIn("leaveGap()", send)
 
-    def test_tag_chips_never_submit_the_form_and_the_request_keeps_its_shape(self) -> None:
-        self.assertIn('event.key === "Enter" || event.key === ","', self.capture)
-        self.assertIn("event.preventDefault(); commitTags();", self.capture)
-        self.assertIn("mergeTags(tagList, $(\"capture-tags\").value).tags", self.capture)
-        self.assertIn('aria-label", `Remove tag ${tag}`', self.capture)
+    def test_the_optional_row_never_submits_the_form_and_the_request_keeps_its_shape(self) -> None:
+        # Enter picks or commits and never sends the form; Escape closes the list and keeps the text.
+        keys = self.row[self.row.index("function onKey"):self.row.index("function wireField")]
+        self.assertIn('key === "Enter"', keys)
+        self.assertIn("event.preventDefault();  // Enter never sends the form", keys)
+        self.assertIn('key === "Escape"', keys)
+        self.assertIn("Remove tag ${tag}", self.row)
+        # Save turns valid typed text into chips first; the type and the authors are sent only when set.
+        save = self.capture[self.capture.index("async function save"):self.capture.index("// `fromForm`")]
+        self.assertLess(save.index("row.commitFields()"), save.index("requestBody()"))
+        body = self.row[self.row.index("function extras"):self.row.index("function setTitle")]
+        self.assertIn("if (typeValue) out.type = typeValue;", body)
+        self.assertIn("if (authorList.length) out.authors = [...authorList];", body)
+
+    def test_the_optional_row_is_an_accessible_combobox_with_one_list_and_no_ring(self) -> None:
+        for name in ("capture-tags", "capture-author", "capture-type"):
+            tag = re.search(rf'<input id="{name}"[^>]*>', self.page).group(0)
+            with self.subTest(name=name):
+                self.assertIn('role="combobox"', tag)
+                self.assertIn('aria-expanded="false"', tag)
+                self.assertIn('aria-controls="capture-suggest"', tag)
+        self.assertRegex(self.page, r'<ul id="capture-suggest" class="cf-list" role="listbox"')
+        for needle in ('setAttribute("role", "option")', '"aria-activedescendant"', '"aria-expanded"', '"aria-selected"'):
+            self.assertIn(needle, self.row)
+        # Matching is the one list's job (capture-fields.js); the old tag field, its chips and its "In use" pick are gone.
+        for gone in ("tag-chip", "tag-field", "capture-tag-pick", "capture-more"):
+            self.assertNotIn(gone, self.css + self.page + self.capture + self.row)
+
+    def test_row_values_follow_the_board(self) -> None:
+        css = self.css
+        self.assertRegex(css, r"\.cf-chip \{[^}]*height: 28px[^}]*border-radius: 8px[^}]*background: var\(--chip\)[^}]*font-size: 13\.5px")
+        self.assertRegex(css, r"\.cf-add \{[^}]*height: 28px[^}]*color: var\(--ink-soft\)[^}]*font-size: 13\.5px")
+        self.assertRegex(css, r"\.cf-input \{[^}]*border-radius: 8px[^}]*background: var\(--row-active\)")
+        self.assertRegex(css, r"\.cf-option \{[^}]*height: 32px[^}]*font-size: 14px")
+        self.assertRegex(css, r"\.cf-list \{[^}]*padding: 6px[^}]*border-radius: 12px[^}]*box-shadow: var\(--shadow-panel\)")
+        phone = css[css.index(".cf-row { padding-top: 10px"):]
+        phone = phone[:phone.index("\n}\n")]
+        for rule in (".cf-chip { height: 32px; }", ".cf-add { height: 44px; min-height: 44px; }", ".cf-option { height: 44px;", ".cf-list { padding: 4px; }",
+                     ".cf-input .cf-field { height: 32px; font-size: 16px; }"):
+            self.assertIn(rule, phone)
+        self.assertIn("font-weight: 500", _rules(css, ".cf-hit"))
+
+    def test_settings_in_use_tags_wrap_in_a_row_and_only_the_readers_picks_stack(self) -> None:
+        # Both lists use the class pick-list; the reader's stacking rule must not reach Settings' tags.
+        inuse = _rules(self.css, ".tags-inuse .pick-list")
+        self.assertIn("display: flex", inuse)
+        self.assertIn("flex-wrap: wrap", inuse)
+        self.assertNotIn("flex-direction", inuse)
+        stacking = [selector.strip().splitlines()[-1] for selector, body in re.findall(r"([^{}]+)\{([^}]*)\}", self.css) if "flex-direction: column" in body and "pick-list" in selector]
+        self.assertEqual(stacking, [".sheet-scroll .pick-list"])
+        self.assertNotRegex(self.css, r"(?m)^\.pick-list\b")
 
     def test_drag_target_clears_on_every_way_a_drag_can_end(self) -> None:
         for needle in ('addEventListener("dragend", endDrag)', 'event.key === "Escape") endDrag()', "if (!event.relatedTarget) endDrag();", "setTimeout(endDrag, DRAG_IDLE_MS)"):
@@ -678,14 +740,38 @@ class StaticRouteTests(unittest.TestCase):
             self.assertIn(call, script)
         self.assertEqual(self.client.get("/static/settings.js").status_code, 200)
 
-    def test_starters_and_approved_tags_are_wired_to_the_server(self) -> None:
+    def test_approved_tags_are_wired_to_the_server(self) -> None:
         page = (WEB / "index.html").read_text(encoding="utf-8")
-        for needle in ('id="starters"', 'id="capture-tag-pick"', 'id="tags-inuse"'):
+        for needle in ('id="capture-fields"', 'id="tags-inuse"'):
             with self.subTest(needle=needle):
                 self.assertIn(needle, page)
-        self.assertIn('"GET", "/api/starters"', (WEB / "app.js").read_text(encoding="utf-8"))
-        self.assertIn(".approved", (WEB / "capture.js").read_text(encoding="utf-8"))
+        self.assertIn(".approved", (WEB / "capture-row.js").read_text(encoding="utf-8"))
         self.assertIn("data.in_use", (WEB / "settings.js").read_text(encoding="utf-8"))
+
+    def test_the_ask_page_has_a_ticker_band_and_no_starters(self) -> None:
+        page = (WEB / "index.html").read_text(encoding="utf-8")
+        css = (WEB / "styles.css").read_text(encoding="utf-8")
+        self.assertRegex(page, r'<div id="ticker" class="ticker" role="region" aria-label="Added in the last 7 days" hidden>')
+        self.assertIn('"GET", "/api/sources/recent"', (WEB / "ticker.js").read_text(encoding="utf-8"))
+        for name in ("index.html", "app.js", "styles.css"):
+            self.assertNotRegex((WEB / name).read_text(encoding="utf-8"), r"(?i)starter", name)
+        for symbol in ("browser", "book-open", "books", "notepad", "ph-quotes", "mic", "xlogo", "linkedin", "reddit", "globe"):
+            self.assertRegex(page, rf'<symbol id="i-{symbol}" viewBox="0 0 256 256"><path fill="currentColor" d="[^"]+"/></symbol>')
+        # The band is only there on an empty Ask page, is 36 px high, and sits over the top edge so nothing else moves.
+        self.assertIn(".view-ask:not(.is-empty) .ticker { display: none; }", css)
+        band = re.search(r"^\.ticker \{([^}]*)\}", css, re.M).group(1)
+        for declaration in ("position: absolute", "top: 0", "height: 36px", "background: var(--ink)", "color: var(--paper)"):
+            self.assertIn(declaration, band)
+        # Keyboard focus is a thin ring (in the paper colour on the dark band) plus a fill; never a box-shadow ring.
+        focus = re.search(r"\.ticker-item:focus-visible \{([^}]*)\}", css).group(1)
+        self.assertIn("outline: 2px solid var(--paper)", focus)
+        self.assertIn("background: rgba(255, 253, 248, 0.12)", focus)
+        self.assertNotIn("box-shadow", focus)
+        self.assertNotRegex(css, r"\.ticker(?![^{]*:focus-visible)[^{]*\{[^}]*(box-shadow|outline: \d)")  # only the focus rule may have a ring
+        # Reduced motion: no animation, scrolled by hand.
+        reduced = css[css.index("@media (prefers-reduced-motion: reduce) {\n  .ticker"):]
+        self.assertIn("overflow-x: auto", reduced)
+        self.assertIn("animation: none", reduced)
 
     def test_text_uses_only_the_agreed_type_scale(self) -> None:
         css = (WEB / "styles.css").read_text(encoding="utf-8")

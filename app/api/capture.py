@@ -17,7 +17,8 @@ from typing import Any, Callable, Protocol
 
 from app.api.conversations import ConversationError
 from app.api.settings import Settings
-from app.capture.notes import CaptureError, Draft, folder_for, note_properties, parse_draft, render, write_note
+from app.capture.notes import (CaptureError, Draft, folder_for, note_properties, parse_draft, render, with_card_values,
+                               write_note)
 from app.ingestion.source_reader import document_id_for
 from app.storage.spend import SpendCapError, check_daily_cap, record_spend
 
@@ -36,6 +37,12 @@ JOB_SELECT = """select job_id, kind, status, vault_path, title, indexed, error, 
       join knowledge.corpus_state s on s.profile_id=a.profile_id
       where d.relative_path=capture_jobs.vault_path limit 1)
     from knowledge.capture_jobs"""
+
+
+PEOPLE_SQL = """select name, count(distinct document_id) from (
+      select p.document_id, btrim(regexp_replace(a, '^\\[\\[|\\]\\]$', '', 'g')) as name
+      from knowledge.source_properties p, jsonb_array_elements_text(p.authors || p.guests) a) names
+    where name <> '' group by name order by lower(name), name"""
 
 
 def _job_dict(row) -> dict[str, Any]:
@@ -107,6 +114,8 @@ class ScreenshotInput:
     title: str | None = None
     tags: list[str] | None = None
     kind: str = "screenshot"
+    type: str | None = None  # set on the Add card; wins over what the model reads
+    authors: list[str] | None = None
 
 
 @dataclass
@@ -116,6 +125,8 @@ class YouTubeInput:
     title: str | None = None
     tags: list[str] | None = None
     kind: str = "youtube"
+    type: str | None = None
+    authors: list[str] | None = None
 
 
 class YouTubeTranscriber:
@@ -256,6 +267,12 @@ class CaptureJobs:
             rows = conn.execute(JOB_SELECT + " where created_at > now() - interval '7 days' order by created_at desc limit %s", (limit,)).fetchall()
         return [_job_dict(row) for row in rows]
 
+    def people(self) -> list[dict[str, Any]]:
+        """Authors and guests already in the vault with how many notes name each, A to Z, for the Add card's Author list."""
+        with self.connect() as conn:
+            rows = conn.execute(PEOPLE_SQL).fetchall()
+        return [{"name": name, "count": count} for name, count in rows]
+
     def expire_stale(self) -> int:
         cutoff = datetime.now(timezone.utc) - JOB_LIMIT
         with self.connect() as conn:
@@ -291,6 +308,7 @@ class CaptureJobs:
                     spend[stage] = getattr(exc, "cost_usd", 0.0)
                     raise
                 stage = "properties"
+                with_card_values(draft, item.type, item.authors)
             else:
                 draft = item
             title = draft.title

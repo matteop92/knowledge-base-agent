@@ -12,6 +12,8 @@
   <link rel="preload" href="/static/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/styles.css">
   <script src="/static/app.js" defer></script>
+  <script src="/static/capture-fields.js" defer></script>
+  <script src="/static/capture-row.js" defer></script>
   <script src="/static/capture.js" defer></script>
   <script src="/static/settings.js" defer></script>
   <script src="/static/source-filter.js" defer></script>
@@ -19,6 +21,8 @@
   <script src="/static/reader-picks.js" defer></script>
   <script src="/static/sources.js" defer></script>
   <script src="/static/review.js" defer></script>
+  <script src="/static/review-settings.js" defer></script>
+  <script src="/static/ticker.js" defer></script>
 </head>
 <body>
   <!-- Icons: one sprite, referenced with <use> -->
@@ -30,6 +34,11 @@
     <symbol id="i-down" viewBox="0 0 256 256"><path fill="currentColor" d="M128,26A102,102,0,1,0,230,128,102.12,102.12,0,0,0,128,26Zm0,192a90,90,0,1,1,90-90A90.1,90.1,0,0,1,128,218Zm46-58a6,6,0,0,1-6,6H88a6,6,0,0,1,0-12h80A6,6,0,0,1,174,160ZM82,108a10,10,0,1,1,10,10A10,10,0,0,1,82,108Zm92,0a10,10,0,1,1-10-10A10,10,0,0,1,174,108Z"/></symbol>
     <symbol id="i-paperclip" viewBox="0 0 256 256"><path fill="currentColor" d="M208.25,123.76a6,6,0,0,1,0,8.49l-82.06,82a54,54,0,0,1-76.36-76.39L149.1,37.14a38,38,0,1,1,53.77,53.72L103.59,191.54a22,22,0,1,1-31.15-31.09l83.28-84.67a6,6,0,0,1,8.56,8.42L81,168.91a10,10,0,1,0,14.11,14.18L194.35,82.4a26,26,0,1,0-36.74-36.8L58.33,146.28a42,42,0,1,0,59.37,59.44l82.06-82A6,6,0,0,1,208.25,123.76Z"/></symbol>
     <symbol id="i-settings" viewBox="0 0 256 256"><path fill="currentColor" d="M128,82a46,46,0,1,0,46,46A46.06,46.06,0,0,0,128,82Zm0,80a34,34,0,1,1,34-34A34,34,0,0,1,128,162ZM214,130.84c.06-1.89.06-3.79,0-5.68L229.33,106a6,6,0,0,0,1.11-5.29A105.34,105.34,0,0,0,219.76,74.9a6,6,0,0,0-4.53-3l-24.45-2.71q-1.93-2.07-4-4l-2.72-24.46a6,6,0,0,0-3-4.53,105.65,105.65,0,0,0-25.77-10.66A6,6,0,0,0,150,26.68l-19.2,15.37c-1.89-.06-3.79-.06-5.68,0L106,26.67a6,6,0,0,0-5.29-1.11A105.34,105.34,0,0,0,74.9,36.24a6,6,0,0,0-3,4.53L69.23,65.22q-2.07,1.94-4,4L40.76,72a6,6,0,0,0-4.53,3,105.65,105.65,0,0,0-10.66,25.77A6,6,0,0,0,26.68,106l15.37,19.2c-.06,1.89-.06,3.79,0,5.68L26.67,150.05a6,6,0,0,0-1.11,5.29A105.34,105.34,0,0,0,36.24,181.1a6,6,0,0,0,4.53,3l24.45,2.71q1.94,2.07,4,4L72,215.24a6,6,0,0,0,3,4.53,105.65,105.65,0,0,0,25.77,10.66,6,6,0,0,0,5.29-1.11L125.16,214c1.89.06,3.79.06,5.68,0l19.21,15.38a6,6,0,0,0,3.75,1.31,6.2,6.2,0,0,0,1.54-.2,105.34,105.34,0,0,0,25.76-10.68,6,6,0,0,0,3-4.53l2.71-24.45q2.07-1.93,4-4l24.46-2.72a6,6,0,0,0,4.53-3,105.49,105.49,0,0,0,10.66-25.77,6,6,0,0,0-1.11-5.29Zm-3.1,41.63-23.64,2.63a6,6,0,0,0-3.82,2,75.14,75.14,0,0,1-6.31,6.31,6,6,0,0,0-2,3.82l-2.63,23.63A94.28,94.28,0,0,1,155.14,218l-18.57-14.86a6,6,0,0,0-3.75-1.31h-.36a78.07,78.07,0,0,1-8.92,0,6,6,0,0,0-4.11,1.3L100.87,218a94.13,94.13,0,0,1-17.34-7.17L80.9,187.21a6,6,0,0,0-2-3.82,75.14,75.14,0,0,1-6.31-6.31,6,6,0,0,0-3.82-2l-23.63-2.63A94.28,94.28,0,0,1,38,155.14l14.86-18.57a6,6,0,0,0,1.3-4.11,78.07,78.07,0,0,1,0-8.92,6,6,0,0,0-1.3-4.11L38,100.87a94.13,94.13,0,0,1,7.17-17.34L68.79,80.9a6,6,0,0,0,3.82-2,75.14,75.14,0,0,1,6.31-6.31,6,6,0,0,0,2-3.82l2.63-23.63A94.28,94.28,0,0,1,100.86,38l18.57,14.86a6,6,0,0,0,4.11,1.3,78.07,78.07,0,0,1,8.92,0,6,6,0,0,0,4.11-1.3L155.13,38a94.13,94.13,0,0,1,17.34,7.17l2.63,23.64a6,6,0,0,0,2,3.82,75.14,75.14,0,0,1,6.31,6.31,6,6,0,0,0,3.82,2l23.63,2.63A94.28,94.28,0,0,1,218,100.86l-14.86,18.57a6,6,0,0,0-1.3,4.11,78.07,78.07,0,0,1,0,8.92,6,6,0,0,0,1.3,4.11L218,155.13A94.13,94.13,0,0,1,210.85,172.47Z"/></symbol>
+    <symbol id="i-step-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-step-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+    <symbol id="i-mark-cross" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7 7 17"/></symbol>
+    <symbol id="i-chip-cross" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-mark-bookmark" viewBox="0 0 24 24"><path d="M7 4.5h10v15l-5-3.6-5 3.6z"/></symbol>
     <symbol id="i-check" viewBox="0 0 256 256"><path fill="currentColor" d="M228.24,76.24l-128,128a6,6,0,0,1-8.48,0l-56-56a6,6,0,0,1,8.48-8.48L96,191.51,219.76,67.76a6,6,0,0,1,8.48,8.48Z"/></symbol>
     <symbol id="i-back" viewBox="0 0 256 256"><path fill="currentColor" d="M164.24,203.76a6,6,0,1,1-8.48,8.48l-80-80a6,6,0,0,1,0-8.48l80-80a6,6,0,0,1,8.48,8.48L88.49,128Z"/></symbol>
     <symbol id="i-image" viewBox="0 0 256 256"><path fill="currentColor" d="M216,42H40A14,14,0,0,0,26,56V200a14,14,0,0,0,14,14H216a14,14,0,0,0,14-14V56A14,14,0,0,0,216,42ZM40,54H216a2,2,0,0,1,2,2V163.57L188.53,134.1a14,14,0,0,0-19.8,0l-21.42,21.42L101.9,110.1a14,14,0,0,0-19.8,0L38,154.2V56A2,2,0,0,1,40,54ZM38,200V171.17l52.58-52.58a2,2,0,0,1,2.84,0L176.83,202H40A2,2,0,0,1,38,200Zm178,2H193.8l-38-38,21.41-21.42a2,2,0,0,1,2.83,0l38,38V200A2,2,0,0,1,216,202ZM146,100a10,10,0,1,1,10,10A10,10,0,0,1,146,100Z"/></symbol>
@@ -63,6 +72,10 @@
     <symbol id="i-person" viewBox="0 0 256 256"><path fill="currentColor" d="M229.19,213c-15.81-27.32-40.63-46.49-69.47-54.62a70,70,0,1,0-63.44,0C67.44,166.5,42.62,185.67,26.81,213a6,6,0,1,0,10.38,6C56.4,185.81,90.34,166,128,166s71.6,19.81,90.81,53a6,6,0,1,0,10.38-6ZM70,96a58,58,0,1,1,58,58A58.07,58.07,0,0,1,70,96Z"/></symbol>
     <symbol id="i-calendar" viewBox="0 0 256 256"><path fill="currentColor" d="M208,34H182V24a6,6,0,0,0-12,0V34H86V24a6,6,0,0,0-12,0V34H48A14,14,0,0,0,34,48V208a14,14,0,0,0,14,14H208a14,14,0,0,0,14-14V48A14,14,0,0,0,208,34ZM48,46H74V56a6,6,0,0,0,12,0V46h84V56a6,6,0,0,0,12,0V46h26a2,2,0,0,1,2,2V82H46V48A2,2,0,0,1,48,46ZM208,210H48a2,2,0,0,1-2-2V94H210V208A2,2,0,0,1,208,210Z"/></symbol>
     <symbol id="i-stack" viewBox="0 0 256 256"><path fill="currentColor" d="M13,109.21l112,64a6,6,0,0,0,6,0l112-64a6,6,0,0,0,0-10.42l-112-64a6,6,0,0,0-6,0l-112,64a6,6,0,0,0,0,10.42Zm115-62.3L227.91,104,128,161.09,28.09,104ZM245.21,141a6,6,0,0,1-2.23,8.19l-112,64a6,6,0,0,1-6,0l-112-64a6,6,0,0,1,6-10.42l109,62.3,109-62.3A6,6,0,0,1,245.21,141Z"/></symbol>
+    <symbol id="i-browser" viewBox="0 0 256 256"><path fill="currentColor" d="M216,42H40A14,14,0,0,0,26,56V200a14,14,0,0,0,14,14H216a14,14,0,0,0,14-14V56A14,14,0,0,0,216,42ZM40,54H216a2,2,0,0,1,2,2V90H38V56A2,2,0,0,1,40,54ZM216,202H40a2,2,0,0,1-2-2V102H218v98A2,2,0,0,1,216,202Z"/></symbol>
+    <symbol id="i-book-open" viewBox="0 0 256 256"><path fill="currentColor" d="M232,50H160a38,38,0,0,0-32,17.55A38,38,0,0,0,96,50H24a6,6,0,0,0-6,6V200a6,6,0,0,0,6,6H96a26,26,0,0,1,26,26,6,6,0,0,0,12,0,26,26,0,0,1,26-26h72a6,6,0,0,0,6-6V56A6,6,0,0,0,232,50ZM96,194H30V62H96a26,26,0,0,1,26,26V204.31A37.86,37.86,0,0,0,96,194Zm130,0H160a37.87,37.87,0,0,0-26,10.32V88a26,26,0,0,1,26-26h66Z"/></symbol>
+    <symbol id="i-notepad" viewBox="0 0 256 256"><path fill="currentColor" d="M166,128a6,6,0,0,1-6,6H96a6,6,0,0,1,0-12h64A6,6,0,0,1,166,128Zm-6,26H96a6,6,0,0,0,0,12h64a6,6,0,0,0,0-12ZM214,40V200a30,30,0,0,1-30,30H72a30,30,0,0,1-30-30V40a6,6,0,0,1,6-6H74V24a6,6,0,0,1,12,0V34h36V24a6,6,0,0,1,12,0V34h36V24a6,6,0,0,1,12,0V34h26A6,6,0,0,1,214,40Zm-12,6H182V56a6,6,0,0,1-12,0V46H134V56a6,6,0,0,1-12,0V46H86V56a6,6,0,0,1-12,0V46H54V200a18,18,0,0,0,18,18H184a18,18,0,0,0,18-18Z"/></symbol>
+    <symbol id="i-ph-quotes" viewBox="0 0 256 256"><path fill="currentColor" d="M100,58H40A14,14,0,0,0,26,72v64a14,14,0,0,0,14,14h62v10a34,34,0,0,1-34,34,6,6,0,0,0,0,12,46.06,46.06,0,0,0,46-46V72A14,14,0,0,0,100,58Zm2,80H40a2,2,0,0,1-2-2V72a2,2,0,0,1,2-2h60a2,2,0,0,1,2,2ZM216,58H156a14,14,0,0,0-14,14v64a14,14,0,0,0,14,14h62v10a34,34,0,0,1-34,34,6,6,0,0,0,0,12,46.06,46.06,0,0,0,46-46V72A14,14,0,0,0,216,58Zm2,80H156a2,2,0,0,1-2-2V72a2,2,0,0,1,2-2h60a2,2,0,0,1,2,2Z"/></symbol>
     <symbol id="i-quotes" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"><rect x="30" y="64" width="76" height="68" rx="14"/><path d="M106 132v14a34 34 0 0 1-34 34"/><rect x="150" y="64" width="76" height="68" rx="14"/><path d="M226 132v14a34 34 0 0 1-34 34"/></symbol>
   </svg>
 
@@ -127,13 +140,12 @@
 
       <div class="views">
         <section id="view-ask" class="view view-ask" aria-label="Ask">
+          <div id="ticker" class="ticker" role="region" aria-label="Added in the last 7 days" hidden><div id="ticker-track" class="ticker-track"></div></div>
           <main class="thread">
             <div class="column">
               <section id="empty-state" class="empty-state">
                 <p id="empty-date" class="empty-date"></p>
                 <h1>Ask your notes anything.</h1>
-                <p class="muted">Answers cite the exact passages they used.</p>
-                <ul id="starters-compact" class="starters starters-compact" aria-label="Suggested questions" hidden></ul>
               </section>
               <ol id="turns" class="turns"></ol>
             </div>
@@ -153,7 +165,6 @@
               <textarea id="question" rows="1" placeholder="Ask a question" required></textarea>
               <button type="submit" id="ask" class="send" aria-label="Ask"><svg class="icon"><use href="#i-send"/></svg></button>
             </div>
-            <ul id="starters" class="starters" aria-label="Suggested questions" hidden></ul>
             <p class="composer-hint">Enter to ask · Shift + Enter for a new line</p>
           </form>
         </section>
@@ -172,6 +183,7 @@
             <form id="capture-form" class="capture-form card">
               <label for="capture-text" class="sr-only">Paste text or a link</label>
               <textarea id="capture-text" rows="2" placeholder="Paste or type here…"></textarea>
+              <div id="capture-line" class="cf-line" aria-hidden="true"></div>
               <img id="capture-preview" class="capture-preview" alt="Screenshot to be saved" hidden>
               <div id="capture-detect" class="detect" aria-live="polite" hidden>
                 <span class="detect-icon"><svg class="icon" aria-hidden="true"><use id="capture-detect-icon" href="#i-doc"/></svg></span>
@@ -180,28 +192,36 @@
                   <span id="capture-detect-sub" class="detect-sub"></span>
                 </div>
               </div>
-              <details id="capture-more" class="more">
-                <summary>Title and tags<span class="muted">&nbsp;· optional</span><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
-                <div class="more-fields">
-                  <label class="field">Title
-                    <input id="capture-title" maxlength="200">
-                  </label>
-                  <div class="field" role="group" aria-labelledby="capture-tags-label">
-                    <span id="capture-tags-label">Tags</span>
-                    <div id="capture-tag-field" class="tag-field">
-                      <ul id="capture-tag-chips" class="tag-chips"></ul>
-                      <input id="capture-tags" maxlength="400" placeholder="Add a tag" aria-labelledby="capture-tags-label">
-                    </div>
-                    <div id="capture-tag-pick" class="tag-pick" hidden>
-                      <span class="kicker">In use</span>
-                      <ul id="capture-tag-pick-list" class="pick-list"></ul>
-                    </div>
-                  </div>
-                  <p id="capture-tag-status" class="sr-only" aria-live="polite"></p>
+              <div id="capture-fields" class="cf">
+                <div id="capture-row" class="cf-row" role="group" aria-label="Optional details">
+                <span id="capture-slot-type" class="cf-slot">
+                  <span class="cf-chips"></span>
+                  <button type="button" class="cf-add" data-field="type" aria-label="Add type" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-step-plus"/></svg>Type</button>
+                  <span class="cf-input" hidden><label class="sr-only" for="capture-type">Type</label><input id="capture-type" class="cf-field" role="combobox" aria-autocomplete="list" aria-controls="capture-suggest" aria-expanded="false" readonly placeholder="Choose a type" autocomplete="off"></span>
+                </span>
+                <span id="capture-slot-author" class="cf-slot">
+                  <span class="cf-chips"></span>
+                  <button type="button" class="cf-add" data-field="author" aria-label="Add author" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-step-plus"/></svg>Author</button>
+                  <span class="cf-input" hidden><label class="sr-only" for="capture-author">Add an author</label><input id="capture-author" size="6" class="cf-field" role="combobox" aria-autocomplete="list" aria-controls="capture-suggest" aria-expanded="false" maxlength="120" placeholder="Author" autocomplete="off" autocapitalize="words" spellcheck="false"></span>
+                </span>
+                <span id="capture-slot-tags" class="cf-slot">
+                  <span class="cf-chips"></span>
+                  <button type="button" class="cf-add" data-field="tags" aria-label="Add tags" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-step-plus"/></svg>Tags</button>
+                  <span class="cf-input" hidden><label class="sr-only" for="capture-tags">Add a tag</label><input id="capture-tags" size="6" class="cf-field" role="combobox" aria-autocomplete="list" aria-controls="capture-suggest" aria-expanded="false" maxlength="400" placeholder="Tag" autocomplete="off" autocapitalize="none" spellcheck="false"></span>
+                </span>
+                <span id="capture-slot-title" class="cf-slot">
+                  <span class="cf-chips"></span>
+                  <button type="button" class="cf-add" data-field="title" aria-label="Add title" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-step-plus"/></svg>Title</button>
+                  <span class="cf-input" hidden><label class="sr-only" for="capture-title">Title</label><input id="capture-title" class="cf-field" maxlength="200" placeholder="Title" autocomplete="off"></span>
+                </span>
                 </div>
-              </details>
+                <div id="capture-list-slot" class="cf-list-slot"></div>
+                <ul id="capture-suggest" class="cf-list" role="listbox" hidden></ul>
+                <p id="capture-tag-status" class="sr-only" aria-live="polite"></p>
+              </div>
               <input id="capture-kind" type="hidden" value="text">
               <div class="card-actions">
+                <span id="capture-rest" class="cf-rest"></span>
                 <button type="button" id="capture-attach" class="attach" aria-label="Attach a screenshot or .md file"><svg class="icon" aria-hidden="true"><use href="#i-paperclip"/></svg></button>
                 <span id="capture-drop-hint" class="drop-hint">or drop a file anywhere</span>
                 <input id="capture-file" type="file" hidden accept="image/png,image/jpeg,image/webp,.md,.markdown,.txt,text/markdown,text/plain">
@@ -222,11 +242,14 @@
 
         <section id="settings" class="view view-settings" hidden aria-labelledby="settings-title">
           <div class="column">
+            <div id="settings-main">
             <button type="button" id="settings-back" class="icon-button settings-back" aria-label="Back"><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg></button>
             <h1 id="settings-title">Settings</h1>
             <nav class="settings-tabs" aria-label="Settings sections">
-              <button type="button" class="settings-tab" aria-current="page">Tags</button>
+              <button type="button" id="settings-tab-tags" class="settings-tab" aria-current="page">Tags</button>
+              <button type="button" id="settings-tab-review" class="settings-tab">Review</button>
             </nav>
+            <div id="settings-panel-tags">
             <p class="tags-intro"><span class="tags-intro-full">When several notes point at a topic your tag list doesn’t have, the agent suggests a new tag. Approve it to use it on notes you add from now on; block it to stop it coming back.</span><span class="tags-intro-short">New tags the agent suggests. Approve to use one from now on; block to stop it coming back.</span></p>
             <div id="tags-head" class="tags-head">
               <h2 id="tags-title" class="section-title" tabindex="-1">Suggested</h2>
@@ -245,6 +268,36 @@
             </div>
             <p id="tags-message" class="message" role="alert"></p>
             <p class="muted caption tags-note">Approved tags apply to notes you add from now on. Older notes keep their tags.</p>
+            </div>
+            <div id="settings-panel-review" hidden>
+              <p class="review-intro"><span class="review-intro-full">Mark a passage Again or Done while you review. Again passages come back more often; Done passages leave Review.</span><span class="review-intro-short">Again passages come back more often. Done passages leave Review.</span></p>
+              <h2 class="section-title review-section">How often Again passages come back</h2>
+              <div class="how-often">
+                <div class="how-row">
+                  <button type="button" id="every-less" class="step-button" aria-label="Less often"><svg class="icon" aria-hidden="true"><use href="#i-step-minus"/></svg></button>
+                  <div id="every-word" class="how-word" aria-live="polite"></div>
+                  <button type="button" id="every-more" class="step-button" aria-label="More often"><svg class="icon" aria-hidden="true"><use href="#i-step-plus"/></svg></button>
+                </div>
+                <div id="every-dots" class="how-dots" role="img"></div>
+                <div class="how-caption"><span class="how-caption-full">About 1 in <span id="every-n-full"></span> passages will be one you marked Again</span><span class="how-caption-short">About 1 in <span id="every-n-short"></span> passages</span></div>
+              </div>
+              <h2 class="section-title review-section">Your passages</h2>
+              <div class="mark-rows">
+                <button type="button" id="open-again" class="mark-row"><span class="mark-row-name">Again</span><span id="again-count" class="mark-row-count"></span><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg></button>
+                <button type="button" id="open-done" class="mark-row"><span class="mark-row-name">Done</span><span id="done-count" class="mark-row-count"></span><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg></button>
+              </div>
+              <p class="muted caption mark-note">Done passages never appear in Review. Open the list to bring one back.</p>
+              <p id="review-settings-message" class="message" role="alert"></p>
+            </div>
+            </div>
+            <div id="settings-list" class="settings-list" hidden>
+              <button type="button" id="list-back" class="list-back"><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg><span class="list-back-full">Review settings</span><span class="list-back-short">Settings</span></button>
+              <h1 id="list-title"></h1>
+              <p id="list-sub" class="list-sub"></p>
+              <ul id="list-rows" class="list-rows"></ul>
+              <p id="list-empty" class="list-empty" hidden>Nothing here yet.</p>
+              <p id="list-message" class="message" role="alert"></p>
+            </div>
           </div>
         </section>
 
@@ -285,6 +338,11 @@
 
         <section id="review" class="view view-review" hidden aria-label="Review">
           <div id="review-pager" class="review-pager" tabindex="0"></div>
+          <div id="review-listbar" class="review-listbar" hidden>
+            <button type="button" id="review-list-back" class="review-list-back"><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg><span id="review-list-name"></span></button>
+            <span id="review-list-count" class="review-list-count"></span>
+          </div>
+          <p id="review-list-caption" class="review-list-caption" hidden></p>
           <div id="review-state" class="review-state" hidden></div>
           <button type="button" id="review-ask" class="review-ask" hidden><svg class="icon" aria-hidden="true"><use href="#i-ask"/></svg><span>Ask about this</span></button>
           <p id="review-live" class="sr-only" aria-live="polite"></p>

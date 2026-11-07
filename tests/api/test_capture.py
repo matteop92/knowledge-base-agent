@@ -167,6 +167,88 @@ class CaptureApiTests(unittest.TestCase):
                             .json()["capture_id"])
         self.assertEqual(job["vault_path"], "Knowledge/Articles/2026-10-19-essay.md")
 
+    def note_text(self, response) -> tuple[str, str]:
+        self.assertEqual(response.status_code, 202, response.text)
+        job = self.finished(response.json()["capture_id"])
+        self.assertEqual(job["status"], "done", job)
+        return job["vault_path"], (self.vault / job["vault_path"]).read_text(encoding="utf-8")
+
+    def test_a_set_type_keeps_its_folder_and_value_though_the_classifier_disagrees(self):
+        self.classifier.properties = {"source_type": "note", "tags": [], "people": ["Ann Lee"]}
+        path, text = self.note_text(self.capture(title="On hiring", type="article"))
+        self.assertEqual(path, "Knowledge/Articles/2026-10-19-on-hiring.md")
+        self.assertIn("type: article", text)
+        self.assertNotIn("source_type", text)
+
+    def test_social_post_and_highlights_keep_their_type_and_highlights_files_into_book_highlights(self):
+        path, text = self.note_text(self.capture(title="A post", type="social_post"))
+        self.assertEqual(path, "Knowledge/Notes/2026-10-19-a-post.md")
+        self.assertIn("type: social_post", text)
+        path, text = self.note_text(self.capture(title="Some lines", type="highlights"))
+        self.assertEqual(path, "Knowledge/Book Highlights/2026-10-19-some-lines.md")
+        self.assertIn("type: highlights", text)
+
+    def test_authors_set_on_the_card_replace_the_classifiers_people(self):
+        _, text = self.note_text(self.capture(authors=["Ben Hart", "Cy Dunn"]))
+        self.assertIn("authors:\n- Ben Hart\n- Cy Dunn\n", text)
+        self.assertNotIn("Ann Lee", text)
+
+    def test_without_card_values_the_note_is_what_it_was(self):
+        _, text = self.note_text(self.capture(title="Plain"))
+        self.assertIn("- Ann Lee", text)
+        self.assertNotIn("\ntype:", text)
+        self.assertIn("source_type: article", text)
+
+    def test_a_markdown_files_type_gives_way_to_the_cards(self):
+        content = "---\ntitle: Essay\ntype: note\nauthor: Ann Lee\n---\n\nBody.\n"
+        response = self.client.post("/api/captures", json={"kind": "markdown", "content": content, "type": "article",
+                                                           "authors": ["Ben Hart"]})
+        path, text = self.note_text(response)
+        self.assertEqual(path, "Knowledge/Articles/2026-10-19-essay.md")
+        self.assertIn("type: article", text)
+        self.assertNotIn("author: Ann Lee", text)
+        self.assertIn("- Ben Hart", text)
+
+    def test_a_screenshot_keeps_the_set_type_and_authors(self):
+        response = self.client.post("/api/captures", json={"kind": "screenshot", "image": "data:image/png;base64,iVBORw0KGgo=",
+                                                           "type": "quote", "authors": ["Ben Hart"]})
+        _, text = self.note_text(response)
+        self.assertIn("type: quote", text)
+        self.assertIn("- Ben Hart", text)
+        self.assertNotIn("author: Ann Lee", text)
+
+    def test_a_youtube_capture_keeps_the_set_type_as_a_property_and_still_files_into_transcripts(self):
+        response = self.client.post("/api/captures", json={"kind": "youtube", "content": "youtu.be/jNQXAC9IVRw", "type": "meeting"})
+        path, text = self.note_text(response)
+        self.assertTrue(path.startswith("Knowledge/Transcripts/"), path)
+        self.assertIn("type: meeting", text)
+
+    def test_a_display_label_an_unknown_type_or_eleven_authors_are_refused(self):
+        for body in ({"type": "Post"}, {"type": "essay"}, {"authors": [f"Name {n}" for n in range(11)]},
+                     {"authors": ["x" * 121]}):
+            with self.subTest(body=body):
+                self.assertEqual(self.capture(**body).status_code, 422)
+        self.assertEqual(self.classifier.calls, 0)
+
+    def test_the_people_route_lists_authors_and_guests_with_counts_a_to_z(self):
+        from tests.storage.review_fixture import PoolBuilder
+        with psycopg.connect(os.environ["KNOWLEDGE_TEST_DATABASE_URL"], autocommit=True) as admin:
+            pool = PoolBuilder(admin)
+            pool.reset()
+            try:
+                pool.add("Knowledge/Notes/a.md", "---\ntitle: A\nauthor: Zed Ray\n---\nBody a.\n")
+                pool.add("Knowledge/Notes/b.md", "---\ntitle: B\nauthors: [Zed Ray, ana Cole]\n---\nBody b.\n")
+                pool.add("Knowledge/Notes/c.md", "---\ntitle: C\nauthors: ['[[Mia Fox]]']\n---\nBody c.\n")
+                response = self.client.get("/api/capture-people")
+            finally:
+                pool.close()
+                pool.teardown()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["people"], [{"name": "ana Cole", "count": 1}, {"name": "Mia Fox", "count": 1},
+                                                     {"name": "Zed Ray", "count": 2}])
+        self.client.cookies.clear()
+        self.assertEqual(self.client.get("/api/capture-people").status_code, 401)
+
     def test_a_capture_indexed_at_once_says_so(self):
         from app.api.capture import CaptureJobs
         self.app.state.captures._index_now = lambda path: True

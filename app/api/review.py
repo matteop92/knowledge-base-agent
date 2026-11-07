@@ -3,6 +3,9 @@
 The pool is the `knowledge.feed_passages` view (nothing is copied). A round orders the pool by
 md5(round || passage_key); the round is the highest one in the shown log and its position is the highest rank shown
 in it. The next passage is the first one ranked after the position, and a new round starts when none is left.
+
+Marked passages (Done and Again) leave that shuffle. Done ones never come back; Again ones come back through an
+interleave: one slot in `again_every` (10, 5, 3 or 2) serves the Again passage served longest ago.
 """
 
 from __future__ import annotations
@@ -26,8 +29,28 @@ POSITION_SQL = "select coalesce(max(md5(round::text || passage_key)), '') from k
 NEXT_SQL = """select passage_key, document_id, kind, start_char, end_char, text, note, type, title, author, locator
     from knowledge.feed_passages
     where md5(%(round)s::text || passage_key) > %(position)s
+      and passage_key not in (select passage_key from knowledge.feed_marks)
     order by md5(%(round)s::text || passage_key)
     limit %(limit)s"""
+PASSAGE_COLUMNS = "p.passage_key, p.document_id, p.kind, p.start_char, p.end_char, p.text, p.note, p.type, p.title, p.author, p.locator"
+EVERY_SQL = "select again_every from knowledge.feed_settings"
+# Shuffle passages shown since an Again passage was last served or marked (the interleave's gap counter starts from it, so
+# a fresh mark waits its turn instead of coming straight back on a vault with a long shown log).
+SINCE_SERVE_SQL = """select count(*) from knowledge.feed_shown
+    where shown_at > coalesce((select greatest(max(last_served_at), max(marked_at)) from knowledge.feed_marks where mark = 'again'),
+                              '-infinity'::timestamptz)"""
+AGAIN_SQL = f"""select {PASSAGE_COLUMNS}
+    from knowledge.feed_marks m join knowledge.feed_passages p on p.passage_key = m.passage_key
+    where m.mark = 'again' and not (m.passage_key = any(%s::text[]))
+    order by m.last_served_at asc nulls first, m.marked_at, m.passage_key"""
+HELD_AGAIN_SQL = "select passage_key from knowledge.feed_marks where mark = 'again' and passage_key = any(%s::text[])"
+LIST_SQL = f"""select {PASSAGE_COLUMNS}, m.marked_at
+    from knowledge.feed_marks m join knowledge.feed_passages p on p.passage_key = m.passage_key
+    where m.mark = %s order by m.marked_at desc, m.passage_key"""
+COUNTS_SQL = """select m.mark, count(*) from knowledge.feed_marks m
+    join knowledge.feed_passages p on p.passage_key = m.passage_key group by m.mark"""
+MARKS = ("again", "done")
+EVERY_STEPS = (10, 5, 3, 2)
 RUN_SQL = """select r.source_sha256, r.source_text, coalesce(r.parsed->'blocks', '[]'::jsonb)
     from knowledge.active_runs a
     join knowledge.runs r on r.run_id=a.run_id
@@ -153,15 +176,17 @@ class ReviewStore:
         self.connect = connect
 
     def next(self, count: int, held: str = "") -> list[dict[str, Any]]:
-        """Up to `count` unshown passages after the round's position, skipping keys the client already holds.
+        """Up to `count` passages: unshown ones after the round's position, skipping keys the client already holds, with
+        an Again passage in every `again_every`th slot.
 
         A new round starts only when nothing is left after the position, held passages included; with only held
-        passages left the list is empty and the client keeps showing what it has."""
+        passages left the list is empty (unless an Again passage is due) and the client keeps showing what it has."""
         count = max(1, min(count, MAX_COUNT))
         held_keys = _held(held)
         with self.connect() as conn:
             _without_jit(conn)
             self.reanchor(conn)
+            every = conn.execute(EVERY_SQL).fetchone()[0]
             for _ in range(3):
                 round_ = conn.execute(ROUND_SQL).fetchone()[0]
                 position = conn.execute(POSITION_SQL, (round_,)).fetchone()[0]
@@ -171,24 +196,46 @@ class ReviewStore:
                 if not ahead:
                     round_, position = round_ + 1, ""
                     ahead = conn.execute(NEXT_SQL, {"round": round_, "position": position, "limit": count + len(held_keys)}).fetchall()
-                rows = [row for row in ahead if row[0] not in held_keys][:count]
-                blocks = dict(conn.execute(BLOCKS_SQL, ([row[1] for row in rows],)).fetchall()) if rows else {}
-                passages = [self._passage(row, round_, blocks.get(row[1]) or []) for row in rows]
+                shuffle = [row for row in ahead if row[0] not in held_keys][:count]
+                slots = self._slots(conn, shuffle, held_keys, every, count, nothing_to_shuffle=not ahead)
+                blocks = dict(conn.execute(BLOCKS_SQL, ([row[1] for row, _ in slots],)).fetchall()) if slots else {}
+                passages = [self._passage(row, round_, blocks.get(row[1]) or [], "again" if again else None, again) for row, again in slots]
                 # A passage with nothing to draw (only an image or a table) is logged as shown here, so it never blocks
                 # the position or the next round, and the page never gets a blank screen.
-                empty = [passage for passage in passages if not passage["text"].strip()]
-                for passage in empty:
-                    conn.execute("""insert into knowledge.feed_shown (round, passage_key, document_id) values (%s,%s,%s)
-                        on conflict (round, passage_key) do nothing""", (round_, passage["passage_key"], passage["source_id"]))
-                if not empty:
-                    return passages
+                for passage in passages:
+                    if not passage["text"].strip() and not passage["again"]:
+                        conn.execute("""insert into knowledge.feed_shown (round, passage_key, document_id) values (%s,%s,%s)
+                            on conflict (round, passage_key) do nothing""", (round_, passage["passage_key"], passage["source_id"]))
                 kept = [passage for passage in passages if passage["text"].strip()]
-                if kept:
+                if kept or not passages:
                     return kept
         return []
 
-    def _passage(self, row, round_: int, blocks: list[dict[str, Any]]) -> dict[str, Any]:
-        key, document_id, kind, start, end, raw, raw_note, type_, title, author, locator = row
+    def _slots(self, conn, shuffle: list, held_keys: list[str], every: int, count: int, nothing_to_shuffle: bool) -> list[tuple]:
+        """The batch as (row, is_again) pairs. The gap counter is the shuffle passages shown since the latest Again
+        serve plus the held ones, or only the held ones after the last held Again passage."""
+        again = conn.execute(AGAIN_SQL, (held_keys,)).fetchall()
+        held_again = {row[0] for row in conn.execute(HELD_AGAIN_SQL, (held_keys,)).fetchall()} if held_keys else set()
+        after = [index for index, key in enumerate(held_keys) if key in held_again]
+        if after:
+            gap = len(held_keys) - 1 - after[-1]
+        else:
+            gap = conn.execute(SINCE_SERVE_SQL).fetchone()[0] + len(held_keys)
+        slots, queue = [], iter(shuffle)
+        for _ in range(count):
+            if again and (nothing_to_shuffle or gap >= every - 1):
+                slots.append((again.pop(0), True))
+                gap = 0
+                continue
+            row = next(queue, None)
+            if row is None:
+                break
+            slots.append((row, False))
+            gap += 1
+        return slots
+
+    def _passage(self, row, round_: int | None, blocks: list[dict[str, Any]], mark: str | None = None, again: bool = False) -> dict[str, Any]:
+        key, document_id, kind, start, end, raw, raw_note, type_, title, author, locator = row[:11]
         note = None
         if kind == "pick":
             text = _pick_text(blocks, start, end) or _clean(raw)
@@ -197,15 +244,20 @@ class ReviewStore:
         else:
             text = _whole(blocks, start, end)
         return {"passage_key": key, "round": round_, "text": text, "note": note, "title": title, "author": author,
-                "source_id": document_id, "type": "post" if type_ == "social_post" else type_, "locator": locator}
+                "source_id": document_id, "type": "post" if type_ == "social_post" else type_, "locator": locator,
+                "mark": mark, "again": again}
 
-    def shown(self, passage_key: str, round_: int) -> None:
+    def shown(self, passage_key: str, round_: int, again: bool = False) -> None:
         """Log a passage as shown in `round_`. The round may be the current one, the one before (a passage held
-        across a rollover) or the one after (the first passage of a new round)."""
+        across a rollover) or the one after (the first passage of a new round). An Again serve is recorded on its
+        mark instead: the shown log allows one row per passage per round, and an Again passage comes back."""
         if not KEY.match(passage_key):
             raise ConversationError(404, "passage not found")
         with self.connect() as conn:
             _without_jit(conn)
+            if again:
+                conn.execute("update knowledge.feed_marks set last_served_at=now() where passage_key=%s and mark='again'", (passage_key,))
+                return
             current = conn.execute(ROUND_SQL).fetchone()[0]
             if not max(1, current - 1) <= round_ <= current + 1:
                 raise ConversationError(400, "that round is not current")
@@ -214,6 +266,49 @@ class ReviewStore:
                 raise ConversationError(404, "passage not found")
             conn.execute("""insert into knowledge.feed_shown (round, passage_key, document_id) values (%s,%s,%s)
                 on conflict (round, passage_key) do nothing""", (round_, passage_key, found[0]))
+
+    # Marks -----------------------------------------------------------------------------------
+    def set_mark(self, passage_key: str, mark: str) -> dict[str, str]:
+        """Mark one passage Done or Again, replacing any mark it has; the newest mark lists first."""
+        if not KEY.match(passage_key):
+            raise ConversationError(400, "that passage key is not valid")
+        with self.connect() as conn:
+            _without_jit(conn)
+            found = conn.execute("select document_id from knowledge.feed_passages where passage_key=%s", (passage_key,)).fetchone()
+            if found is None:
+                raise ConversationError(404, "passage not found")
+            conn.execute("""insert into knowledge.feed_marks (passage_key, document_id, mark) values (%s,%s,%s)
+                on conflict (passage_key) do update set mark=excluded.mark, marked_at=now()""", (passage_key, found[0], mark))
+        return {"passage_key": passage_key, "mark": mark}
+
+    def clear_mark(self, passage_key: str) -> None:
+        if not KEY.match(passage_key):
+            raise ConversationError(400, "that passage key is not valid")
+        with self.connect() as conn:
+            conn.execute("delete from knowledge.feed_marks where passage_key=%s", (passage_key,))
+
+    def marked(self, mark: str) -> dict[str, Any]:
+        """Every passage with this mark, newest mark first. Marks whose passage no longer exists are skipped."""
+        with self.connect() as conn:
+            _without_jit(conn)
+            rows = conn.execute(LIST_SQL, (mark,)).fetchall()
+            blocks = dict(conn.execute(BLOCKS_SQL, ([row[1] for row in rows],)).fetchall()) if rows else {}
+        passages = [{**self._passage(row, None, blocks.get(row[1]) or [], mark), "marked_at": row[11].isoformat()} for row in rows]
+        return {"passages": passages, "count": len(passages)}
+
+    def settings(self) -> dict[str, int]:
+        with self.connect() as conn:
+            _without_jit(conn)
+            every = conn.execute(EVERY_SQL).fetchone()[0]
+            counts = dict(conn.execute(COUNTS_SQL).fetchall())
+        return {"every": every, "again": counts.get("again", 0), "done": counts.get("done", 0)}
+
+    def set_every(self, every: int) -> dict[str, int]:
+        if every not in EVERY_STEPS:
+            raise ConversationError(400, "that is not a how-often step")
+        with self.connect() as conn:
+            conn.execute("update knowledge.feed_settings set again_every=%s", (every,))
+        return self.settings()
 
     # Picks -----------------------------------------------------------------------------------
     def reanchor(self, conn) -> None:

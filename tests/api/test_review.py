@@ -408,3 +408,158 @@ class ReviewApiTests(unittest.TestCase):
         self.assertEqual(_quote_and_note("**Note - Location 3**\n\nOnly this.", None)[0], "**Note - Location 3**\n\nOnly this.")
         self.assertEqual(_quote_and_note("Quote.", "mine"), ("Quote.", "mine"))
         self.assertEqual(_quote_and_note("Quote.\n\n**Note**\n\nMore.", "mine"), ("Quote.", "mine\n\nMore."))
+
+    # Marks -----------------------------------------------------------------------------------
+    def mark(self, key: str, mark: str):
+        return self.client.put(f"/api/review/marks/{key}", json={"mark": mark})
+
+    def set_every(self, every: int) -> None:
+        self.admin.execute("update knowledge.feed_settings set again_every=%s", (every,))
+        self.addCleanup(self.admin.execute, "update knowledge.feed_settings set again_every=10")
+
+    def marked(self, key: str, mark: str) -> None:
+        self.assertEqual(self.mark(key, mark).status_code, 200)
+
+    def serve_log(self, passage: dict) -> None:
+        body = {"passage_key": passage["passage_key"], "round": passage["round"], "again": passage["again"]}
+        self.assertEqual(self.client.post("/api/review/shown", json=body).status_code, 200)
+
+    def test_done_leaves_the_shuffle_and_clearing_brings_it_back(self) -> None:
+        self.highlights("Alpha.", "Beta.", "Gamma.")
+        [first, second, third] = self.order(1)
+        self.marked(second, "done")
+        self.assertEqual([p["passage_key"] for p in self.next(5)], [first, third])
+        self.assertEqual(self.client.request("DELETE", f"/api/review/marks/{second}", json={}).status_code, 200)
+        self.assertEqual([p["passage_key"] for p in self.next(5)], [first, second, third])
+
+    def test_an_again_passage_comes_only_through_the_interleave_and_is_flagged(self) -> None:
+        self.highlights("Alpha.", "Beta.", "Gamma.", "Delta.")
+        again = self.order(1)[0]
+        self.marked(again, "again")
+        passages = self.next(5)
+        self.assertEqual(len(passages), 3, "three shuffle passages; the Again one is not one of them")
+        self.assertNotIn(again, [p["passage_key"] for p in passages])
+        self.assertTrue(all(p["mark"] is None and p["again"] is False for p in passages))
+
+    def test_with_every_five_the_fifth_passage_served_is_the_again_one(self) -> None:
+        self.highlights(*[f"Thought {n}." for n in range(9)])
+        again = self.order(1)[0]
+        self.marked(again, "again")
+        self.set_every(5)
+        passages = self.next(5)
+        self.assertEqual([p["again"] for p in passages], [False] * 4 + [True])
+        self.assertEqual((passages[4]["passage_key"], passages[4]["mark"]), (again, "again"))
+
+    def test_held_passages_count_toward_the_gap_and_no_again_passage_repeats(self) -> None:
+        self.highlights(*[f"Thought {n}." for n in range(10)])
+        self.marked(self.order(1)[0], "again")
+        self.set_every(3)
+        batch_one = self.next(2)
+        self.assertEqual([p["again"] for p in batch_one], [False, False])
+        batch_two = self.next(2, held=[p["passage_key"] for p in batch_one])
+        self.assertEqual([p["again"] for p in batch_two], [True, False])
+        held = [p["passage_key"] for p in batch_one + batch_two]
+        batch_three = self.next(2, held=held)
+        self.assertEqual([p["again"] for p in batch_three], [False, False], "the only Again passage is held")
+
+    def test_a_fresh_again_mark_waits_its_turn_on_a_vault_with_a_long_shown_log(self) -> None:
+        self.highlights(*[f"Thought {n}." for n in range(14)])
+        order = self.order(1)
+        self.log(1, order[:8])  # a long history, and no Again passage has ever been served
+        again = order[9]
+        self.marked(again, "again")
+        self.set_every(5)
+        first = self.next(5)
+        self.assertEqual([p["again"] for p in first], [False] * 4 + [True], "the new mark waits four slots, not none")
+        for passage in first:
+            self.serve_log(passage)
+
+    def test_two_again_passages_take_turns(self) -> None:
+        self.highlights(*[f"Thought {n}." for n in range(12)])
+        first, second = self.order(1)[:2]
+        self.marked(first, "again")
+        self.marked(second, "again")
+        self.set_every(2)
+        [_, a1, _, a2, _] = self.next(5)
+        self.assertEqual([a1["again"], a2["again"]], [True, True])
+        self.assertNotEqual(a1["passage_key"], a2["passage_key"])
+        self.serve_log(a1)
+        self.serve_log(a2)
+        self.serve_log(a1)  # a1 is served last now
+        later = [p for p in self.next(5) if p["again"]]
+        self.assertEqual(later[0]["passage_key"], a2["passage_key"], "the one served longest ago goes first")
+
+    def test_a_single_again_passage_returns_every_fifth_slot(self) -> None:
+        self.highlights(*[f"Thought {n}." for n in range(14)])
+        self.marked(self.order(1)[0], "again")
+        self.set_every(5)
+        slots = []
+        for _ in range(2):
+            batch = self.next(5)
+            slots += [p["again"] for p in batch]
+            for passage in batch:
+                self.serve_log(passage)
+        self.assertEqual(slots, ([False] * 4 + [True]) * 2)
+
+    def test_logging_an_again_serve_updates_the_mark_not_the_shown_log(self) -> None:
+        self.highlights("Alpha.", "Beta.")
+        key = self.order(1)[0]
+        self.marked(key, "again")
+        body = {"passage_key": key, "round": 1, "again": True}
+        self.assertEqual(self.client.post("/api/review/shown", json=body).status_code, 200)
+        self.assertEqual(self.logged(), [])
+        served = self.admin.execute("select last_served_at from knowledge.feed_marks where passage_key=%s", (key,)).fetchone()[0]
+        self.assertIsNotNone(served)
+        self.assertEqual(self.client.post("/api/review/shown", json={**body, "round": 9}).status_code, 200, "no round check")
+
+    def test_when_no_shuffle_passage_exists_the_again_passages_are_served_anyway(self) -> None:
+        self.highlights("Alpha.", "Beta.")
+        first, second = self.keys()
+        self.marked(first, "again")
+        self.marked(second, "again")
+        self.assertEqual(sorted(p["passage_key"] for p in self.next(5)), sorted([first, second]))
+        self.marked(first, "done")
+        self.marked(second, "done")
+        self.assertEqual(self.next(5), [])
+
+    def test_bad_marks_and_settings_are_refused(self) -> None:
+        self.highlights("Alpha.")
+        [key] = self.keys()
+        self.assertEqual(self.mark("f" * 32, "done").status_code, 404)
+        self.assertEqual(self.mark("not-a-key", "done").status_code, 400)
+        self.assertEqual(self.mark(key, "later").status_code, 422)
+        self.assertEqual(self.client.request("DELETE", f"/api/review/marks/{'f' * 32}", json={}).status_code, 200, "clearing nothing is fine")
+        self.assertEqual(self.client.put("/api/review/settings", json={"every": 4}).status_code, 422)
+        self.assertEqual(self.client.get("/api/review/marks/sometimes").status_code, 404)
+        other = TestClient(self.app)
+        self.assertEqual(other.put(f"/api/review/marks/{key}", json={"mark": "done"}).status_code, 401)
+        self.assertEqual(other.get("/api/review/settings").status_code, 401)
+
+    def test_lists_come_newest_mark_first_with_counts_and_skip_passages_that_left(self) -> None:
+        self.highlights("Alpha.", "Beta.", "Gamma.", "Delta.")
+        a, b, c, d = self.keys()
+        for key, mark in ((a, "again"), (b, "again"), (c, "done"), (d, "again")):
+            self.marked(key, mark)
+        self.marked(a, "done")
+        self.marked(a, "again")  # a new mark moves it to the top
+        listed = self.client.get("/api/review/marks/again").json()
+        self.assertEqual([p["passage_key"] for p in listed["passages"]], [a, d, b])
+        self.assertEqual(listed["count"], 3)
+        self.assertTrue(all(p["mark"] == "again" and p["text"] and p["marked_at"] for p in listed["passages"]))
+        self.assertEqual(self.client.get("/api/review/settings").json(), {"every": 10, "again": 3, "done": 1})
+        self.admin.execute("update knowledge.feed_marks set passage_key=%s where passage_key=%s", ("c" * 32, b))
+        self.assertEqual([p["passage_key"] for p in self.client.get("/api/review/marks/again").json()["passages"]], [a, d])
+        self.assertEqual(self.client.get("/api/review/settings").json()["again"], 2)
+
+    def test_switching_a_mark_moves_the_passage_between_lists(self) -> None:
+        self.highlights("Alpha.")
+        [key] = self.keys()
+        self.marked(key, "again")
+        self.marked(key, "done")
+        self.assertEqual(self.client.get("/api/review/marks/again").json()["count"], 0)
+        self.assertEqual([p["passage_key"] for p in self.client.get("/api/review/marks/done").json()["passages"]], [key])
+
+    def test_the_how_often_setting_is_saved(self) -> None:
+        self.set_every(10)
+        self.assertEqual(self.client.put("/api/review/settings", json={"every": 3}).json()["every"], 3)
+        self.assertEqual(self.client.get("/api/review/settings").json()["every"], 3)

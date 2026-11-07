@@ -37,6 +37,36 @@ class DraftTests(unittest.TestCase):
             draft_from_markdown("---\ntitle: [unclosed\n---\nBody\n")
 
 
+class CardValueTests(unittest.TestCase):
+    def test_no_card_values_leave_the_draft_as_it_was(self):
+        draft = draft_from_markdown("---\ntitle: Essay\nauthor: Ann Lee\ntype: article\n---\nBody\n", type_=None, authors=[])
+        self.assertEqual(draft.own, {"title": "Essay", "author": "Ann Lee", "type": "article"})
+        props = note_properties(draft, {"people": ["Someone Else"]}, TODAY)
+        self.assertEqual((props["author"], props["type"]), ("Ann Lee", "article"))
+        self.assertNotIn("authors", props)
+
+    def test_a_set_type_and_authors_win_over_the_files_own_frontmatter_and_the_classifier(self):
+        draft = draft_from_markdown("---\ntitle: Essay\nauthor: Ann Lee\ntype: note\n---\nBody\n", type_="article",
+                                    authors=["Ben Hart", " Ben  Hart ", "Cy Dunn"])
+        props = note_properties(draft, {"source_type": "quote", "people": ["Someone Else"]}, TODAY)
+        self.assertEqual((props["type"], props["authors"]), ("article", ["Ben Hart", "Cy Dunn"]))
+        self.assertNotIn("author", props)
+        self.assertNotIn("source_type", props)
+        self.assertEqual(folder_for("markdown", props["type"]), "Articles")
+
+    def test_text_takes_card_values_and_only_the_authors_when_no_type_is_set(self):
+        draft = draft_from_text("Words.", authors=["Ben Hart"])
+        props = note_properties(draft, {"source_type": "article", "people": ["Someone Else"]}, TODAY)
+        self.assertEqual(props["authors"], ["Ben Hart"])
+        self.assertEqual(props["source_type"], "article")
+        self.assertNotIn("type", props)
+
+    def test_a_youtube_video_keeps_its_channel_author_beside_the_card_authors(self):
+        from app.capture.notes import Draft, with_card_values
+        draft = with_card_values(Draft(kind="youtube", body="x", title="t", own={"author": "Channel"}), "quote", ["Ben Hart"])
+        self.assertEqual(draft.own, {"author": "Channel", "type": "quote", "authors": ["Ben Hart"]})
+
+
 class PropertiesTests(unittest.TestCase):
     def test_generated_properties_use_the_names_the_parser_reads(self):
         draft = draft_from_text("A post about hiring.", title="Hiring post", url="https://x.com/a/status/1",

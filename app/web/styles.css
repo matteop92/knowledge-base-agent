@@ -83,7 +83,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 /* Text boxes: no outline at all, just a hairline edge while typing. */
 textarea:focus, input:focus { outline: none; }
-input:focus-visible, .feedback-panel textarea:focus-visible, .feedback-sheet textarea:focus-visible, .tag-field:focus-within { outline: none; box-shadow: inset 0 0 0 1px rgba(29, 28, 26, 0.28); }
+input:focus-visible, .feedback-panel textarea:focus-visible, .feedback-sheet textarea:focus-visible { outline: none; box-shadow: inset 0 0 0 1px rgba(29, 28, 26, 0.28); }
 ::placeholder { color: var(--placeholder); opacity: 1; }
 a { color: var(--accent); }
 a:hover { color: var(--accent-hover); }
@@ -246,19 +246,28 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 .banner { margin: 8px auto 0; max-width: 640px; width: calc(100% - 32px); padding: 8px 14px; border-radius: 10px; background: var(--warn); color: var(--warn-ink); font-size: 14px; }
 /* The composer is pinned to the bottom over a fade, so the thread scrolls under it. */
 .composer { position: absolute; left: 0; right: 0; bottom: 0; padding: 48px 24px calc(20px + env(safe-area-inset-bottom)); background: linear-gradient(to bottom, rgba(246, 244, 239, 0), var(--ground) 42%); pointer-events: none; }
-.composer-box, .composer-hint, .starters { pointer-events: auto; }
-.starters { max-width: 640px; margin: 28px auto 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
-.starters[hidden] { display: none; }
-.starters::before { content: "From notes you added this week"; padding: 0 4px 6px; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-.starters li { border-top: 1px solid var(--hairline-bar); }
-.starters li:last-child { border-bottom: 1px solid var(--hairline-bar); }
-.starter { width: 100%; min-height: 44px; height: 44px; padding: 0 4px; border-radius: 0; background: transparent; display: flex; align-items: center; justify-content: flex-start; gap: 12px; text-align: left; color: var(--ink); }
-.starter:hover:not(:disabled) { background: var(--hover); }
-.starter-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--serif); font-size: 17px; }
-.starter-kind { flex: none; font-size: 12px; color: var(--muted); }
-.view-ask:not(.is-empty) .starters { display: none; }
-/* The phone list sits under the heading; the wide one under the question bar. */
-.starters-compact { display: none; }
+.composer-box, .composer-hint { pointer-events: auto; }
+/* The band of notes added in the last 7 days: the first thing on an empty Ask page, over the top edge so the heading and
+   the question bar keep their places. The items are in the track twice when they do not fit; the track slides one copy. */
+.ticker { position: absolute; top: 0; left: 0; right: 0; z-index: 1; height: 36px; overflow: hidden; background: var(--ink); color: var(--paper); }
+.view-ask:not(.is-empty) .ticker { display: none; }
+.ticker-track { display: flex; width: max-content; height: 100%; }
+.ticker-track.is-scrolling { animation: ticker-scroll var(--ticker-duration, 60s) linear infinite; }
+.ticker:hover .ticker-track, .ticker:focus-within .ticker-track { animation-play-state: paused; }
+@keyframes ticker-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.ticker-copy { display: flex; flex: none; height: 100%; }
+.ticker-item { flex: none; display: flex; align-items: center; gap: 5px; height: 36px; min-height: 36px; min-width: 0; padding: 0 12px; border-radius: 0; background: transparent; color: var(--paper); font-size: 13.5px; line-height: 1; white-space: nowrap; text-align: left; }
+.ticker-item:hover:not(:disabled) { background: transparent; }
+.ticker-item:focus-visible { outline: 2px solid var(--paper); outline-offset: -2px; background: rgba(255, 253, 248, 0.12); }
+.ticker-icon { display: block; color: rgba(255, 253, 248, 0.78); }
+.ticker-title, .ticker-author { display: block; line-height: 1; white-space: nowrap; }
+.ticker-author { margin-left: 3px; font-size: 12px; color: rgba(255, 253, 248, 0.64); }
+@media (prefers-reduced-motion: reduce) {
+  .ticker { overflow-x: auto; scrollbar-width: none; }
+  .ticker::-webkit-scrollbar { display: none; }
+  .ticker-track.is-scrolling { animation: none; }
+  .ticker-copy[aria-hidden="true"] { display: none; }
+}
 .composer-box { max-width: 680px; min-height: 56px; margin: 0 auto; border-radius: 22px; background: var(--paper); box-shadow: var(--shadow-paper); display: flex; align-items: flex-end; gap: 8px; padding: 10px 10px 10px 22px; }
 .composer-box:focus-within { box-shadow: 0 0 0 1px rgba(29, 28, 26, 0.22), var(--shadow-paper); }
 .app[data-sheet] .composer-box { max-width: 640px; }
@@ -306,35 +315,67 @@ input, textarea { background: var(--ground); border: 0; border-radius: 10px; pad
 .detect-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
 .detect-title { font-size: 14px; font-weight: 600; }
 .detect-sub { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
-/* Title and tags are folded away until asked for. */
-.more { margin-right: 6px; padding-top: 4px; border-top: 1px solid var(--hairline-bar); }
-.more summary { list-style: none; min-height: var(--ctl); display: flex; align-items: center; justify-content: space-between; font-size: 14px; color: var(--ink-soft); cursor: pointer; }
-.more summary::-webkit-details-marker { display: none; }
-.more summary .icon { width: 15px; height: 15px; transition: transform 150ms ease; }
-.more[open] summary .icon { transform: rotate(180deg); }
-.more-fields { display: grid; gap: 12px; padding: 4px 0 8px; }
-.field { display: grid; gap: 6px; font-size: 12.5px; color: var(--muted); }
-.field input { width: 100%; height: var(--ctl); min-height: 40px; padding: 0 13px; border-radius: 11px; font-size: 14.5px; color: var(--ink); }
-@media (pointer: coarse) { .field input { min-height: 44px; } }
-/* Tags are typed into one field and become small removable chips. */
-.tag-field { min-height: 40px; border-radius: 11px; background: var(--ground); padding: 5px 8px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
-@media (pointer: coarse) { .tag-field { min-height: 44px; } }
-.tag-field input { flex: 1; width: auto; min-width: 80px; height: 28px; min-height: 0; padding: 0 4px; background: transparent; border-radius: 0; font-size: 14px; color: var(--ink); }
-.tag-field input:focus-visible { box-shadow: none; }
-.tag-chips { display: contents; list-style: none; margin: 0; padding: 0; }
-.tag-chip { height: 28px; max-width: 100%; padding: 0 2px 0 10px; border-radius: 8px; background: var(--paper); box-shadow: 0 0 0 1px rgba(29, 28, 26, 0.08); display: inline-flex; align-items: center; gap: 2px; font-size: 13.5px; }
-.tag-pick { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
-.pick-list { list-style: none; margin: 0; padding: 0; display: contents; }
+/* The optional row on the Add card: Type, Author, Tags and Title. A set value is a chip, an unset field is a text button, and
+   the field being typed in has a fill. One type-ahead list serves all of them; it floats under the field, and on a phone,
+   while a field has focus, it sits in flow under the row (the card collapses around it). */
+.cf { margin-right: 6px; }
+.cf-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-top: 12px; border-top: 1px solid var(--hairline-bar); }
+.cf-slot, .cf-chips { display: contents; }
+.cf-chip { height: 28px; max-width: 100%; padding: 0 4px 0 10px; border-radius: 8px; background: var(--chip); display: inline-flex; align-items: center; gap: 2px; font-size: 13.5px; }
+.cf-chip.is-duplicate { background: var(--gap-bg); }
+.cf-chip-label { margin-right: 4px; color: var(--muted); }
+.cf-chip-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cf-remove { width: 22px; min-width: 22px; height: 22px; min-height: 22px; padding: 0; border-radius: 6px; background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.cf-remove:hover:not(:disabled) { background: var(--hover); }
+.cf-remove .icon, .cf-add .icon, .cf-create .icon { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+.cf-remove .icon { width: 12px; height: 12px; }
+.cf-add { height: 28px; min-height: 28px; min-width: 0; padding: 0 10px; border-radius: 8px; background: transparent; color: var(--ink-soft); font-size: 13.5px; display: inline-flex; align-items: center; gap: 5px; }
+.cf-add:hover:not(:disabled) { background: var(--row-active); }
+.cf-add .icon { width: 13px; height: 13px; }
+.cf-input { position: relative; height: 28px; padding: 0 10px; border-radius: 8px; background: var(--row-active); display: inline-flex; align-items: center; }
+.cf-input .cf-field { width: auto; min-width: 0; height: 28px; min-height: 0; padding: 0; border-radius: 0; background: transparent; font-size: 13.5px; color: var(--ink); }
+.cf-input .cf-field:focus-visible { box-shadow: none; }
+.cf-input .cf-field[readonly] { width: 9.5em; cursor: pointer; }
+#capture-slot-title .cf-input { flex: 1 1 240px; }
+#capture-slot-title .cf-field { width: 100%; }
+.cf-list-slot:not(:empty) { margin-top: 8px; }
+.cf-list { list-style: none; margin: 0; padding: 6px; border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-panel); }
+.cf-input > .cf-list { position: absolute; z-index: 5; top: calc(100% + 6px); left: 0; width: 220px; }
+.cf-list-slot > .cf-list { margin: 0 -4px; }
+.cf-option { height: 32px; padding: 0 10px; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; cursor: pointer; }
+.cf-option.is-active { background: var(--row-active); }
+.cf-option-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cf-hit { font-weight: 500; }
+.cf-option-count { flex: none; font-size: 12px; color: var(--muted); }
+.cf-create { justify-content: flex-start; color: var(--ink-soft); }
+.cf-create .cf-option-text { display: flex; align-items: center; gap: 8px; }
+.cf-create .icon { width: 13px; height: 13px; flex: none; }
+.cf-divider { height: 1px; margin: 4px 6px; background: var(--hairline-row); }
+/* While a field has focus on a phone: one line of the text, no detected-kind line, no Recent; the buttons that are left sit with Save under the list. */
+.cf-line, .cf-rest:empty { display: none; }
+.cf-rest { display: flex; align-items: center; gap: 4px; }
+.is-collapsed .capture-form > textarea, .is-collapsed .capture-preview, .is-collapsed .detect, .is-collapsed .attach, .is-collapsed .drop-hint, .is-collapsed .recent { display: none; }
+.is-collapsed .cf-line:not(:empty) { display: block; font-size: 16px; line-height: 1.55; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tags-inuse { margin-top: 28px; }
-.tags-inuse .pick-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.tags-inuse .pick-list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .pick-tag { height: 28px; padding: 0 10px; border-radius: 8px; background: var(--chip); color: var(--ink); font-size: 13.5px; display: inline-flex; align-items: center; }
 span.pick-tag { background: var(--paper); box-shadow: 0 0 0 1px rgba(29, 28, 26, 0.08); }
-.tag-chip.is-duplicate { background: var(--gap-bg); }
-.tag-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chip-remove { position: relative; width: 24px; min-width: 24px; height: 24px; min-height: 24px; padding: 0; background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; flex: none; }
 .chip-remove .icon { width: 12px; height: 12px; }
 .chip-remove::after { content: ""; position: absolute; inset: -2px; }
 @media (pointer: coarse) { .chip-remove::after { inset: -10px; } }
+@media (max-width: 899px) {
+  .cf-row { padding-top: 10px; gap: 4px 6px; }
+  .cf-chip { height: 32px; }
+  .cf-remove { width: 28px; min-width: 28px; height: 28px; min-height: 28px; }
+  .cf-add { height: 44px; min-height: 44px; }
+  .cf-input { height: 32px; }
+  .cf-input .cf-field { height: 32px; font-size: 16px; }
+  .cf-input .cf-field:not([readonly]) { min-width: 120px; }
+  .cf-list { padding: 4px; }
+  .cf-option { height: 44px; padding: 0 12px; }
+  .cf-divider { margin: 2px 8px; }
+}
 .card-actions { display: flex; align-items: center; gap: 10px; }
 .attach { width: var(--ctl); padding: 0; background: var(--ground); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; }
 .attach:hover:not(:disabled) { background: var(--chip); }
@@ -575,12 +616,6 @@ a.open-obsidian:hover { color: var(--ink); }
   .empty-state p { margin-top: 10px; font-size: 14.5px; }
   .composer { padding: 40px 12px calc(34px + env(safe-area-inset-bottom)); }
   .composer-box { min-height: 54px; border-radius: 27px; padding: 9px 9px 9px 20px; }
-  .view-ask.is-empty .starters { display: none; }
-  .view-ask.is-empty .starters-compact { display: flex; margin: 28px 0 0; }
-  .starters-compact::before { content: none; }
-  .starters-compact .starter { height: auto; min-height: 52px; padding: 0; }
-  .starters-compact .starter-label { white-space: normal; overflow: visible; line-height: 1.3; }
-  .starters-compact .starter-kind { display: none; }
   .view-add h1, .view-settings h1 { font-size: 32px; line-height: 1.1; letter-spacing: -0.024em; }
   .add-sub { margin-top: 8px; font-size: 14.5px; }
   .add-sub-more { display: none; }
@@ -909,19 +944,23 @@ h3.r-heading { font-size: 18.5px; }
    One passage per screen in a vertical pager. Long passages split into parts, shown with bars at the top. */
 .view-review { position: relative; overflow: hidden; background: var(--ground); }
 .review-pager { height: 100%; overflow-y: auto; scroll-snap-type: y mandatory; overscroll-behavior: contain; scrollbar-width: none; outline: none; }
-.review-page { position: relative; height: 100%; box-sizing: border-box; scroll-snap-align: start; scroll-snap-stop: always; display: flex; flex-direction: column; padding: 28px 24px 28px; cursor: default; }
-.review-bars { flex: none; display: flex; gap: 4px; width: 100%; max-width: 640px; margin: 0 auto; }
+/* The page is laid out from the bottom up (Review buttons boards, 390 x 844): the circles' band sits 164 px up from the foot
+   (reserved here as padding), the source line above it, and the passage box fills the rest. A shorter screen shrinks the
+   box, never the band; review.js sizes each part from the box's height, so keep these numbers and its constants in step. */
+.review-page { position: relative; height: 100%; box-sizing: border-box; scroll-snap-align: start; scroll-snap-stop: always; display: flex; flex-direction: column; padding: 0 24px calc(164px + env(safe-area-inset-bottom, 0px)); cursor: default; }
+.review-bars, .review-kicker { position: absolute; left: 0; right: 0; width: min(640px, calc(100% - 48px)); margin: 0 auto; }
+.review-bars { top: 20px; display: flex; gap: 4px; }
 .review-bar { flex: 1; height: 3px; border-radius: 2px; background: var(--handle); }
 .review-bar.is-done { background: var(--ink); }
-.review-body { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; width: 100%; max-width: 640px; margin: 0 auto; }
-.review-text { font-family: var(--serif); font-weight: 420; font-size: 18.5px; line-height: 1.55; letter-spacing: -0.003em; overflow-wrap: anywhere; }
+.review-body { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; width: 100%; max-width: 640px; margin: 100px auto 12px; }
+.review-page.has-bars .review-body { margin-top: 112px; }
+.review-text { font-family: var(--serif); font-weight: 420; font-size: 24px; line-height: 1.45; overflow-wrap: anywhere; }
 .review-p + .review-p { margin-top: 1em; }
-.review-page.is-short .review-text { font-size: 27px; line-height: 1.35; letter-spacing: -0.012em; }
 /* The reader's own note is a margin note: a thin rule and italic serif, quieter than the passage. */
-.review-note { margin-top: 28px; padding-left: 14px; border-left: 2px solid color-mix(in srgb, currentColor 30%, transparent); font-family: var(--serif); font-style: italic; font-size: 15px; line-height: 1.45; color: color-mix(in srgb, currentColor 72%, transparent); overflow-wrap: anywhere; white-space: pre-line; }
-.review-page.is-short .review-note { font-size: 17.5px; }
-.review-kicker { flex: none; width: 100%; max-width: 640px; margin: 22px auto 0; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-.review-source { flex: none; width: 100%; max-width: 640px; margin: 0 auto; padding-top: 18px; }
+.review-note { margin-top: 24px; padding-left: 14px; border-left: 2px solid color-mix(in srgb, currentColor 30%, transparent); font-family: var(--serif); font-style: italic; font-size: 17.5px; line-height: 1.45; color: color-mix(in srgb, currentColor 72%, transparent); overflow-wrap: anywhere; white-space: pre-line; }
+.review-kicker { top: 70px; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.review-page.has-bars .review-kicker { top: 86px; }
+.review-source { flex: none; box-sizing: border-box; height: 80px; width: 100%; max-width: 640px; margin: 0 auto; }
 .review-source-title { font-family: var(--serif); font-size: 17.5px; font-weight: 480; line-height: 1.3; }
 .review-source-author { margin-top: 4px; font-size: 12.5px; color: var(--muted); }
 /* A passage's screen is the colour of its source's card in Sources. */
@@ -940,8 +979,34 @@ h3.r-heading { font-size: 18.5px; }
 .review-prev { left: 12px; }
 .review-next { right: 12px; }
 .review-next .icon { transform: rotate(180deg); }
-@media (min-width: 900px) and (pointer: fine) { .review-arrow:not([hidden]) { display: inline-flex; } .review-page { padding: 40px 72px; } .review-page.is-short .review-text { font-size: 30px; } }
 @media (pointer: fine) { .review-pager { scroll-snap-type: none; } }
+/* Done (cross) and Again (bookmark): two quiet circles in the band at the foot (Review buttons I2). Chosen is a solid fill;
+   on a light page (not drawn on the board) it is the ink with the paper inside, the same inversion as the dark page. */
+.review-band { position: absolute; left: 0; right: 0; bottom: calc(112px + env(safe-area-inset-bottom, 0px)); display: flex; justify-content: space-around; padding: 0 60px; }
+.review-mark { width: 52px; height: 52px; padding: 0; border: 0; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: rgba(29, 28, 26, 0.05); color: var(--ink-soft); }
+.review-mark .icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round; }
+.review-mark:hover { background: rgba(29, 28, 26, 0.09); }
+.review-mark[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.review-mark-again[aria-pressed="true"] .icon { fill: currentColor; }
+.review-page.is-highlights .review-mark { background: rgba(255, 253, 248, 0.08); color: rgba(255, 253, 248, 0.8); }
+.review-page.is-highlights .review-mark:hover { background: rgba(255, 253, 248, 0.14); }
+.review-page.is-highlights .review-mark[aria-pressed="true"] { background: var(--paper); color: var(--cover-0); }
+.review-source { transition: opacity 120ms ease; }
+.view-review[data-ask="open"] .review-source { opacity: 0; }
+/* Desktop (Review buttons, Desktop board): kicker at 80, box from 110, source at 556, circles' band at 652 of 800. */
+@media (min-width: 900px) and (pointer: fine) {
+  .review-arrow:not([hidden]) { display: inline-flex; }
+  .review-page { padding: 0 72px 148px; }
+  .review-bars, .review-kicker { width: min(640px, calc(100% - 144px)); }
+  .review-kicker { top: 80px; }
+  .review-page.has-bars .review-kicker { top: 96px; }
+  .review-body { margin: 110px auto 16px; }
+  .review-page.has-bars .review-body { margin-top: 122px; }
+  .review-source { height: 96px; }
+  .review-band { bottom: 104px; justify-content: center; gap: 48px; padding: 0; }
+  .review-mark { width: 44px; height: 44px; }
+  .review-mark .icon { width: 18px; height: 18px; }
+}
 .review-tail[hidden] { display: none; }
 .review-tail { align-items: center; justify-content: center; text-align: center; gap: 12px; }
 .review-state { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center; background: var(--ground); }
@@ -950,15 +1015,99 @@ h3.r-heading { font-size: 18.5px; }
 .view-review[data-type="highlights"] .review-ask { background: var(--paper); color: var(--ink); }
 .view-review[data-type="highlights"] .review-ask:hover:not(:disabled) { background: var(--surface); }
 .app[data-review-tone="dark"] .topbar .icon-button { color: var(--paper); }
-.review-ask { position: absolute; z-index: 3; left: 50%; bottom: 64px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 10px; height: var(--ctl); padding: 0 22px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 14px; font-weight: 400; white-space: nowrap; box-shadow: 0 10px 28px rgba(29, 28, 26, 0.28); }
+.review-ask { position: absolute; z-index: 3; left: 50%; bottom: calc(176px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); display: inline-flex; align-items: center; gap: 10px; height: var(--ctl); padding: 0 22px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 14px; font-weight: 400; white-space: nowrap; box-shadow: 0 10px 28px rgba(29, 28, 26, 0.28); }
 .review-ask:hover:not(:disabled) { background: var(--ink-hover); }
 .review-ask[hidden] { display: none; }
 .review-ask .icon { width: 16px; height: 16px; }
+@media (min-width: 900px) and (pointer: fine) { .review-ask { bottom: 160px; } }
 @media (max-width: 899px) {
   .app[data-view="review"] .topbar { position: absolute; z-index: 5; }
-  .review-page { padding: 56px 24px 44px; }
-  .review-text { font-size: 17px; line-height: 1.55; }
-  .review-page.is-short .review-text { font-size: 27px; }
+  .app[data-view="review"][data-review-bars="true"] .topbar { top: 20px; }
+}
+
+/* Review in list mode: a top bar (back link and "n of N") pushes the bars, kicker and passage box down by 36 px. */
+.review-listbar { position: absolute; z-index: 5; left: 12px; right: 20px; top: 8px; display: flex; align-items: center; justify-content: space-between; }
+.review-list-back { height: 44px; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; border-radius: 8px; background: transparent; font-size: 14px; color: var(--ink-soft); }
+.review-list-back .icon { width: 18px; height: 18px; }
+.review-list-count { font-size: 12.5px; color: var(--muted); }
+.review-list-caption { position: absolute; left: 0; right: 0; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); margin: 0; text-align: center; font-size: 12px; color: var(--muted); }
+.review-listbar[hidden], .review-list-caption[hidden] { display: none; }
+.view-review[data-type="highlights"] .review-list-back { color: var(--paper); }
+.view-review[data-type="highlights"] .review-list-count { color: rgba(255, 253, 248, 0.72); }
+.view-review[data-type="highlights"] .review-list-caption { color: rgba(255, 253, 248, 0.6); }
+.view-review.is-list .review-bars { top: 56px; }
+.view-review.is-list .review-kicker { top: 106px; }
+.view-review.is-list .review-page.has-bars .review-kicker { top: 122px; }
+.view-review.is-list .review-body { margin-top: 136px; }
+.view-review.is-list .review-page.has-bars .review-body { margin-top: 148px; }
+.app[data-review-list="true"] .topbar { display: none; }
+@media (min-width: 900px) and (pointer: fine) {
+  .view-review.is-list .review-kicker { top: 116px; }
+  .view-review.is-list .review-page.has-bars .review-kicker { top: 132px; }
+  .view-review.is-list .review-body { margin-top: 146px; }
+  .view-review.is-list .review-page.has-bars .review-body { margin-top: 158px; }
+  .review-list-caption { bottom: 64px; }
+}
+
+/* Settings > Review (Review settings boards A1, A2, A3): the how-often card, the two rows, and a list as a page. */
+.review-intro { margin: 20px 0 0; font-size: 14.5px; line-height: 1.5; color: var(--muted); }
+.review-intro-short, .how-caption-short, .list-back-short { display: none; }
+.review-section { margin: 32px 0 10px; }
+.how-often { border-radius: 14px; background: var(--surface); box-shadow: var(--shadow-row); padding: 22px 24px 18px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.how-row { width: 320px; max-width: 100%; display: flex; align-items: center; justify-content: space-between; }
+.step-button { width: 32px; height: 32px; padding: 0; border-radius: 999px; background: var(--ground); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; }
+.step-button .icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+.step-button:disabled { opacity: 0.35; }
+.how-word { font-family: var(--serif); font-weight: 420; font-size: 40px; line-height: 1; }
+.how-dots { display: flex; gap: 6px; }
+.how-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--handle); }
+.how-dot.is-on { background: var(--ink); }
+.how-caption { font-size: 12.5px; color: var(--muted); }
+.mark-rows { border-radius: 14px; background: var(--surface); box-shadow: var(--shadow-row); overflow: hidden; }
+.mark-row { position: relative; width: 100%; height: 48px; padding: 0 14px 0 18px; display: flex; align-items: center; gap: 10px; border-radius: 0; background: transparent; font-size: 14px; text-align: left; }
+.mark-row + .mark-row::before { content: ""; position: absolute; left: 18px; right: 0; top: 0; height: 1px; background: rgba(29, 28, 26, 0.07); }
+.mark-row:hover:not(:disabled) { background: var(--row-active); }
+.mark-row-name { flex: 1; }
+.mark-row-count { color: var(--muted); }
+.mark-row .icon { width: 16px; height: 16px; color: var(--muted); transform: rotate(180deg); }
+.mark-note { margin: 10px 0 0; }
+.view-settings.is-list { padding-top: 40px; }
+.list-back { height: 32px; display: inline-flex; align-items: center; gap: 4px; margin-left: -6px; padding: 0 6px; border-radius: 8px; background: transparent; font-size: 14px; color: var(--ink-soft); }
+.list-back .icon { width: 16px; height: 16px; }
+.settings-list h1 { margin: 8px 0 0; }
+.list-sub { margin: 10px 0 24px; font-size: 14.5px; color: var(--muted); }
+.list-rows { list-style: none; margin: 0; padding: 0; }
+.list-row { display: flex; align-items: center; gap: 16px; margin: 0 -12px; padding: 0 12px; border-top: 1px solid rgba(29, 28, 26, 0.07); }
+.list-row:hover, .list-row:focus-within { background: var(--row-active); border-radius: 10px; border-top-color: transparent; }
+.list-open { flex: 1; min-width: 0; display: block; padding: 16px 0; border-radius: 0; background: transparent; text-align: left; }
+.list-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; font-family: var(--serif); font-size: 17.5px; line-height: 1.4; overflow-wrap: anywhere; }
+.list-meta { display: block; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+.list-acts { display: none; flex: none; gap: 4px; }
+.list-row:hover .list-acts, .list-row:focus-within .list-acts { display: flex; }
+.list-act { height: 28px; padding: 0 12px; border-radius: 999px; background: transparent; font-size: 12.5px; color: var(--ink-soft); }
+.list-act:hover:not(:disabled) { background: var(--hover); }
+.list-empty { margin: 8px 0; font-size: 14.5px; color: var(--muted); }
+.settings-list[hidden], .list-empty[hidden] { display: none; }
+@media (max-width: 899px) {
+  .review-intro { margin-top: 16px; font-size: 14px; }
+  .review-intro-full, .how-caption-full, .list-back-full { display: none; }
+  .review-intro-short, .how-caption-short, .list-back-short { display: inline; }
+  .review-section { margin: 26px 0 8px; }
+  .how-often { padding: 18px 14px 16px; gap: 8px; }
+  .how-row { width: 100%; }
+  .step-button { width: 44px; height: 44px; }
+  .step-button .icon { width: 18px; height: 18px; }
+  .how-word { font-size: 36px; }
+  .mark-row { height: 52px; padding: 0 12px 0 16px; }
+  .mark-row + .mark-row::before { left: 16px; }
+  .view-settings.is-list { padding-top: 8px; }
+  .list-back { height: 44px; margin-left: -8px; padding: 0 8px; }
+  .list-back .icon { width: 18px; height: 18px; }
+  .settings-list h1 { margin-top: 2px; }
+  .list-sub { margin: 8px 0 16px; font-size: 14px; }
+  .list-row { margin: 0 -20px; padding: 0 20px; }
+  .list-row:hover, .list-row:focus-within { border-radius: 0; }
+  .list-acts, .list-row:hover .list-acts, .list-row:focus-within .list-acts { display: none; }
 }
 
 /* The passage shown above the composer after "Ask about this" on a Review passage. */
@@ -983,6 +1132,7 @@ h3.r-heading { font-size: 18.5px; }
 .pick-action.is-bar .pick-action-button { width: 100%; height: var(--ctl); border-radius: 999px; }
 .pick-toast { position: fixed; z-index: 50; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 24px); padding: 10px 10px 10px 18px; border-radius: 22px; background: var(--toast); color: var(--toast-ink); font-size: 14px; }
 .pick-toast-undo { height: 32px; min-height: 32px; padding: 0 12px; border-radius: 999px; background: transparent; color: var(--toast-action); font-size: 14px; font-weight: 400; }
-.pick-list { margin: 16px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
+/* Only the reader's panel of picks stacks; the In use tags in Settings use a class of the same name and wrap in a row. */
+.sheet-scroll .pick-list { margin: 16px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
 .pick-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-top: 1px solid var(--hairline-row); }
 .pick-row-text { flex: 1; min-width: 0; margin: 0; font-family: var(--serif); font-size: 17px; line-height: 1.45; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }

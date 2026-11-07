@@ -129,6 +129,59 @@ class ListTests(unittest.TestCase):
         self.assertEqual(found[0]["vault_path"], rows[0]["relative_path"])
 
 
+class RecentTests(unittest.TestCase):
+    """The banner's list: sources added in the last seven days, newest first, with one author and no text."""
+
+    def recent(self, rows, **kwargs):
+        with mock.patch("app.api.sources.load_sources", return_value=rows):
+            return store(Conn()).recent(**kwargs)["sources"]
+
+    def aged(self, name, days, **changes):
+        base = next(item for item in ROWS if item["document_id"] == IDS[name])
+        return {**base, "added_at": datetime.now(timezone.utc) - timedelta(days=days),
+                "metadata": {**base["metadata"], **changes}}
+
+    def test_only_the_last_seven_days_appear_newest_first(self) -> None:
+        rows = [self.aged("book", 5), self.aged("note", 1), self.aged("article", 9), self.aged("quote", 2),
+                {**ROWS[1], "added_at": None}]
+        found = self.recent(rows)
+        self.assertEqual([item["id"] for item in found], [IDS["note"], IDS["quote"], IDS["book"]])
+        self.assertEqual(set(found[0]), {"id", "title", "type", "added_at"})
+        self.assertEqual(found[0]["title"], "Note title")
+        self.assertEqual(datetime.fromisoformat(found[0]["added_at"]).tzinfo is not None, True)
+
+    def test_the_limit_and_the_days_are_respected(self) -> None:
+        rows = [self.aged("book", 1), self.aged("note", 2), self.aged("quote", 3), self.aged("post", 20)]
+        self.assertEqual([item["id"] for item in self.recent(rows, limit=2)], [IDS["book"], IDS["note"]])
+        self.assertEqual(len(self.recent(rows, days=30)), 4)
+
+    def test_the_author_is_the_first_author_else_the_first_guest_and_absent_when_none(self) -> None:
+        rows = [self.aged("book", 1, authors=["Ada Stone", "Cy Moss"]),
+                self.aged("transcript", 2, authors=[], guests=["Ada Stone", "Dee Park"]),
+                self.aged("highlights", 3, authors=[]), self.aged("note", 4)]
+        found = {item["id"]: item for item in self.recent(rows)}
+        self.assertEqual(found[IDS["book"]]["author"], "Ada Stone")
+        self.assertEqual(found[IDS["transcript"]]["author"], "Ada Stone")
+        self.assertNotIn("author", found[IDS["highlights"]])
+        self.assertNotIn("author", found[IDS["note"]])
+
+    def test_the_platform_appears_only_when_known_and_a_post_is_a_social_post(self) -> None:
+        rows = [self.aged("post", 1), self.aged("note", 2)]
+        found = {item["id"]: item for item in self.recent(rows)}
+        self.assertEqual((found[IDS["post"]]["type"], found[IDS["post"]]["platform"]), ("social_post", "linkedin"))
+        self.assertNotIn("platform", found[IDS["note"]])
+
+    def test_no_description_tags_or_text_leave_the_server(self) -> None:
+        found = self.recent([self.aged("highlights", 1, description="Secret words.")])
+        self.assertEqual(set(found[0]) - {"author"}, {"id", "title", "type", "added_at"})
+
+    def test_an_empty_vault_or_a_missing_profile_returns_nothing(self) -> None:
+        from app.storage import StorageError
+        self.assertEqual(self.recent([]), [])
+        with mock.patch("app.api.sources.load_sources", side_effect=StorageError("no profile")):
+            self.assertEqual(store(Conn()).recent(), {"sources": []})
+
+
 def block(index, kind, text, **fields):
     return {"index": index, "kind": kind, "raw_text": text, "span": {"start_char": 0, "end_char": len(text)}, **fields}
 
@@ -280,8 +333,18 @@ class RouteTests(unittest.TestCase):
     def test_the_routes_need_a_session(self) -> None:
         client = self.client(Conn())
         self.assertEqual(client.get("/api/sources").status_code, 401)
+        self.assertEqual(client.get("/api/sources/recent").status_code, 401)
         self.assertEqual(client.get(f"/api/sources/{IDS['note']}").status_code, 401)
         self.assertEqual(client.get(f"/api/sources/{IDS['note']}/images/1?r=run-1").status_code, 401)
+
+    def test_recent_is_its_own_route_and_not_read_as_a_source_id(self) -> None:
+        rows = [{**ROWS[3], "added_at": datetime.now(timezone.utc) - timedelta(days=1)}]
+        with mock.patch("app.api.auth.SessionStore.check", return_value=mock.MagicMock(renewed=False)), \
+                mock.patch("app.api.sources.load_sources", return_value=rows):
+            response = self.client(Conn()).get("/api/sources/recent")
+        self.assertEqual(response.status_code, 200, response.text)
+        [item] = response.json()["sources"]
+        self.assertEqual((item["id"], item["title"], item["type"]), (IDS["note"], "Note title", "note"))
 
     def image(self, path, conn, fetched=("image/png", b"\x89PNG\r\n\x1a\nbytes"), renewed=False):
         fetch = mock.Mock(side_effect=fetched) if isinstance(fetched, Exception) else mock.Mock(return_value=fetched)

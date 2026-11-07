@@ -99,114 +99,9 @@
     $("capture-drop-hint").hidden = Boolean(found);
   }
 
-  // Tags are typed into one field and become removable chips. Splits on commas and new lines, trims, and drops
-  // repeats (any letter case); a repeat of a tag already there comes back in `duplicates` so its chip can flash.
-  // The server accepts ten tags, so a note keeps the first ten and `full` says some were left out.
-  const MAX_TAGS = 10;
-  function mergeTags(current, text) {
-    const tags = [...current];
-    const duplicates = [];
-    let full = false;
-    for (const part of String(text).split(/[,\n]/)) {
-      const tag = part.trim();
-      if (!tag) continue;
-      const same = tags.find((entry) => entry.toLowerCase() === tag.toLowerCase());
-      if (same) duplicates.push(same);
-      else if (tags.length >= MAX_TAGS) full = true;
-      else tags.push(tag);
-    }
-    return { tags, duplicates, full };
-  }
-
-  let tagList = [];
-  let flashTimer = null;
-
-  function renderTags(flash) {
-    const chips = $("capture-tag-chips");
-    chips.replaceChildren();
-    for (const tag of tagList) {
-      const chip = document.createElement("li");
-      chip.className = flash && flash.includes(tag) ? "tag-chip is-duplicate" : "tag-chip";
-      const name = document.createElement("span");
-      name.className = "tag-chip-name";
-      name.textContent = tag;
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.className = "chip-remove";
-      remove.setAttribute("aria-label", `Remove tag ${tag}`);
-      remove.append(icon("close"));
-      remove.addEventListener("click", () => {
-        tagList = tagList.filter((entry) => entry !== tag);
-        renderTags();
-        tagStatus(`Removed tag ${tag}`);
-        $("capture-tags").focus();
-      });
-      chip.append(name, remove);
-      chips.append(chip);
-    }
-    renderPick();
-    // A repeated tag flashes its chip for a moment; only the class changes back, so nothing is redrawn under the cursor.
-    clearTimeout(flashTimer);
-    if (flash && flash.length) {
-      flashTimer = setTimeout(() => { for (const chip of chips.querySelectorAll(".is-duplicate")) chip.classList.remove("is-duplicate"); }, 900);
-    }
-  }
-
-  // Approved tags under the field: one tap adds one as a chip. Tags already on the note are left out.
-  let approvedTags = [];
-  function renderPick() {
-    const free = approvedTags.filter((tag) => !tagList.some((entry) => entry.toLowerCase() === tag.toLowerCase())).slice(0, 8);
-    $("capture-tag-pick").hidden = free.length === 0;
-    $("capture-tag-pick-list").replaceChildren(...free.map((tag) => {
-      const item = document.createElement("li");
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "pick-tag";
-      button.textContent = tag;
-      button.setAttribute("aria-label", `Add tag ${tag}`);
-      button.addEventListener("click", () => {
-        const merged = mergeTags(tagList, tag);
-        tagList = merged.tags;
-        renderTags(merged.duplicates);
-        tagStatus(merged.full ? `A note keeps up to ${MAX_TAGS} tags` : `Added ${tag}`);
-        $("capture-tags").focus();
-      });
-      item.append(button);
-      return item;
-    }));
-  }
-
-  async function loadApprovedTags() {
-    try {
-      approvedTags = (await api("GET", "/api/tags")).approved || [];
-    } catch (error) {
-      approvedTags = [];
-    }
-    renderPick();
-  }
-
-  function tagStatus(text) {
-    $("capture-tag-status").textContent = text;
-  }
-
-  // Turns what is typed in the tag field into chips.
-  function commitTags() {
-    const field = $("capture-tags");
-    if (!field.value.trim()) { field.value = ""; return; }
-    const before = tagList.length;
-    const merged = mergeTags(tagList, field.value);
-    tagList = merged.tags;
-    field.value = "";
-    renderTags(merged.duplicates);
-    if (merged.full) tagStatus(`A note keeps up to ${MAX_TAGS} tags`);
-    else if (tagList.length > before) tagStatus(`Added ${tagList.slice(before).join(", ")}`);
-  }
-
-  function setTags(tags) {
-    tagList = tags;
-    $("capture-tags").value = "";
-    renderTags();
-  }
+  // The optional row (Type, Author, Tags, Title) and its type-ahead live in capture-row.js; this file reads it through
+  // window.captureRow.
+  const row = window.captureRow;
 
   function message(text, ok) {
     $("capture-message").textContent = text || "";
@@ -265,23 +160,22 @@
 
   function takeText(text, title, url) {
     $("capture-text").value = [text, url && !(text || "").includes(url) ? url : ""].filter(Boolean).join("\n");
-    if (title) { $("capture-title").value = title; $("capture-more").open = true; }
+    if (title) row.setTitle(title);
     refresh();
   }
 
   function requestBody() {
-    const title = $("capture-title").value.trim() || null;
-    // The chips plus anything still being typed in the tag field.
-    const tags = mergeTags(tagList, $("capture-tags").value).tags;
-    if (pending) return { ...pending, label: undefined, title, tags };
+    const extras = row.extras();
+    if (pending) return { ...pending, label: undefined, ...extras };
     const text = $("capture-text").value.trim();
     if (!text) return null;
     const kind = classify(text);
-    if (kind === "youtube" || kind === "markdown") return { kind, content: text, title, tags };
-    return { kind: "text", content: text, url: /^https?:\/\/\S+$/.test(text) ? text : null, title, tags };
+    if (kind === "youtube" || kind === "markdown") return { kind, content: text, ...extras };
+    return { kind: "text", content: text, url: /^https?:\/\/\S+$/.test(text) ? text : null, ...extras };
   }
 
   async function save() {
+    row.commitFields();  // valid text still typed in a field becomes a chip before sending
     const body = requestBody();
     if (body) await send(body, true);
   }
@@ -304,10 +198,8 @@
         $("capture-preview").hidden = true;
         $("capture-kind").value = "text";
         $("capture-text").value = "";
-        $("capture-title").value = "";
-        setTags([]);
+        row.clear();
         $("capture-file").value = "";
-        $("capture-more").open = false;
         leaveGap();
       }
       message("Saving… it appears under Recent below.", true);
@@ -530,7 +422,7 @@
   let keepGap = false;
   async function show() {
     if (keepGap) keepGap = false; else leaveGap();
-    loadApprovedTags();
+    row.loadChoices();
     try {
       const { captures, enabled, vault_name: vaultName } = await api("GET", "/api/captures");
       state.captureEnabled = enabled;
@@ -565,15 +457,13 @@
     pollers.clear();
     $("capture-kind").value = "text";
     for (const id of ["capture-text", "capture-title", "capture-tags", "capture-file"]) $(id).value = "";
-    setTags([]);
+    row.reset();
     $("capture-preview").hidden = true;
     $("capture-preview").removeAttribute("src");
-    $("capture-more").open = false;
     $("capture-list").replaceChildren();
     $("recent-count").hidden = true;
     $("toast").classList.remove("is-shown");
     $("toast").querySelector(".toast-title").textContent = "";
-    clearTimeout(flashTimer);
     endDrag();
     leaveGap();
     message("");
@@ -643,24 +533,7 @@
   document.addEventListener("DOMContentLoaded", () => {
     $("capture-form").addEventListener("submit", (event) => { event.preventDefault(); save(); });
     $("gap-back").addEventListener("click", backToAnswer);
-    // The tag field: Enter and comma make a chip (Enter never sends the form); Backspace in an empty field removes the last.
-    const tagField = $("capture-tags");
-    tagField.addEventListener("keydown", (event) => {
-      if (event.isComposing) return;
-      if (event.key === "Enter" || event.key === ",") { event.preventDefault(); commitTags(); }
-      else if (event.key === "Backspace" && !tagField.value && tagList.length) {
-        const removed = tagList[tagList.length - 1];
-        setTags(tagList.slice(0, -1));
-        tagStatus(`Removed tag ${removed}`);
-      }
-    });
-    tagField.addEventListener("input", () => { if (/[,\n]/.test(tagField.value)) commitTags(); });
-    // Leaving the field for a chip's remove button or for Save must not redraw the chips first (requestBody takes typed text too).
-    tagField.addEventListener("blur", (event) => {
-      const next = event.relatedTarget;
-      if (next && (next === $("capture-save") || $("capture-tag-field").contains(next))) return;
-      commitTags();
-    });
+    row.init({ lineText: () => (pending ? pending.label.replace(/^Screenshot: /, "") : $("capture-text").value.trim().replace(/\s+/g, " ")) });
     setInterval(() => { if (!$("capture").hidden) refreshTimes(); }, 60000);
     $("capture-file").addEventListener("change", (event) => takeFile(event.target.files[0]));
     $("capture-attach").addEventListener("click", () => $("capture-file").click());
