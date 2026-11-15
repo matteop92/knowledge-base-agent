@@ -18,7 +18,8 @@ try:
 except ImportError:  # pragma: no cover - fastapi is an optional server dependency
     TestClient = None
 
-from app.api.capture import CaptureCostError, Classification
+from app.api.capture import CaptureCostError, Classification, failure_reason
+from app.models.client import ModelClientError
 from app.capture.notes import CaptureError, Draft
 from tests.api.test_api import EMAIL, FakeAuth, FakeEngine, settings
 
@@ -374,6 +375,15 @@ class CaptureApiTests(unittest.TestCase):
         job = self.finished(self.screenshot().json()["capture_id"])
         self.assertEqual(job["status"], "failed")
         self.assertEqual(self.spend(), [("vision", Decimal("0.02000000"))])
+
+    def test_a_failed_vision_call_logs_its_stage_and_reason(self):
+        self.extractor.fail = CaptureCostError(0.02, failure_reason(ModelClientError("OpenRouter returned HTTP 400")))
+        with self.assertLogs("knowledge.api.capture", level="WARNING") as logs:
+            self.finished(self.screenshot().json()["capture_id"])
+        self.assertIn("stage=vision reason=ModelClientError: OpenRouter returned HTTP 400", "\n".join(logs.output))
+
+    def test_a_failure_reason_never_carries_other_errors_text(self):
+        self.assertEqual(failure_reason(ValueError("model output with private text")), "ValueError")
 
     def test_a_youtube_link_becomes_a_transcript_note(self):
         self.classifier.properties = {"source_type": "note", "tags": []}
