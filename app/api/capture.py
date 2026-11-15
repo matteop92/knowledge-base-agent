@@ -102,8 +102,8 @@ class OpenRouterClassifier:
         mark = usage_mark(client)
         try:
             result = classify_properties(parsed, tag_list, client, model)
-        except Exception:
-            raise CaptureCostError(measured_cost(client, mark, worst)) from None
+        except Exception as exc:
+            raise CaptureCostError(measured_cost(client, mark, worst), failure_reason(exc)) from None
         return Classification(result.properties, measured_cost(client, mark, worst))
 
 
@@ -155,8 +155,8 @@ class YouTubeTranscriber:
         except CaptureError as exc:
             exc.cost_usd = captions.cost_usd
             raise
-        except Exception:
-            raise CaptureCostError(captions.cost_usd) from None
+        except Exception as exc:
+            raise CaptureCostError(captions.cost_usd, failure_reason(exc)) from None
         finally:
             # Which way the transcript went, so a server that YouTube blocks shows in the log; never titles.
             log.info("youtube transcript source=%s cost_usd=%.4f", captions.source, captions.cost_usd)
@@ -195,17 +195,28 @@ class OpenRouterExtractor:
         except CaptureError as exc:
             exc.cost_usd = measured_cost(client, mark, worst)
             raise
-        except Exception:
-            raise CaptureCostError(measured_cost(client, mark, worst)) from None
+        except Exception as exc:
+            raise CaptureCostError(measured_cost(client, mark, worst), failure_reason(exc)) from None
         return draft, measured_cost(client, mark, worst)
 
 
 class CaptureCostError(Exception):
-    """Classification failed after it may have been billed; carries what it cost."""
+    """A model call failed after it may have been billed; carries what it cost and why it failed."""
 
-    def __init__(self, cost_usd: float) -> None:
+    def __init__(self, cost_usd: float, reason: str = "") -> None:
         super().__init__("classification failed")
         self.cost_usd = cost_usd
+        self.reason = reason
+
+
+def failure_reason(exc: BaseException) -> str:
+    """Why a model call failed, safe for the log: model client messages never hold source text, others only their type."""
+    from app.models.client import ModelClientError
+    from app.models.gemini import GeminiError
+
+    if isinstance(exc, (ModelClientError, GeminiError)):
+        return f"{type(exc).__name__}: {exc}"
+    return type(exc).__name__
 
 
 class CaptureJobs:
@@ -327,7 +338,7 @@ class CaptureJobs:
             self._finish(job_id, status="failed", error="the daily spending cap was reached", spend=spend, title=title)
             return
         except CaptureCostError as exc:
-            log.warning("capture model call failed job=%s", job_id)
+            log.warning("capture model call failed job=%s stage=%s reason=%s", job_id, stage, exc.reason or "unknown")
             spend[stage] = exc.cost_usd
             self._finish(job_id, status="failed", error="the note could not be read or classified; try again",
                          spend=spend, title=title)
