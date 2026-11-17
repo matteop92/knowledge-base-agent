@@ -1,7 +1,7 @@
 """Captured text and Markdown become new notes in the vault's existing Knowledge folders.
 
 The properties classifier decides what kind of note it is, and the kind picks the folder: YouTube to
-Transcripts, full articles to Articles, book highlights to Book Highlights, everything else (tweets,
+Transcripts, full articles to Articles, book highlights to Book Highlights, AI prompts to Prompts, everything else (tweets,
 LinkedIn posts, short text, anything uncertain) to Notes. Nothing is ever written to Books.
 
 Safety: the server only ever creates new files here. Every write uses exclusive create, so an existing
@@ -25,9 +25,9 @@ from app.ingestion.contracts import ParsedDocument
 from app.ingestion.router import route_source
 from app.ingestion.source_reader import capture_source
 
-FOLDER_BY_TYPE = {"transcript": "Transcripts", "article": "Articles", "highlights": "Book Highlights"}
+FOLDER_BY_TYPE = {"transcript": "Transcripts", "article": "Articles", "highlights": "Book Highlights", "prompt": "Prompts"}
 DEFAULT_FOLDER = "Notes"
-CAPTURE_FOLDERS = ("Transcripts", "Articles", "Book Highlights", "Notes")
+CAPTURE_FOLDERS = ("Transcripts", "Articles", "Book Highlights", "Notes", "Prompts")
 MAX_TEXT_BYTES = 2_000_000
 MAX_TITLE_CHARS = 200
 SLUG_CHARS = 60

@@ -243,9 +243,13 @@ class ReviewStore:
             text, note = _highlight(blocks, start)
         else:
             text = _whole(blocks, start, end)
-        return {"passage_key": key, "round": round_, "text": text, "note": note, "title": title, "author": author,
-                "source_id": document_id, "type": "post" if type_ == "social_post" else type_, "locator": locator,
-                "mark": mark, "again": again}
+        passage = {"passage_key": key, "round": round_, "text": text, "note": note, "title": title, "author": author,
+                   "source_id": document_id, "type": "post" if type_ == "social_post" else type_, "locator": locator,
+                   "mark": mark, "again": again}
+        # A prompt's Copy hands over the words as saved (list markers, code fences and all), not the reader's cleaned text.
+        if type_ == "prompt":
+            passage["copy_text"] = _clean(raw)
+        return passage
 
     def shown(self, passage_key: str, round_: int, again: bool = False) -> None:
         """Log a passage as shown in `round_`. The round may be the current one, the one before (a passage held

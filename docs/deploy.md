@@ -88,7 +88,7 @@ Variables (all optional except the switch):
 | --- | --- | --- |
 | `KNOWLEDGE_SYNC_ENABLED` | `false` | Turn on the sync loop and the scheduler. Set to `true` only after the one-time setup below. |
 | `KNOWLEDGE_SYNC_MODE` | `pull-only` | `pull-only` or `bidirectional`; must match the sync tool's mode. Captures are refused unless it is `bidirectional`. |
-| `KNOWLEDGE_CAPTURE_FOLDER` | `Knowledge` | Folder whose `Transcripts`, `Articles`, `Book Highlights` and `Notes` subfolders receive new capture notes (new files only). |
+| `KNOWLEDGE_CAPTURE_FOLDER` | `Knowledge` | Folder whose `Transcripts`, `Articles`, `Book Highlights`, `Notes` and `Prompts` subfolders receive new capture notes (new files only). |
 | `GEMINI_API_KEY` | none | Google AI Studio key for YouTube transcripts when a video has no usable English auto captions or YouTube refuses the server. Use a **free-tier** key (a project without billing): its use is not recorded in the spend ledger. Without it, YouTube captures fail with a clear message. |
 | `KNOWLEDGE_VISION_MODEL` | `openai/gpt-6-luna` | Model that reads screenshots; must be in the pinned zero-retention routes in `app/models/routes.py`. |
 | `KNOWLEDGE_SPEAKER_MODELS` | `deepseek/deepseek-v4.1-flash,openai/gpt-6-luna` | Models, tried in order, that name the speakers in a YouTube video's own captions; each must be in the pinned zero-retention routes in `app/models/routes.py`. Under a cent per video, recorded as `transcript` spend. |

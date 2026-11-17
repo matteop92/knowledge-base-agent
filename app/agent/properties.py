@@ -10,7 +10,7 @@ its first passage.
 
 Properties follow the search labels (`app.storage.search.source_label`): the file's own
 frontmatter wins and generated properties fill only what it leaves out. A source's type is
-its own type or source_type property, else its folder (Articles, Transcripts, Books, Book Highlights, Notes),
+its own type or source_type property, else its folder (Articles, Transcripts, Books, Book Highlights, Notes, Prompts),
 else the classifier's guess.
 """
 
@@ -28,7 +28,7 @@ from app.storage.records import FusedHit, SearchHit, SourcePassage
 from app.storage.search import source_label
 
 FOLDER_TYPES = {"articles": "article", "transcripts": "transcript", "books": "book",
-                "book highlights": "highlights", "notes": "note"}
+                "book highlights": "highlights", "notes": "note", "prompts": "prompt"}
 MAX_CITED = 12  # listed sources cited by their first passage; the rest are named only
 
 

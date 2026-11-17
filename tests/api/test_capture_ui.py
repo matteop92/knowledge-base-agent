@@ -19,9 +19,9 @@ def run(scenario: str):
 
 @unittest.skipUnless(shutil.which("node"), "needs node")
 class CaptureRowTests(unittest.TestCase):
-    def test_type_opens_the_ten_names_a_pick_shows_the_chip_and_removing_it_clears_the_request(self) -> None:
+    def test_type_opens_the_eleven_names_a_pick_shows_the_chip_and_removing_it_clears_the_request(self) -> None:
         out = run("typePickShowsTheChipAndRemovingItClearsTheRequest")
-        self.assertEqual(out["opened"]["list"]["rows"], ["Article", "Book", "Book highlights", "Meeting", "Note", "Other", "Post", "Quote", "Reference", "Transcript"])
+        self.assertEqual(out["opened"]["list"]["rows"], ["Article", "Book", "Book highlights", "Meeting", "Note", "Other", "Post", "Prompt", "Quote", "Reference", "Transcript"])
         self.assertEqual((out["opened"]["expanded"], out["opened"]["wrapShown"], out["opened"]["buttonHidden"]), ("true", True, True))
         self.assertEqual(out["opened"]["list"]["in"], "cf-input", "on desktop the list floats under the field")
         self.assertEqual(out["picked"], {"chips": ["TypePost"], "buttonHidden": True, "listShown": False})

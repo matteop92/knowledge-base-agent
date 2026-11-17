@@ -139,13 +139,44 @@ class ReviewScreenTests(unittest.TestCase):
         self.assertEqual(out["opened"], ["done"])
         self.assertIn("Nothing to review yet", out["plain"])
 
+    def test_a_prompt_is_dark_monospace_text_with_marked_blanks_a_cursor_and_copy(self) -> None:
+        out = run("promptPage")
+        self.assertEqual((out["cls"], out["kicker"], out["tone"]), (True, "Prompt", "dark"))
+        # Drawn as the text to paste: Markdown markers stay, a "›" before it and a cursor after it.
+        self.assertEqual(out["paras"], ["› Rewrite the draft for {audience} in plain English.", "Draft: [DRAFT] and **keep** it."])
+        self.assertEqual((out["blanks"], out["marks"], out["carets"]), (["{audience}", "[DRAFT]"], 1, 1))
+        self.assertEqual(out["copyLabel"], "Copy prompt")
+        self.assertEqual(out["copied"], ["- Rewrite the draft for {audience}."])  # the saved words, from copy_text
+        self.assertEqual(out["notices"], ["Prompt copied."])
+
+    def test_a_long_prompt_has_its_mark_on_the_first_part_its_cursor_on_the_last_and_copy_takes_every_part(self) -> None:
+        out = run("multiPartPrompt")
+        self.assertGreater(out["count"], 1)
+        self.assertEqual(out["parts"], [{"marks": 1, "carets": 0}] + [{"marks": 0, "carets": 0}] * (out["count"] - 2)
+                         + [{"marks": 0, "carets": 1}])
+        self.assertTrue(out["whole"])  # no copy_text: the whole passage, not the part on screen
+
+    def test_a_copy_the_browser_refuses_says_so(self) -> None:
+        self.assertEqual(run("copyFails"), {"notices": ["The prompt was not copied. Try again."]})
+
+    def test_the_last_passage_of_a_pool_is_logged_so_review_does_not_wait_for_good(self) -> None:
+        calls = run("lastPassageDoesNotStall")["calls"]
+        self.assertIn(["POST", "/api/review/shown", "2"], calls)
+        self.assertEqual(calls[-1][:2], ["GET", "/api/review/next"])  # and the next round is asked for
+
+    def test_a_mark_on_the_last_passage_asks_for_more(self) -> None:
+        out = run("markOnLastPassageMovesOn")
+        self.assertEqual(out["calls"][-1], ["GET", "/api/review/next"])
+        self.assertEqual(out["pages"], 2)
+
     def test_the_note_shows_on_the_last_part_only(self) -> None:
         out = run("noteOnlyOnLastPart")
         self.assertEqual(out["notes"], [False] * (out["parts"] - 1) + [True])
 
-    def test_ae2_a_passage_on_screen_for_a_second_is_logged_and_one_never_seen_is_not(self) -> None:
+    def test_a_passage_seen_for_a_second_is_logged_only_once_the_reader_moves_on(self) -> None:
         out = run("shownOnlyWhenOnScreen")
         self.assertEqual(out["timerMs"], 1000)
+        self.assertEqual((out["whileOnIt"], out["afterReturn"]), (0, 0))
         self.assertEqual(out["calls"], [["POST", "/api/review/shown", {"passage_key": "0" * 31 + "1", "round": 1}]])
         self.assertEqual(out["pages"], 2)
 
@@ -201,13 +232,13 @@ class ReviewScreenTests(unittest.TestCase):
 
     def test_a_failed_shown_call_is_retried_and_the_passage_stays_held_until_it_lands(self) -> None:
         out = run("failedShownIsRetried")
-        self.assertEqual(out["first"], {"posts": 1, "logged": False})
+        self.assertEqual(out["first"], {"posts": 1, "logged": False, "held": True})
         self.assertEqual((out["posts"], out["logged"]), (2, True))
 
     def test_each_source_type_colours_its_screen_and_names_itself_and_its_source(self) -> None:
         out = run("typesStyleTheScreen")
-        self.assertEqual(out["classes"], [["is-highlights"], ["is-quote"], ["is-note"], ["is-post"], ["is-note"]])
-        self.assertEqual(out["kickers"], ["Highlights", "Quote", "Note", "Post", "Note"])
+        self.assertEqual(out["classes"], [["is-highlights"], ["is-quote"], ["is-note"], ["is-post"], ["is-note"], ["is-prompt"]])
+        self.assertEqual(out["kickers"], ["Highlights", "Quote", "Note", "Post", "Note", "Prompt"])
         self.assertEqual(out["source"], ["Title 1", "Ada Stone"])
         self.assertEqual((out["type"], out["tone"]), ("post", "light"))
 

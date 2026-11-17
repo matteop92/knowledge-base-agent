@@ -28,7 +28,7 @@ from app.tag_aliases import aliases
 
 
 log = logging.getLogger("knowledge.properties")
-PROMPT_VERSION = "properties_v5"
+PROMPT_VERSION = "properties_v6"
 PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / f"{PROMPT_VERSION}.md"
 DEFAULT_MODEL = "openai/gpt-6-luna"
 MODEL_VERSION = "accepted-2026-10-17"
@@ -39,7 +39,7 @@ MAX_TAGS = 3  # per note, from the approved list
 MAX_SUGGESTED_TAGS = 5  # free suggestions while drafting the list
 FIELDS = ("source_type", "tags", "people", "date", "description", "language")
 DEFAULT_SOURCE_TYPES = ("transcript", "book", "highlights", "article", "note", "social_post", "quote",
-                        "meeting", "reference", "other")
+                        "prompt", "meeting", "reference", "other")
 TAG = re.compile(r"^[a-z0-9][a-z0-9 &/-]{0,39}$")
 NO_DESCRIPTION_TYPES = ("social_post", "quote")  # a post or a quote is short enough to read as it is
 

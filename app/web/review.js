@@ -2,7 +2,8 @@
 
 // Review: one saved passage at a time, in an endless shuffle. A vertical pager shows one passage per screen; a long passage
 // splits into parts that fit one screen (story-style bars at the top; tap the edges on a phone, arrow buttons or keys on a
-// computer). A passage counts as shown after about a second on screen. "Ask about this" opens Ask limited to the passage's
+// computer). A passage counts as shown once it has been on screen for about a second and the reader moves on to another
+// passage (a scroll or a mark), so leaving Review or reloading on any device brings back the same passage. "Ask about this" opens Ask limited to the passage's
 // source. Every piece of text from the server is drawn with textContent or the reader's inline drawer, never as HTML.
 (() => {
   const NOTE_OWN_WORDS = 60;    // a note longer than this gets a last part of its own
@@ -22,7 +23,8 @@
   const MAX_HELD = 30;          // the most keys the server accepts in one request
 
   // What kind of source a passage comes from sets the colour of the whole screen and its label (Sources uses the same looks).
-  const TYPES = { highlights: ["Highlights", "dark"], quote: ["Quote", "light"], note: ["Note", "light"], post: ["Post", "light"] };
+  const TYPES = { highlights: ["Highlights", "dark"], quote: ["Quote", "light"], note: ["Note", "light"], post: ["Post", "light"],
+    prompt: ["Prompt", "dark"] };
   const typeOf = (passage) => (Object.hasOwn(TYPES, passage.type) ? passage.type : "note");
 
   const view = { pages: [], current: 0, fetching: false, failed: false, stalled: false, loaded: false,
@@ -107,7 +109,11 @@
   function drawPart(page) {
     const { parts, part, passage } = page;
     const body = page.el.querySelector(".review-text");
-    const nodes = parts[part].split(/\n\n+/).filter(Boolean).map((paragraph) => inlineText("p", "review-p", paragraph));
+    const paragraphs = parts[part].split(/\n\n+/).filter(Boolean);
+    const nodes = page.type === "prompt"
+      ? paragraphs.map((paragraph, index) => promptParagraph(paragraph, part === 0 && index === 0,
+        part === parts.length - 1 && index === paragraphs.length - 1))
+      : paragraphs.map((paragraph) => inlineText("p", "review-p", paragraph));
     body.replaceChildren(...nodes);
     const note = page.el.querySelector(".review-note");
     note.replaceChildren();
@@ -120,6 +126,38 @@
     });
     page.el.querySelector(".review-prev").disabled = part === 0;
     page.el.querySelector(".review-next").disabled = part === parts.length - 1;
+  }
+
+  // A prompt is drawn as the text you would paste: no Markdown styling, a "›" before it, blanks in the accent colour and a
+  // cursor after its last part.
+  function promptParagraph(paragraph, first, last) {
+    const p = h("p", "review-p");
+    if (first) p.append(h("span", "review-prompt-mark", "› "));
+    for (const run of window.promptText.runs(paragraph)) p.append(h("span", run.blank ? "review-blank" : "", run.text));
+    if (last) {
+      const caret = h("span", "review-caret");
+      caret.setAttribute("aria-hidden", "true");
+      p.append(caret);
+    }
+    return p;
+  }
+
+  // Copy hands the whole prompt (every part, as saved) to the clipboard, ready to paste into an AI.
+  function copyButton(passage) {
+    const button = h("button", "review-copy");
+    button.type = "button";
+    button.setAttribute("aria-label", "Copy prompt");
+    button.append(icon("copy"), h("span", "review-copy-label", "Copy"));
+    button.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      try {
+        await navigator.clipboard.writeText(passage.copy_text || passage.text);
+        if (typeof notify === "function") notify("Prompt copied.");
+      } catch (error) {
+        if (typeof notify === "function") notify("The prompt was not copied. Try again.");
+      }
+    });
+    return button;
   }
 
   function buildPage(passage) {
@@ -135,6 +173,7 @@
     const kicker = h("div", "review-kicker", TYPES[type][0]);
     const body = h("div", "review-body");
     body.append(h("div", "review-text"), h("div", "review-note"));
+    if (type === "prompt") body.append(copyButton(passage));
     const source = h("div", "review-source");
     source.append(h("div", "review-source-title", passage.title));
     const byline = [passage.author, passage.locator].filter(Boolean).join(" · ");
@@ -201,6 +240,8 @@
         for (const held of view.saved ? view.saved.pages : []) {
           if (held.passage.passage_key === page.passage.passage_key) { held.mark = next; paintMarks(held); }
         }
+        // A marked passage has left the shuffle, so the server may now have something new for a page that was waiting.
+        if (next && !view.list) { view.stalled = false; maybeFetch(); }
       } catch (error) {
         page.mark = before;
         paintMarks(page);
@@ -402,9 +443,10 @@
   }
 
   // Fetching ----------------------------------------------------------------------------------------
-  // What the server must not hand out again: passages on screen or ahead that are not yet logged. Passages scrolled
-  // past without a second on screen are let go (the list is capped at what the server accepts).
-  const heldKeys = () => view.pages.filter((page, index) => !page.logged && index >= view.current)
+  // What the server must not hand out again: passages on screen or ahead that are not yet logged, and seen ones whose
+  // shown call has not landed. Passages scrolled past without a second on screen are let go (the list is capped at what
+  // the server accepts).
+  const heldKeys = () => view.pages.filter((page, index) => !page.logged && (index >= view.current || page.seen))
     .map((page) => page.passage.passage_key).slice(-MAX_HELD);
 
   async function fetchMore() {
@@ -421,7 +463,7 @@
       view.loaded = true;
       for (const passage of passages) if (!view.pages.some((p) => !p.logged && p.passage.passage_key === passage.passage_key)) addPage(passage);
       // Nothing new while passages are held: wait for one to be shown. Nothing and nothing held: the pool is empty.
-      if (!passages.length) view.stalled = true;
+      if (!passages.length) { view.stalled = true; logLast(); }
       if (!view.pages.length) setState(await emptyKind()); else setState(null);
     } catch (error) {
       if (error.status === 401) return;
@@ -447,10 +489,24 @@
     if (view.pages.length - 1 - view.current < AHEAD) fetchMore();
   }
 
-  // Shown means on screen ----------------------------------------------------------------------------
+  // Shown means seen, then left ----------------------------------------------------------------------
+  // A second on screen makes a passage seen; it is logged as shown only when the reader moves to another passage. Until
+  // then it stays first in line, so switching sections, closing the app or opening Review elsewhere shows it again.
   function startDwell(page) {
-    if (view.list || page.logged || page.timer !== null) return;  // list mode logs nothing as shown
-    page.timer = setTimeout(() => { page.timer = null; markShown(page); }, DWELL_MS);
+    if (view.list || page.seen || page.timer !== null) return;  // list mode logs nothing as shown
+    page.timer = setTimeout(() => { page.timer = null; page.seen = true; logLast(); }, DWELL_MS);
+  }
+
+  // The one exception to "logged when left": on the last page, with the server out of new passages, there is nowhere to
+  // move to. The seen last passage is logged so the next round can start instead of Review waiting for good.
+  function logLast() {
+    const page = view.pages[view.current];
+    if (!view.list && view.stalled && page && page.seen && !page.logged && view.current === view.pages.length - 1) markShown(page);
+  }
+
+  // Log every seen passage the reader has left. A call that failed is tried again on the next move.
+  function logLeft() {
+    view.pages.forEach((page, index) => { if (page.seen && !page.logged && index !== view.current) markShown(page); });
   }
 
   function stopDwell(page) {
@@ -466,7 +522,7 @@
       await api("POST", "/api/review/shown", body);
       page.logged = true;
     } catch (error) {
-      page.posting = false;  // the next second on screen tries again
+      page.posting = false;  // the next move tries again
       if (error.status === 401) return;
       if (error.status === 400 || error.status === 404) page.logged = true;  // the server will never take it
     }
@@ -483,6 +539,7 @@
         const index = view.pages.indexOf(page);
         if (index !== view.current || !page.announced) {
           view.current = index;
+          if (!view.list) logLeft();
           page.announced = true;
           if (view.list) updateListBar();
           hideAsk();

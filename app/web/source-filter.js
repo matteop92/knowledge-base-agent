@@ -4,7 +4,7 @@
 // A source row is the one the server sends: { type, title, authors, guests, tags, added: "YYYY-MM-DD", ... }.
 (() => {
   const TYPE_LABELS = { highlights: "Book highlights", post: "Social posts", note: "Notes", transcript: "Transcripts",
-    article: "Articles", quote: "Quotes", book: "Books" };
+    article: "Articles", quote: "Quotes", book: "Books", prompt: "Prompts" };
   const PRESETS = [{ key: "today", label: "Last day", days: 1 }, { key: "week", label: "Past week", days: 7 }, { key: "month", label: "Past 30 days", days: 30 },
     { key: "year", label: "Past year", days: 365 }];
   const DAY = 86400000;

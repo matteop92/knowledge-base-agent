@@ -50,6 +50,7 @@ class PropertyTests(unittest.TestCase):
         self.assertEqual(source_type({"source_type": "transcript"}, "Knowledge/Notes/a.md", own), "social_post")
         self.assertEqual(source_type({"source_type": "transcript"}, "Knowledge/Notes/a.md", {"type": "Book"}), "book")
         self.assertEqual(source_type({"source_type": "transcript"}, "Knowledge/Notes/a.md", {}), "note")
+        self.assertEqual(source_type({"source_type": "note"}, "Knowledge/Prompts/a.md", {}), "prompt")
 
     def test_frontmatter_type_wins_and_a_generated_date_fills_a_missing_one(self):
         typed = source("Knowledge/Notes/typed.md", title="Typed", frontmatter={"type": "Article"},

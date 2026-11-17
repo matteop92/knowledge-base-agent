@@ -24,7 +24,7 @@ class ShellSourceTests(unittest.TestCase):
         self.assertIn('url.startsWith("obsidian://")', script)
 
     def test_capture_and_worker_scripts_never_insert_html(self) -> None:
-        for name in ("capture.js", "capture-fields.js", "capture-row.js", "settings.js", "sources.js", "review.js", "review-settings.js", "reader-blocks.js", "reader-picks.js", "source-filter.js", "ticker.js", "sw.js"):
+        for name in ("capture.js", "capture-fields.js", "capture-row.js", "settings.js", "sources.js", "review.js", "review-settings.js", "reader-blocks.js", "reader-picks.js", "source-filter.js", "prompt-text.js", "ticker.js", "sw.js"):
             script = (WEB / name).read_text(encoding="utf-8")
             for unsafe in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
                 with self.subTest(name=name, unsafe=unsafe):
@@ -53,7 +53,7 @@ class ShellSourceTests(unittest.TestCase):
 
     def test_shell_cache_is_bumped_and_the_sidebar_choice_is_remembered(self) -> None:
         worker = (WEB / "sw.js").read_text(encoding="utf-8")
-        self.assertIn('const CACHE = "ka-shell-v38"', worker)
+        self.assertIn('const CACHE = "ka-shell-v39"', worker)
         # A deploy must reach an installed app: never answer from the browser's own HTTP cache.
         self.assertIn('fetch(event.request, { cache: "no-cache" })', worker)
         script = (WEB / "app.js").read_text(encoding="utf-8")

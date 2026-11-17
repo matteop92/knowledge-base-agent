@@ -55,7 +55,7 @@ function boot({ phone = false, sources = [], detail = null, detailStatus = 200, 
   context.globalThis = context;
   context.window.sourceFilter = undefined;
   vm.createContext(context);
-  for (const file of ["app/web/source-filter.js", "app/web/reader-blocks.js", "app/web/reader-picks.js", "app/web/sources.js"]) vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
+  for (const file of ["app/web/source-filter.js", "app/web/prompt-text.js", "app/web/reader-blocks.js", "app/web/reader-picks.js", "app/web/sources.js"]) vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
   for (const fn of documentStub.listeners.DOMContentLoaded || []) fn();
   const flush = async () => { for (let i = 0; i < 6; i++) await new Promise((r) => setImmediate(r)); };
   const settle = () => { const due = timers.filter((t) => t.live && t.ms === 300); for (const t of due) { t.live = false; t.fn(); } return due.length; };
@@ -175,6 +175,14 @@ const scenarios = {
     app.screen.show(); await app.flush();
     const [quote, post] = cards(app);
     return { mark: text(quote.querySelector(".s-mark-text")), attribution: text(quote.querySelector(".s-attribution")), postText: text(post) };
+  },
+  async promptCard() {
+    const app = boot({ sources: [row(1, "prompt", "Plain rewrite", { prompt_text: "Rewrite this for {audience} now.", tags: ["ai"] })] });
+    app.screen.show(); await app.flush();
+    const [card] = cards(app);
+    const body = card.querySelector(".s-prompt-text");
+    return { dark: card.classList.contains("s-prompt"), text: text(body), blanks: body.querySelectorAll(".s-blank").map(text),
+      caret: !!body.querySelector(".s-caret"), kicker: text(card.querySelector(".s-type")) };
   },
   async podcastMarks() {
     const app = boot({ sources: [row(1, "transcript", "T1", { platform: "podcast", source_name: "Show Alpha" }),
