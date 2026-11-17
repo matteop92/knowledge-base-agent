@@ -1,7 +1,7 @@
 """Captured text and Markdown become new notes in the vault's existing Knowledge folders.
 
 The properties classifier decides what kind of note it is, and the kind picks the folder: YouTube to
-Transcripts, full articles to Articles, book highlights to Book Highlights, everything else (tweets,
+Transcripts, full articles to Articles, book highlights to Book Highlights, AI prompts to Prompts, everything else (tweets,
 LinkedIn posts, short text, anything uncertain) to Notes. Nothing is ever written to Books.
 
 Safety: the server only ever creates new files here. Every write uses exclusive create, so an existing
