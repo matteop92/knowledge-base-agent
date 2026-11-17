@@ -39,6 +39,10 @@ QUOTE_TEXT_SQL = """select r.document_id, string_agg(b->>'raw_text', E'\\n\\n' o
     where r.run_id = any(%s) and b->>'kind' in ('block_quote', 'paragraph')
       and coalesce(b->>'content_role', 'source')='source'
     group by r.document_id"""
+# The opening of prompt sources, which the cards show in monospace. Code blocks and list items count: a prompt is
+# often written as one.
+PROMPT_TEXT_SQL = QUOTE_TEXT_SQL.replace("('block_quote', 'paragraph')", "('block_quote', 'paragraph', 'list_item', 'code_block')")
+PROMPT_PREVIEW_CHARS = 240
 
 # Markdown markers the reader draws as structure, and images, which the reader leaves out (an image wrapped in a link
 # leaves an empty link behind, which goes too). Links, bold and italic stay; the page draws them as elements.
@@ -302,11 +306,15 @@ class SourceStore:
                      for row, source in zip(rows, sources)]
             quote_runs = [row["run_id"] for row, fact in zip(rows, facts) if fact["type"] == "quote"]
             quotes = dict(conn.execute(QUOTE_TEXT_SQL, (quote_runs,)).fetchall()) if quote_runs else {}
+            prompt_runs = [row["run_id"] for row, fact in zip(rows, facts) if fact["type"] == "prompt"]
+            prompts = dict(conn.execute(PROMPT_TEXT_SQL, (prompt_runs,)).fetchall()) if prompt_runs else {}
         result = []
         for row, source, fact in zip(rows, sources, facts):
             item = self._header(source, row["metadata"])
             if fact["type"] == "quote" and quotes.get(source.document_id):
                 item["quote_text"] = quotes[source.document_id].strip()
+            if fact["type"] == "prompt" and prompts.get(source.document_id):
+                item["prompt_text"] = prompts[source.document_id].strip()[:PROMPT_PREVIEW_CHARS]
             result.append(item)
         result.sort(key=lambda item: (item["added"] or "", item["title"].casefold()), reverse=True)
         return {"sources": result, "vault_name": self.vault_name}

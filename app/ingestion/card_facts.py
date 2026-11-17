@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 
 from app.agent.properties import _names, source_type
 
-CARD_TYPES = ("book", "highlights", "post", "note", "transcript", "article", "quote")
+CARD_TYPES = ("book", "highlights", "post", "note", "transcript", "article", "quote", "prompt")
 PLATFORM_HOSTS = {"linkedin.com": "linkedin", "x.com": "x", "twitter.com": "x",
                   "youtube.com": "youtube", "youtu.be": "youtube", "reddit.com": "reddit", "redd.it": "reddit"}
 PLATFORM_WORDS = {"linkedin": "linkedin", "x": "x", "twitter": "x", "x.com": "x", "youtube": "youtube",

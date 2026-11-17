@@ -22,7 +22,7 @@ from app.ingestion.source_reader import capture_source
 from tests.api.test_api import EMAIL, FakeAuth, FakeEngine, settings
 
 ADDED = datetime(2026, 10, 20, 9, tzinfo=timezone.utc)
-NAMES = ("book", "highlights", "post", "note", "transcript", "article", "quote")
+NAMES = ("book", "highlights", "post", "note", "transcript", "article", "quote", "prompt")
 IDS = {name: f"00000000-0000-0000-0000-00000000000{index}" for index, name in enumerate(NAMES, 1)}
 
 
@@ -42,7 +42,9 @@ ROWS = [
     row("article", "Knowledge/Articles/A.md", {"source_url": "https://example.org/a"},
         added=datetime(2026, 10, 1, tzinfo=timezone.utc)),
     row("quote", "Knowledge/Notes/Q.md", {"frontmatter": {"type": "quote"}}),
+    row("prompt", "Knowledge/Notes/R.md", {"frontmatter": {"type": "prompt"}}),
 ]
+PROMPT = "Rewrite this for {audience}. " * 20
 
 
 class Result:
@@ -67,6 +69,8 @@ class Conn:
         self.params.append(params)
         if sql.startswith("select r.run_id, r.parsed"):
             return Result([self.image] if self.image else [])
+        if "jsonb_array_elements" in sql and "code_block" in sql:
+            return Result([(IDS["prompt"], PROMPT)])
         if "jsonb_array_elements" in sql:
             return Result([(IDS["quote"], "Be the change.")])
         if sql.startswith("select d.relative_path"):
@@ -104,6 +108,12 @@ class ListTests(unittest.TestCase):
         self.assertNotIn("highlight_count", rows[IDS["highlights"]])
         self.assertEqual(rows[IDS["quote"]]["quote_text"], "Be the change.")
         self.assertEqual(sum("quote_text" in item for item in rows.values()), 1)
+
+    def test_only_prompts_carry_their_opening_cut_to_the_preview_length(self) -> None:
+        rows = self.listed()
+        self.assertEqual(rows[IDS["prompt"]]["type"], "prompt")
+        self.assertEqual(rows[IDS["prompt"]]["prompt_text"], PROMPT.strip()[:240])
+        self.assertEqual(sum("prompt_text" in item for item in rows.values()), 1)
 
     def test_a_book_opens_in_obsidian(self) -> None:
         book = self.listed()[IDS["book"]]

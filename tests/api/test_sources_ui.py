@@ -72,6 +72,11 @@ class DesktopListTests(unittest.TestCase):
             self.assertFalse(card["byline"])
         self.assertNotIn("Unknown", json.dumps(run("noAuthor")))
 
+    def test_a_prompt_card_is_dark_with_its_opening_in_monospace_blanks_marked_and_a_cursor(self) -> None:
+        out = run("promptCard")
+        self.assertEqual((out["dark"], out["kicker"], out["caret"]), (True, "Prompt", True))
+        self.assertEqual((out["text"], out["blanks"]), ("› Rewrite this for {audience} now.", ["{audience}"]))
+
     def test_a_quote_shows_its_text_with_the_mark_and_a_post_shows_no_body(self) -> None:
         out = run("quoteCard")
         self.assertEqual((out["mark"], out["attribution"]), ("Be the change.", "Ada Stone"))

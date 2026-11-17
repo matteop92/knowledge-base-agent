@@ -10,6 +10,7 @@ source_types:
 - note
 - social_post
 - quote
+- prompt
 - meeting
 - reference
 - other

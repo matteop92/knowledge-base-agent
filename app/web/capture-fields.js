@@ -1,6 +1,6 @@
 "use strict";
 
-// The Add card's optional fields: the ten note types, and matching for the tag and author type-ahead. No DOM, so it runs in
+// The Add card's optional fields: the eleven note types, and matching for the tag and author type-ahead. No DOM, so it runs in
 // the browser and under Node. A list row is { text, count, at, length }: `at` and `length` mark the typed letters inside `text`
 // so the page can set them in weight 500.
 (() => {
@@ -13,6 +13,7 @@
     { label: "Note", value: "note" },
     { label: "Other", value: "other" },
     { label: "Post", value: "social_post" },
+    { label: "Prompt", value: "prompt" },
     { label: "Quote", value: "quote" },
     { label: "Reference", value: "reference" },
     { label: "Transcript", value: "transcript" },

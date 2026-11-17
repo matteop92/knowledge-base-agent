@@ -8,12 +8,12 @@
   const FIRST_PAGE = 60;
   const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const KICKERS = { book: "Book", highlights: "Highlights", post: "Post", note: "Note", transcript: "Transcript",
-    article: "Article", quote: "Quote" };
+    article: "Article", quote: "Quote", prompt: "Prompt" };
   const MARKS = { linkedin: "linkedin", x: "xlogo", youtube: "youtube", reddit: "reddit", podcast: "mic", website: "globe" };
   const MENUS = [["types", "Type"], ["tags", "Tags"], ["people", "People"], ["dates", "Date added"]];
   const ASK_HINTS = { transcript: "Ask about this episode…", article: "Ask about this article…",
     highlights: "Ask about these highlights…", note: "Ask about this note…", post: "Ask about this post…",
-    quote: "Ask about this quote…", book: "Ask about this book…" };
+    quote: "Ask about this quote…", book: "Ask about this book…", prompt: "Ask about this prompt…" };
   const COVERS = 8;
   const TRANSITION_GRACE_MS = 250;
 
@@ -163,6 +163,26 @@
     return card;
   }
 
+  // A prompt is text to hand to an AI: dark, monospaced, a cursor after its opening lines, blanks in the accent colour.
+  function promptText(cls, text) {
+    const line = h("p", cls);
+    line.append(h("span", "s-prompt-mark", "› "));
+    for (const run of window.promptText.runs(text)) line.append(h("span", run.blank ? "s-blank" : "", run.text));
+    const caret = h("span", "s-caret");
+    caret.setAttribute("aria-hidden", "true");
+    line.append(caret);
+    return line;
+  }
+
+  function promptCard(source) {
+    const card = h("div", "s-card s-prompt");
+    card.append(topLine(source), h("h3", "s-title", source.title));
+    if (source.prompt_text) card.append(promptText("s-prompt-text", source.prompt_text));
+    const tags = pills(source, false);
+    if (tags) card.append(tags);
+    return card;
+  }
+
   function articleCard(source) {
     const card = h("div", "s-card s-article");
     card.append(h("span", "s-rule"));
@@ -186,11 +206,12 @@
 
   // Phone rows ----------------------------------------------------------------------------------
   function thumbnail(source) {
-    const thumb = h("span", `s-thumb s-thumb-${source.type === "highlights" ? "book" : source.type}`);
+    const look = source.type === "highlights" ? "book" : source.type;
+    const thumb = h("span", `s-thumb s-thumb-${look}`);
     if (source.type === "book" || source.type === "highlights") thumb.classList.add(coverClass(source));
     const parts = { post: ["t-avatar", "t-line", "t-light", "t-light", "t-light"], quote: ["t-open", "t-bar", "t-bar", "t-bar"],
       transcript: ["t-talk", "t-talk", "t-talk"], note: ["t-rule", "t-rule", "t-rule", "t-rule"],
-      article: ["t-head", "t-head", "t-green", "t-bar", "t-bar"] }[source.type] || [];
+      article: ["t-head", "t-head", "t-green", "t-bar", "t-bar"], prompt: ["t-prompt", "t-dim", "t-dim", "t-cursor"] }[look] || [];
     for (const part of parts) thumb.append(h("span", part));
     thumb.setAttribute("aria-hidden", "true");
     return thumb;
@@ -212,7 +233,7 @@
   function buildCard(source) {
     const item = h("li", "s-item");
     const body = phone.matches ? phoneRow(source) : ({ book: coverCard, highlights: coverCard, quote: quoteCard,
-      article: articleCard }[source.type] || textCard)(source);
+      article: articleCard, prompt: promptCard }[source.type] || textCard)(source);
     let control;
     if (source.opens_in_obsidian) {
       control = h("a", "s-link");

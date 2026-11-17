@@ -83,18 +83,18 @@ class CaptureFieldsTests(unittest.TestCase):
         self.assertEqual(out["empty"], {"rows": [], "create": None})
         self.assertIsNone(out["long"])
 
-    def test_the_type_list_has_the_ten_names_and_no_create_row(self) -> None:
+    def test_the_type_list_has_the_eleven_names_and_no_create_row(self) -> None:
         out = run("""console.log(JSON.stringify({ rows: f.typeRows(), types: f.TYPES }));""")
         self.assertEqual([row["text"] for row in out["rows"]], ["Article", "Book", "Book highlights", "Meeting", "Note", "Other", "Post",
-                                                              "Quote", "Reference", "Transcript"])
+                                                              "Prompt", "Quote", "Reference", "Transcript"])
         self.assertTrue(all(row["count"] == 0 for row in out["rows"]))
-        self.assertEqual(len(out["types"]), 10)
+        self.assertEqual(len(out["types"]), 11)
 
     def test_labels_map_to_the_stored_values(self) -> None:
         out = run("""console.log(JSON.stringify(Object.fromEntries(f.TYPES.map((t) => [t.label, [f.typeValue(t.label), f.typeLabel(t.value)]]))));""")
         self.assertEqual({label: pair[0] for label, pair in out.items()}, {
             "Article": "article", "Book": "book", "Book highlights": "highlights", "Meeting": "meeting", "Note": "note",
-            "Other": "other", "Post": "social_post", "Quote": "quote", "Reference": "reference", "Transcript": "transcript"})
+            "Other": "other", "Post": "social_post", "Prompt": "prompt", "Quote": "quote", "Reference": "reference", "Transcript": "transcript"})
         self.assertTrue(all(pair[1] == label for label, pair in out.items()))
         self.assertEqual(run("""console.log(JSON.stringify([f.typeValue("Nope"), f.typeLabel("nope")]));"""), ["", ""])
 

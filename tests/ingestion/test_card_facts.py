@@ -73,6 +73,7 @@ class TypeTests(unittest.TestCase):
 
     def test_quote_and_folder_types(self) -> None:
         self.assertEqual(facts({"frontmatter": {"type": "quote"}})["type"], "quote")
+        self.assertEqual(facts({"frontmatter": {"type": "prompt"}})["type"], "prompt")
         self.assertEqual(facts({}, "Knowledge/Books/Thing.md")["type"], "book")
 
     def test_everything_else_is_a_note(self) -> None:
