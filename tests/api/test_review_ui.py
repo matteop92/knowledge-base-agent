@@ -139,13 +139,24 @@ class ReviewScreenTests(unittest.TestCase):
         self.assertEqual(out["opened"], ["done"])
         self.assertIn("Nothing to review yet", out["plain"])
 
+    def test_a_prompt_is_dark_monospace_text_with_marked_blanks_a_cursor_and_copy(self) -> None:
+        out = run("promptPage")
+        self.assertEqual((out["cls"], out["kicker"], out["tone"]), (True, "Prompt", "dark"))
+        # Drawn as the text to paste: Markdown markers stay, a "›" before it and a cursor after it.
+        self.assertEqual(out["paras"], ["› Rewrite the draft for {audience} in plain English.", "Draft: [DRAFT] and **keep** it."])
+        self.assertEqual((out["blanks"], out["marks"], out["carets"]), (["{audience}", "[DRAFT]"], 1, 1))
+        self.assertEqual(out["copyLabel"], "Copy prompt")
+        self.assertEqual(out["copied"], ["Rewrite the draft for {audience} in plain English.\n\nDraft: [DRAFT] and **keep** it."])
+        self.assertEqual(out["notices"], ["Prompt copied."])
+
     def test_the_note_shows_on_the_last_part_only(self) -> None:
         out = run("noteOnlyOnLastPart")
         self.assertEqual(out["notes"], [False] * (out["parts"] - 1) + [True])
 
-    def test_ae2_a_passage_on_screen_for_a_second_is_logged_and_one_never_seen_is_not(self) -> None:
+    def test_a_passage_seen_for_a_second_is_logged_only_once_the_reader_moves_on(self) -> None:
         out = run("shownOnlyWhenOnScreen")
         self.assertEqual(out["timerMs"], 1000)
+        self.assertEqual((out["whileOnIt"], out["afterReturn"]), (0, 0))
         self.assertEqual(out["calls"], [["POST", "/api/review/shown", {"passage_key": "0" * 31 + "1", "round": 1}]])
         self.assertEqual(out["pages"], 2)
 
@@ -201,13 +212,13 @@ class ReviewScreenTests(unittest.TestCase):
 
     def test_a_failed_shown_call_is_retried_and_the_passage_stays_held_until_it_lands(self) -> None:
         out = run("failedShownIsRetried")
-        self.assertEqual(out["first"], {"posts": 1, "logged": False})
+        self.assertEqual(out["first"], {"posts": 1, "logged": False, "held": True})
         self.assertEqual((out["posts"], out["logged"]), (2, True))
 
     def test_each_source_type_colours_its_screen_and_names_itself_and_its_source(self) -> None:
         out = run("typesStyleTheScreen")
-        self.assertEqual(out["classes"], [["is-highlights"], ["is-quote"], ["is-note"], ["is-post"], ["is-note"]])
-        self.assertEqual(out["kickers"], ["Highlights", "Quote", "Note", "Post", "Note"])
+        self.assertEqual(out["classes"], [["is-highlights"], ["is-quote"], ["is-note"], ["is-post"], ["is-note"], ["is-prompt"]])
+        self.assertEqual(out["kickers"], ["Highlights", "Quote", "Note", "Post", "Note", "Prompt"])
         self.assertEqual(out["source"], ["Title 1", "Ada Stone"])
         self.assertEqual((out["type"], out["tone"]), ("post", "light"))
 

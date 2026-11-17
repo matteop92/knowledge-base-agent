@@ -23,7 +23,7 @@ function boot({ phone = true, replies = [] } = {}) {
     els[id] = new El("div"); els[id].id = id;
   }
   els["review-state"].hidden = true; els["review-ask"].hidden = true; els["review-listbar"].hidden = true; els["review-list-caption"].hidden = true;
-  const calls = { api: [], asked: [], timers: [], notices: [], opened: [], backed: [] };
+  const calls = { api: [], asked: [], timers: [], notices: [], opened: [], backed: [], copied: [] };
   const queue = replies.slice();
   const stored = {};
   class FakeObserver { constructor(cb) { this.cb = cb; this.watched = []; observers.push(this); } observe(el) { this.watched.push(el); } disconnect() { this.watched = []; } }
@@ -45,10 +45,12 @@ function boot({ phone = true, replies = [] } = {}) {
     setTimeout: (fn, ms) => { const timer = { fn, ms, live: true }; calls.timers.push(timer); return timer; },
     clearTimeout: (timer) => { if (timer) timer.live = false; },
     IntersectionObserver: FakeObserver,
+    navigator: { clipboard: { writeText: async (text) => { calls.copied.push(text); } } },
     localStorage: { getItem: (k) => (k in stored ? stored[k] : null), setItem: (k, v) => { stored[k] = v; } },
   };
   context.globalThis = context;
   vm.createContext(context);
+  vm.runInContext(fs.readFileSync("app/web/prompt-text.js", "utf8"), context, { filename: "prompt-text.js" });
   vm.runInContext(fs.readFileSync("app/web/review.js", "utf8"), context, { filename: "review.js" });
   for (const fn of documentStub.listeners.DOMContentLoaded || []) fn();
   const flush = async () => { for (let i = 0; i < 6; i++) await new Promise((r) => setImmediate(r)); };
@@ -88,13 +90,30 @@ const scenarios = {
     }
     return { parts, notes };
   },
+  async promptPage() {
+    const text = "Rewrite the draft for {audience} in plain English.\n\nDraft: [DRAFT] and **keep** it.";
+    const app = boot({ replies: [{ passages: [passage(1, { type: "prompt", text })] }] });
+    app.screen.show(); await app.flush(); app.seen(0);
+    const el = page(app, 0).el;
+    const paras = el.querySelectorAll(".review-p");
+    el.querySelector(".review-copy").click(); await app.flush();
+    return { cls: el.className.includes("is-prompt"), kicker: el.querySelector(".review-kicker").textContent, tone: app.els["app"].dataset.reviewTone,
+      paras: paras.map((p) => p.textContent), blanks: el.querySelectorAll(".review-blank").map((b) => b.textContent),
+      marks: el.querySelectorAll(".review-prompt-mark").length, carets: el.querySelectorAll(".review-caret").length,
+      copyLabel: el.querySelector(".review-copy").getAttribute("aria-label"), copied: app.calls.copied, notices: app.calls.notices };
+  },
   async shownOnlyWhenOnScreen() {
     const app = boot({ replies: [{ passages: [passage(1), passage(2)] }, {}, {}] });
     app.screen.show(); await app.flush();
     app.seen(0);
     const timer = app.fire();
     await app.flush();
-    return { timerMs: timer.ms, calls: app.calls.api.filter(([m]) => m === "POST"), pages: app.screen.pages().length };
+    const whileOnIt = app.calls.api.filter(([m]) => m === "POST").length;
+    // Leaving Review and coming back keeps the passage unlogged and first in line.
+    app.screen.leave(); app.screen.show(); await app.flush();
+    const afterReturn = app.calls.api.filter(([m]) => m === "POST").length;
+    app.seen(1); await app.flush();
+    return { timerMs: timer.ms, whileOnIt, afterReturn, calls: app.calls.api.filter(([m]) => m === "POST"), pages: app.screen.pages().length };
   },
   async leavingBeforeASecondLogsNothing() {
     const app = boot({ replies: [{ passages: [passage(1), passage(2)] }] });
@@ -219,14 +238,15 @@ const scenarios = {
     const fail = Object.assign(new Error("x"), { status: 500 });
     const app = boot({ replies: [{ passages: [passage(1), passage(2)] }, { passages: [] }, fail, {}, {}] });
     app.screen.show(); await app.flush();
-    app.seen(0); app.fire(); await app.flush();
-    const first = { posts: app.calls.api.filter(([m]) => m === "POST").length, logged: page(app, 0).logged };
-    app.seen(0, 0); app.seen(0); app.fire(); await app.flush();
+    app.seen(0); app.fire(); app.seen(1); await app.flush();
+    const first = { posts: app.calls.api.filter(([m]) => m === "POST").length, logged: page(app, 0).logged,
+      held: app.calls.api.filter(([m]) => m === "GET").pop()[1].includes(page(app, 0).passage.passage_key) };
+    app.seen(0); app.seen(1); await app.flush();
     return { first, posts: app.calls.api.filter(([m]) => m === "POST").length, logged: page(app, 0).logged };
   },
   async typesStyleTheScreen() {
-    const kinds = ["highlights", "quote", "note", "post", "podcast"];
-    const app = boot({ replies: [{ passages: kinds.slice(0, 3).map((t, i) => passage(i + 1, { type: t })) }, { passages: kinds.slice(3).map((t, i) => passage(i + 4, { type: t })) }] });
+    const kinds = ["highlights", "quote", "note", "post", "podcast", "prompt"];
+    const app = boot({ replies: [{ passages: kinds.slice(0, 3).map((t, i) => passage(i + 1, { type: t })) }, { passages: kinds.slice(3).map((t, i) => passage(i + 4, { type: t })) }, {}, {}, {}] });
     app.screen.show(); await app.flush();
     app.seen(0); await app.flush(); app.seen(1); await app.flush(); app.seen(3); await app.flush();
     const pages = app.screen.pages();
@@ -336,7 +356,7 @@ const scenarios = {
     tapAt(el, 200);
     const afterPassage = { hidden: pill.hidden, ask: app.els["review"].dataset.ask };
     tapAt(el, 200);
-    app.seen(0); app.fire(); await app.flush();
+    app.seen(0); app.fire(); app.seen(1); await app.flush();
     return { filled, afterCircle, afterPassage, afterHide: app.els["review"].dataset.ask || null,
       shown: app.calls.api.filter(([m, path]) => m === "POST" && path === "/api/review/shown").map(([, , body]) => body) };
   },
