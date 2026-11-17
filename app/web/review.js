@@ -142,7 +142,7 @@
     return p;
   }
 
-  // Copy hands the whole prompt (every part) to the clipboard, ready to paste into an AI.
+  // Copy hands the whole prompt (every part, as saved) to the clipboard, ready to paste into an AI.
   function copyButton(passage) {
     const button = h("button", "review-copy");
     button.type = "button";
@@ -151,7 +151,7 @@
     button.addEventListener("click", async (event) => {
       event.stopPropagation();
       try {
-        await navigator.clipboard.writeText(passage.text);
+        await navigator.clipboard.writeText(passage.copy_text || passage.text);
         if (typeof notify === "function") notify("Prompt copied.");
       } catch (error) {
         if (typeof notify === "function") notify("The prompt was not copied. Try again.");
@@ -240,6 +240,8 @@
         for (const held of view.saved ? view.saved.pages : []) {
           if (held.passage.passage_key === page.passage.passage_key) { held.mark = next; paintMarks(held); }
         }
+        // A marked passage has left the shuffle, so the server may now have something new for a page that was waiting.
+        if (next && !view.list) { view.stalled = false; maybeFetch(); }
       } catch (error) {
         page.mark = before;
         paintMarks(page);
@@ -461,7 +463,7 @@
       view.loaded = true;
       for (const passage of passages) if (!view.pages.some((p) => !p.logged && p.passage.passage_key === passage.passage_key)) addPage(passage);
       // Nothing new while passages are held: wait for one to be shown. Nothing and nothing held: the pool is empty.
-      if (!passages.length) view.stalled = true;
+      if (!passages.length) { view.stalled = true; logLast(); }
       if (!view.pages.length) setState(await emptyKind()); else setState(null);
     } catch (error) {
       if (error.status === 401) return;
@@ -492,7 +494,14 @@
   // then it stays first in line, so switching sections, closing the app or opening Review elsewhere shows it again.
   function startDwell(page) {
     if (view.list || page.seen || page.timer !== null) return;  // list mode logs nothing as shown
-    page.timer = setTimeout(() => { page.timer = null; page.seen = true; }, DWELL_MS);
+    page.timer = setTimeout(() => { page.timer = null; page.seen = true; logLast(); }, DWELL_MS);
+  }
+
+  // The one exception to "logged when left": on the last page, with the server out of new passages, there is nowhere to
+  // move to. The seen last passage is logged so the next round can start instead of Review waiting for good.
+  function logLast() {
+    const page = view.pages[view.current];
+    if (!view.list && view.stalled && page && page.seen && !page.logged && view.current === view.pages.length - 1) markShown(page);
   }
 
   // Log every seen passage the reader has left. A call that failed is tried again on the next move.

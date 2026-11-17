@@ -16,7 +16,7 @@ function passage(n, extra = {}) {
     source_id: `source-${n}`, type: "highlights", locator: null, ...extra };
 }
 
-function boot({ phone = true, replies = [] } = {}) {
+function boot({ phone = true, replies = [], clipboardFails = false } = {}) {
   const els = {};
   for (const id of ["app", "review", "review-pager", "review-state", "review-ask", "review-live", "review-listbar", "review-list-back",
     "review-list-name", "review-list-count", "review-list-caption"]) {
@@ -45,7 +45,7 @@ function boot({ phone = true, replies = [] } = {}) {
     setTimeout: (fn, ms) => { const timer = { fn, ms, live: true }; calls.timers.push(timer); return timer; },
     clearTimeout: (timer) => { if (timer) timer.live = false; },
     IntersectionObserver: FakeObserver,
-    navigator: { clipboard: { writeText: async (text) => { calls.copied.push(text); } } },
+    navigator: { clipboard: { writeText: async (text) => { if (clipboardFails) throw new Error("denied"); calls.copied.push(text); } } },
     localStorage: { getItem: (k) => (k in stored ? stored[k] : null), setItem: (k, v) => { stored[k] = v; } },
   };
   context.globalThis = context;
@@ -92,7 +92,7 @@ const scenarios = {
   },
   async promptPage() {
     const text = "Rewrite the draft for {audience} in plain English.\n\nDraft: [DRAFT] and **keep** it.";
-    const app = boot({ replies: [{ passages: [passage(1, { type: "prompt", text })] }] });
+    const app = boot({ replies: [{ passages: [passage(1, { type: "prompt", text, copy_text: "- Rewrite the draft for {audience}." })] }] });
     app.screen.show(); await app.flush(); app.seen(0);
     const el = page(app, 0).el;
     const paras = el.querySelectorAll(".review-p");
@@ -101,6 +101,42 @@ const scenarios = {
       paras: paras.map((p) => p.textContent), blanks: el.querySelectorAll(".review-blank").map((b) => b.textContent),
       marks: el.querySelectorAll(".review-prompt-mark").length, carets: el.querySelectorAll(".review-caret").length,
       copyLabel: el.querySelector(".review-copy").getAttribute("aria-label"), copied: app.calls.copied, notices: app.calls.notices };
+  },
+  async multiPartPrompt() {
+    const text = sentences(110, 3);
+    const app = boot({ replies: [{ passages: [passage(1, { type: "prompt", text })] }] });
+    app.screen.show(); await app.flush(); app.seen(0);
+    const p = page(app, 0);
+    const parts = [];
+    for (let i = 0; i < p.parts.length; i++) {
+      parts.push({ marks: p.el.querySelectorAll(".review-prompt-mark").length, carets: p.el.querySelectorAll(".review-caret").length });
+      p.el.querySelector(".review-next").click();
+    }
+    p.el.querySelector(".review-copy").click(); await app.flush();
+    return { count: p.parts.length, parts, copied: app.calls.copied, whole: app.calls.copied[0] === text };
+  },
+  async copyFails() {
+    const app = boot({ clipboardFails: true, replies: [{ passages: [passage(1, { type: "prompt", text: "Do {x}." })] }] });
+    app.screen.show(); await app.flush();
+    page(app, 0).el.querySelector(".review-copy").click(); await app.flush();
+    return { notices: app.calls.notices };
+  },
+  async lastPassageDoesNotStall() {
+    // A two-passage pool: once the reader is on the last one and the server has nothing else, the seen last passage is
+    // logged so the next round can start, instead of Review waiting for a move that cannot happen.
+    const app = boot({ replies: [{ passages: [passage(1), passage(2)] }, { passages: [] }, {}, { passages: [] }, {}, { passages: [passage(1, { round: 2 })] }] });
+    app.screen.show(); await app.flush();
+    app.seen(0); app.fire(); app.seen(1); await app.flush();
+    app.fire(); await app.flush();
+    return { calls: app.calls.api.map(([m, path, body]) => [m, path.split("?")[0], body && body.passage_key ? body.passage_key.slice(-1) : null]),
+      pages: app.screen.pages().length };
+  },
+  async markOnLastPassageMovesOn() {
+    const app = boot({ replies: [{ passages: [passage(1)] }, { passages: [] }, {}, { passages: [passage(2)] }] });
+    app.screen.show(); await app.flush();
+    app.seen(0); await app.flush();
+    await app.screen.toggleMark(page(app, 0), "done"); await app.flush();
+    return { calls: app.calls.api.map(([m, path]) => [m, path.split("?")[0]]), pages: app.screen.pages().length };
   },
   async shownOnlyWhenOnScreen() {
     const app = boot({ replies: [{ passages: [passage(1), passage(2)] }, {}, {}] });

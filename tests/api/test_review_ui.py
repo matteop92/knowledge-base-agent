@@ -146,8 +146,28 @@ class ReviewScreenTests(unittest.TestCase):
         self.assertEqual(out["paras"], ["› Rewrite the draft for {audience} in plain English.", "Draft: [DRAFT] and **keep** it."])
         self.assertEqual((out["blanks"], out["marks"], out["carets"]), (["{audience}", "[DRAFT]"], 1, 1))
         self.assertEqual(out["copyLabel"], "Copy prompt")
-        self.assertEqual(out["copied"], ["Rewrite the draft for {audience} in plain English.\n\nDraft: [DRAFT] and **keep** it."])
+        self.assertEqual(out["copied"], ["- Rewrite the draft for {audience}."])  # the saved words, from copy_text
         self.assertEqual(out["notices"], ["Prompt copied."])
+
+    def test_a_long_prompt_has_its_mark_on_the_first_part_its_cursor_on_the_last_and_copy_takes_every_part(self) -> None:
+        out = run("multiPartPrompt")
+        self.assertGreater(out["count"], 1)
+        self.assertEqual(out["parts"], [{"marks": 1, "carets": 0}] + [{"marks": 0, "carets": 0}] * (out["count"] - 2)
+                         + [{"marks": 0, "carets": 1}])
+        self.assertTrue(out["whole"])  # no copy_text: the whole passage, not the part on screen
+
+    def test_a_copy_the_browser_refuses_says_so(self) -> None:
+        self.assertEqual(run("copyFails"), {"notices": ["The prompt was not copied. Try again."]})
+
+    def test_the_last_passage_of_a_pool_is_logged_so_review_does_not_wait_for_good(self) -> None:
+        calls = run("lastPassageDoesNotStall")["calls"]
+        self.assertIn(["POST", "/api/review/shown", "2"], calls)
+        self.assertEqual(calls[-1][:2], ["GET", "/api/review/next"])  # and the next round is asked for
+
+    def test_a_mark_on_the_last_passage_asks_for_more(self) -> None:
+        out = run("markOnLastPassageMovesOn")
+        self.assertEqual(out["calls"][-1], ["GET", "/api/review/next"])
+        self.assertEqual(out["pages"], 2)
 
     def test_the_note_shows_on_the_last_part_only(self) -> None:
         out = run("noteOnlyOnLastPart")

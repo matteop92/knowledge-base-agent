@@ -33,16 +33,21 @@ DETAIL_SQL = f"""select d.relative_path, {LABEL_METADATA}, coalesce(r.parsed->'b
     join knowledge.corpus_state s on s.profile_id=a.profile_id
     where r.document_id=%s"""
 
-# The text of quote sources, which the cards show in full.
-QUOTE_TEXT_SQL = """select r.document_id, string_agg(b->>'raw_text', E'\\n\\n' order by (b->>'index')::int)
+# The raw text of a source's blocks of the given kinds, in order: quote cards show it in full, prompt cards its opening.
+BLOCK_TEXT_SQL = """select r.document_id, string_agg(b->>'raw_text', E'\\n\\n' order by (b->>'index')::int)
     from knowledge.runs r cross join lateral jsonb_array_elements(coalesce(r.parsed->'blocks', '[]'::jsonb)) b
-    where r.run_id = any(%s) and b->>'kind' in ('block_quote', 'paragraph')
+    where r.run_id = any(%s) and b->>'kind' = any(%s)
       and coalesce(b->>'content_role', 'source')='source'
     group by r.document_id"""
-# The opening of prompt sources, which the cards show in monospace. Code blocks and list items count: a prompt is
-# often written as one.
-PROMPT_TEXT_SQL = QUOTE_TEXT_SQL.replace("('block_quote', 'paragraph')", "('block_quote', 'paragraph', 'list_item', 'code_block')")
+QUOTE_KINDS = ["block_quote", "paragraph"]
+PROMPT_KINDS = ["block_quote", "paragraph", "list_item", "code_block"]  # a prompt is often written as a list or a code block
 PROMPT_PREVIEW_CHARS = 240
+FENCE = re.compile(r"^[ \t]*(```|~~~).*\n?", re.MULTILINE)
+
+
+def prompt_preview(text: str) -> str:
+    """A prompt card's opening lines: the saved text without its code-fence lines, cut to the preview length."""
+    return FENCE.sub("", text).strip()[:PROMPT_PREVIEW_CHARS]
 
 # Markdown markers the reader draws as structure, and images, which the reader leaves out (an image wrapped in a link
 # leaves an empty link behind, which goes too). Links, bold and italic stay; the page draws them as elements.
@@ -305,16 +310,16 @@ class SourceStore:
             facts = [card_facts(row["metadata"], row["relative_path"], source.added_at)
                      for row, source in zip(rows, sources)]
             quote_runs = [row["run_id"] for row, fact in zip(rows, facts) if fact["type"] == "quote"]
-            quotes = dict(conn.execute(QUOTE_TEXT_SQL, (quote_runs,)).fetchall()) if quote_runs else {}
+            quotes = dict(conn.execute(BLOCK_TEXT_SQL, (quote_runs, QUOTE_KINDS)).fetchall()) if quote_runs else {}
             prompt_runs = [row["run_id"] for row, fact in zip(rows, facts) if fact["type"] == "prompt"]
-            prompts = dict(conn.execute(PROMPT_TEXT_SQL, (prompt_runs,)).fetchall()) if prompt_runs else {}
+            prompts = dict(conn.execute(BLOCK_TEXT_SQL, (prompt_runs, PROMPT_KINDS)).fetchall()) if prompt_runs else {}
         result = []
         for row, source, fact in zip(rows, sources, facts):
             item = self._header(source, row["metadata"])
             if fact["type"] == "quote" and quotes.get(source.document_id):
                 item["quote_text"] = quotes[source.document_id].strip()
             if fact["type"] == "prompt" and prompts.get(source.document_id):
-                item["prompt_text"] = prompts[source.document_id].strip()[:PROMPT_PREVIEW_CHARS]
+                item["prompt_text"] = prompt_preview(prompts[source.document_id])
             result.append(item)
         result.sort(key=lambda item: (item["added"] or "", item["title"].casefold()), reverse=True)
         return {"sources": result, "vault_name": self.vault_name}
