@@ -75,6 +75,7 @@ class TypeTests(unittest.TestCase):
         self.assertEqual(facts({"frontmatter": {"type": "quote"}})["type"], "quote")
         self.assertEqual(facts({"frontmatter": {"type": "prompt"}})["type"], "prompt")
         self.assertEqual(facts({"generated": {"source_type": "prompt"}}, "Elsewhere/P.md")["type"], "prompt")
+        self.assertEqual(facts({}, "Knowledge/Prompts/Rewrite.md")["type"], "prompt")
         self.assertEqual(facts({}, "Knowledge/Books/Thing.md")["type"], "book")
 
     def test_everything_else_is_a_note(self) -> None:

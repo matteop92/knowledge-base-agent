@@ -25,9 +25,9 @@ from app.ingestion.contracts import ParsedDocument
 from app.ingestion.router import route_source
 from app.ingestion.source_reader import capture_source
 
-FOLDER_BY_TYPE = {"transcript": "Transcripts", "article": "Articles", "highlights": "Book Highlights"}
+FOLDER_BY_TYPE = {"transcript": "Transcripts", "article": "Articles", "highlights": "Book Highlights", "prompt": "Prompts"}
 DEFAULT_FOLDER = "Notes"
-CAPTURE_FOLDERS = ("Transcripts", "Articles", "Book Highlights", "Notes")
+CAPTURE_FOLDERS = ("Transcripts", "Articles", "Book Highlights", "Notes", "Prompts")
 MAX_TEXT_BYTES = 2_000_000
 MAX_TITLE_CHARS = 200
 SLUG_CHARS = 60

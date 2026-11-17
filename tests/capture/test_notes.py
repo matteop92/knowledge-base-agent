@@ -119,7 +119,7 @@ class FolderTests(unittest.TestCase):
     def test_the_note_type_picks_the_folder_and_nothing_goes_to_books(self):
         cases = {("youtube", "note"): "Transcripts", ("text", "transcript"): "Transcripts",
                  ("text", "article"): "Articles", ("markdown", "highlights"): "Book Highlights",
-                 ("text", "social_post"): "Notes", ("text", "book"): "Notes", ("text", None): "Notes"}
+                 ("text", "social_post"): "Notes", ("text", "prompt"): "Prompts", ("text", "book"): "Notes", ("text", None): "Notes"}
         for (kind, source_type), folder in cases.items():
             with self.subTest(kind=kind, source_type=source_type):
                 self.assertEqual(folder_for(kind, source_type), folder)
